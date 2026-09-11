@@ -1,0 +1,101 @@
+/* Global Virtual Keyboard Styles */
+
+.sk-keyboard-wrap {
+  position: fixed;
+  bottom: -320px; /* Hidden by default */
+  left: 0;
+  width: 100%;
+  height: 280px;
+  background: #111827; /* Dark gray/navy theme */
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 10px;
+  gap: 8px;
+  z-index: 9999;
+  transition: bottom 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.sk-keyboard-wrap.show {
+  bottom: 0;
+}
+
+.sk-keyboard-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  max-width: 900px;
+  gap: 6px;
+}
+
+.sk-key {
+  flex: 1;
+  height: 48px;
+  max-width: 68px;
+  background: #1f2937;
+  color: #f3f4f6;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, transform 0.08s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sk-key:active {
+  background: #f97316; /* Orange active color */
+  color: #ffffff;
+  transform: scale(0.95);
+}
+
+/* Control keys (Backspace, Enter, Caps, Space, Clear, Hide) */
+.sk-key.ctrl {
+  background: #374151;
+  max-width: 90px;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.sk-key.space {
+  flex: 5;
+  max-width: 400px;
+}
+
+.sk-key.caps.active {
+  background: #f97316;
+  color: white;
+  border-color: #f97316;
+}
+
+/* Add custom padding and enable scroll when keyboard is active to prevent blocking content */
+body.keyboard-active {
+  padding-bottom: 300px !important;
+}
+
+html.keyboard-active,
+body.keyboard-active {
+  overflow-y: auto !important;
+  height: auto !important;
+}
+
+/* Let main wrappers scroll and expand naturally */
+body.keyboard-active #training-ui,
+body.keyboard-active .tr-page,
+body.keyboard-active #tl-page,
+body.keyboard-active .tts-body,
+body.keyboard-active .tl-body,
+body.keyboard-active .tr-left-panel,
+body.keyboard-active #trContentWrap {
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow-y: auto !important;
+}

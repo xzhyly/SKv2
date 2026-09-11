@@ -1,0 +1,2160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Language Translator (Portrait) ✿ Sining Kamay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/virtual-keyboard.css">
+  <script src="js/lib/tf.min.js"></script>
+  <script src="js/lib/mediapipe/hands.js"></script>
+  <script src="js/db-api.js"></script>
+  <script src="js/gesture-data.js"></script>
+  <style>
+    /* ── Reset ── */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{width:100%;height:100%;overflow:hidden}
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-thumb{background:#cbd5e0;border-radius:99px}
+    body{font-family:'Inter','Nunito','Segoe UI',Arial,sans-serif;background:#f0f2f5}
+    button,input{font:inherit;cursor:pointer}
+    a{text-decoration:none}
+
+    /* ── Shared vars ── */
+    :root{
+      --navy:#1a2540;--navy2:#0f1a2e;--navy-light:#243060;
+      --orange:#f97316;--orange-deep:#ea6a0a;
+      --bg:#f0f2f5;--white:#ffffff;
+      --border:#e2e8f0;--border2:#cbd5e0;
+      --text:#1e293b;--text-mid:#334e68;--muted:#94a3b8;
+      --gold:#f59e0b;--green:#22c55e;
+      --shadow:0 8px 32px rgba(0,0,0,.1);
+    }
+
+    /* ══════════════════════════════════════════════════════
+       PORTRAIT REDESIGN: TRANSLATE-ONLY PAGE (#tl-page)
+       ══════════════════════════════════════════════════════ */
+    #tl-page{
+      display:none;position:fixed;inset:0;z-index:500;
+      flex-direction:column;background:#f0f2f5;
+      font-family:'Inter','Nunito','Segoe UI',Arial,sans-serif;
+    }
+    #tl-page.active{display:flex}
+
+    .tl-topbar{
+      height:56px;flex-shrink:0;background:var(--navy);
+      border-bottom:2.5px solid var(--orange);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 16px;
+    }
+    .tl-back{
+      display:inline-flex;align-items:center;gap:6px;
+      background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+      color:#fff;border-radius:8px;padding:0 12px;height:36px;
+      font-size:13px;font-weight:700;transition:background .18s;
+    }
+    .tl-back:hover{background:rgba(255,255,255,.16)}
+    .tl-back svg{width:14px;height:14px;flex-shrink:0}
+    .tl-topbar-title{
+      display:flex;align-items:center;gap:8px;
+      color:#fff;font-size:14px;font-weight:800;letter-spacing:.06em;
+    }
+    .tl-title-dot{
+      display: inline-block;
+      flex-shrink: 0;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #ef4444; /* Default: red */
+      box-shadow: 0 0 6px #ef4444;
+      transition: background-color .3s, box-shadow .3s;
+    }
+    .tl-title-dot.connected{
+      background: #22c55e; /* Connected: green */
+      box-shadow: 0 0 10px #22c55e, 0 0 4px #22c55e;
+    }
+    .tl-mode-btn{
+      display:inline-flex;align-items:center;gap:6px;
+      background:var(--orange);color:#fff;border:none;border-radius:8px;
+      padding:0 12px;height:36px;font-size:12px;font-weight:700;
+      transition:background .18s,transform .15s;
+    }
+    .tl-mode-btn:hover{background:var(--orange-deep);transform:translateY(-1px)}
+    .tl-mode-btn svg{width:14px;height:14px;flex-shrink:0}
+
+    /* Outer Body layout */
+    .tl-body{
+      flex:1;display:flex;flex-direction:column;padding:12px;gap:10px;min-height:0;overflow:hidden;
+    }
+    
+    /* CAM SCREEN (Before translation starts) */
+    #tl-state-cam{
+      flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;
+    }
+    #tl-state-cam.hidden{display:none}
+    
+    /* CAM COLUMN (Contains video frame and bottom button) */
+    .tl-cam-col{
+      display:flex;flex-direction:column;gap:10px;min-height:0;flex:1;
+    }
+
+    /* RESULT SCREEN (Stacked vertically in Portrait Mode) */
+    #tl-state-result{
+      flex:1;display:none;flex-direction:column;gap:10px;min-height:0;
+    }
+    #tl-state-result.visible{display:flex}
+
+    /* In Portrait, camera shrinks to top part of the screen */
+    #tl-state-result .tl-cam-col {
+      height: 38%; /* Takes top 38% */
+      flex-shrink: 0;
+      flex: none;
+    }
+
+    /* Translation output area (Takes bottom 62% in Portrait) */
+    .tl-result-col{
+      flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;
+    }
+
+    /* Premium Camera Frame with rounded borders & shadows */
+    .tl-camera-frame{
+      position:relative;background:#0d1520;border-radius:14px;
+      border:2px solid rgba(249,163,22,.22);overflow:hidden;
+      flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+      box-shadow:0 8px 32px rgba(0,0,0,.28);transition:border-color .25s;
+    }
+    .tl-camera-frame.recording{border-color:var(--orange);box-shadow:0 0 0 4px rgba(249,115,22,.18),0 8px 32px rgba(0,0,0,.28)}
+    .tl-camera-frame video{width:100%;height:100%;object-fit:contain;border-radius:12px;transform:scaleX(-1);display:none}
+    .tl-camera-frame video.active{display:block}
+    .tl-cam-placeholder{display:flex;flex-direction:column;align-items:center;gap:8px}
+    .tl-cam-dot{width:16px;height:16px;border-radius:50%;background:#e53e3e;box-shadow:0 0 12px rgba(229,62,62,.6)}
+    .tl-cam-placeholder p{font-size:12px;color:rgba(255,255,255,.42);font-weight:600;text-align:center;padding:0 20px;}
+    
+    /* Overlay anchors */
+    .tl-corner{position:absolute;width:18px;height:18px}
+    .tl-corner-tl{top:12px;left:12px;border-top:2.5px solid var(--gold);border-left:2.5px solid var(--gold);border-radius:4px 0 0 0}
+    .tl-corner-tr{top:12px;right:12px;border-top:2.5px solid var(--gold);border-right:2.5px solid var(--gold);border-radius:0 4px 0 0}
+    .tl-corner-bl{bottom:12px;left:12px;border-bottom:2.5px solid var(--gold);border-left:2.5px solid var(--gold);border-radius:0 0 0 4px}
+    .tl-corner-br{bottom:12px;right:12px;border-bottom:2.5px solid var(--gold);border-right:2.5px solid var(--gold);border-radius:0 0 4px 0}
+    
+    .tl-live-badge{
+      position:absolute;top:12px;left:50%;transform:translateX(-50%);
+      display:flex;align-items:center;gap:6px;
+      background:rgba(0,0,0,.6);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      border:1px solid rgba(249,163,22,.22);border-radius:20px;
+      padding:4px 10px;font-size:10px;font-weight:800;color:#fff;letter-spacing:.08em;
+    }
+    .tl-live-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);animation:tlPulse 1.2s infinite}
+    @keyframes tlPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.6)}}
+    
+    /* Realtime Prediction Overlay HUD */
+    .tl-pred-overlay{
+      position:absolute;bottom:10px;left:10px;right:10px;
+      background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+      border:1px solid rgba(0,0,0,.08);border-radius:10px;
+      padding:8px 12px;display:none;align-items:center;gap:8px;
+    }
+    .tl-pred-overlay.show{display:flex}
+    .tl-pred-emoji{font-size:16px;font-weight:900;color:var(--navy);min-width:30px}
+    .tl-pred-label{font-size:13px;font-weight:800;color:var(--navy)}
+
+    /* Large Action Buttons */
+    .tl-translate-btn{
+      width:100%;height:52px;flex-shrink:0;
+      background:var(--orange);color:#fff;border:none;border-radius:12px;
+      font-size:15px;font-weight:900;letter-spacing:.06em;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+      box-shadow:0 4px 18px rgba(249,115,22,.38);
+      transition:background .18s,transform .15s,box-shadow .18s;
+    }
+    .tl-translate-btn:hover{background:var(--orange-deep);transform:translateY(-1px)}
+    .tl-translate-btn.recording{background:#ef4444;animation:recPulse 1.2s infinite}
+    @keyframes recPulse{0%,100%{box-shadow:0 4px 18px rgba(239,68,68,.32)}50%{box-shadow:0 4px 28px rgba(239,68,68,.6)}}
+    .tl-translate-btn svg{width:18px;height:18px;flex-shrink:0}
+
+    /* Translation UI components */
+    .tl-output-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.1em;color:#64748b;flex-shrink:0}
+    .tl-output-box{
+      background:#fff;border-radius:14px;border:1px solid #e2e8f0;
+      padding:14px 16px;flex:1;min-height:0;
+      font-size:18px;font-weight:700;color:var(--navy);
+      line-height:1.4;overflow-y:auto;box-shadow:0 2px 12px rgba(0,0,0,.06);
+    }
+    .tl-output-box .tl-out-word{color:var(--navy)}
+    .tl-output-box .tl-out-empty{color:#94a3b8;font-size:13px;font-weight:600;font-style:italic}
+    
+    /* Actions Grid (Stacked cleanly below output) */
+    .tl-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0}
+    .tl-act-btn{
+      height:48px;border-radius:10px;border:1.5px solid #e2e8f0;
+      background:#fff;color:var(--navy);font-size:13px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      transition:background .15s,border-color .15s,transform .12s;
+    }
+    .tl-act-btn:hover{background:#f1f5f9;border-color:#94a3b8;transform:translateY(-1px)}
+    .tl-act-btn.danger{border-color:var(--orange);color:var(--orange)}
+    .tl-act-btn.danger:hover{background:rgba(249,115,22,.07)}
+    .tl-act-btn.speaking{background:#22c55e;color:#fff;border-color:#22c55e}
+    .tl-act-btn svg{width:16px;height:16px;flex-shrink:0}
+
+
+    /* ══════════════════════════════════════════════════════
+       PORTRAIT REDESIGN: TRAINING UI (#training-ui)
+       ══════════════════════════════════════════════════════ */
+    #training-ui{
+      display:none;flex-direction:column;
+      height:100vh;overflow:hidden;background:var(--bg);
+    }
+    #training-ui.active{display:flex}
+
+    /* Nav bar horizontal scrolling for small portrait viewports */
+    .tr-nav{
+      height:52px;flex-shrink:0;
+      background:var(--navy);border-bottom:2.5px solid var(--orange);
+      display:flex;align-items:center;padding:0 12px;gap:10px;
+    }
+    .tr-back{
+      display:inline-flex;align-items:center;gap:4px;
+      background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+      color:#fff;border-radius:8px;padding:0 10px;height:34px;
+      font-size:12px;font-weight:700;transition:background .18s;white-space:nowrap;
+    }
+    .tr-back:hover{background:rgba(255,255,255,.16)}
+    .tr-back svg{width:12px;height:12px;flex-shrink:0}
+
+    .tr-pills{
+      flex:1;display:flex;align-items:center;gap:4px;overflow-x:auto;
+      padding:2px 0;scrollbar-width:none;
+    }
+    .tr-pills::-webkit-scrollbar{display:none}
+    .tr-pill{
+      display:flex;align-items:center;gap:4px;
+      padding:4px 8px 4px 4px;border-radius:20px;
+      border:none;background:rgba(255,255,255,.08);
+      transition:background .18s;white-space:nowrap;
+    }
+    .tr-pill.active{background:var(--orange)}
+    .tr-pill.done{background:rgba(255,255,255,.14)}
+    .tr-pill-num{
+      width:22px;height:22px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:11px;font-weight:900;flex-shrink:0;
+    }
+    .tr-pill.active .tr-pill-num{background:#fff;color:var(--orange)}
+    .tr-pill.done .tr-pill-num{background:rgba(255,255,255,.22);color:#fff}
+    .tr-pill:not(.active):not(.done) .tr-pill-num{background:rgba(255,255,255,.12);color:rgba(255,255,255,.45)}
+    .tr-pill-lbl{font-size:11px;font-weight:700}
+    .tr-pill.active .tr-pill-lbl{color:#fff}
+    .tr-pill.done .tr-pill-lbl{color:rgba(255,255,255,.7)}
+    .tr-pill:not(.active):not(.done) .tr-pill-lbl{color:rgba(255,255,255,.38)}
+    .tr-pill-sep{color:rgba(255,255,255,.28);font-size:12px;margin:0 2px}
+
+    /* Instruction screens (Full width scroll container) */
+    #trInstrWrap{
+      flex:1;display:flex;align-items:center;justify-content:center;
+      padding:16px;
+    }
+    .tr-instr-card{
+      background:var(--white);border-radius:20px;
+      padding:24px 20px;max-width:100%;width:100%;
+      box-shadow:0 12px 40px rgba(0,0,0,.12);
+      display:flex;flex-direction:column;align-items:center;
+      gap:14px;text-align:center;
+    }
+    .tr-step-badge{
+      background:rgba(249,115,22,.1);border:1.5px solid rgba(249,115,22,.35);
+      color:var(--orange);font-size:10px;font-weight:900;
+      letter-spacing:.12em;text-transform:uppercase;
+      border-radius:20px;padding:4px 14px;
+    }
+    .tr-instr-card h1{font-size:22px;font-weight:800;color:var(--navy);line-height:1.2}
+    .tr-instr-desc{font-size:13px;color:#4a6fa5;line-height:1.5;max-width:100%}
+    .tr-instr-bullets{list-style:none;width:100%;display:flex;flex-direction:column;gap:10px;text-align:left}
+    .tr-instr-bullets li{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--text-mid);line-height:1.4}
+    .tr-bullet-num{
+      width:24px;height:24px;border-radius:50%;background:var(--navy);
+      color:#fff;display:flex;align-items:center;justify-content:center;
+      font-size:12px;font-weight:900;flex-shrink:0;
+    }
+    .tr-next-btn{
+      width:100%;height:48px;background:var(--orange);border:none;
+      border-radius:12px;color:#fff;font-size:15px;font-weight:800;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      transition:background .18s,transform .15s;
+    }
+    .tr-next-btn:hover{background:var(--orange-deep);transform:translateY(-1px)}
+
+    /* Content Area: Stacks vertically in Portrait Mode */
+    #trContentWrap{
+      flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;
+    }
+
+    /* Bottom panel (Controls) */
+    .tr-left-panel{
+      flex: 1; /* Takes bottom half */
+      width: 100%;
+      background:var(--white);
+      border-top:1.5px solid var(--border);
+      border-right: none;
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+      min-height:0;
+    }
+    .tr-left-content{
+      display:none;flex-direction:column;flex:1;min-height:0;
+      overflow-y:auto;padding:14px 16px;gap:10px;
+    }
+    .tr-left-content.active{display:flex}
+
+    /* Common Kiosk items styling */
+    .tr-section-lbl{
+      font-size:10px;font-weight:900;text-transform:uppercase;
+      letter-spacing:.14em;color:var(--muted);flex-shrink:0;
+    }
+    .tr-fgrp{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+    .tr-flbl{font-size:12px;font-weight:700;color:var(--text)}
+    .tr-input{
+      width:100%;height:40px;padding:0 12px;
+      border:1.5px solid var(--border);border-radius:8px;
+      background:var(--white);font-size:13px;color:var(--text);
+      outline:none;transition:border-color .18s;
+    }
+    .tr-input:focus{border-color:var(--navy)}
+    
+    .tr-sign-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .tr-sign-opt{
+      height:40px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;border:1.5px solid var(--border);
+      font-size:13px;font-weight:700;cursor:pointer;
+      background:var(--white);color:var(--text);transition:all .18s;user-select:none;
+    }
+    .tr-sign-opt input{display:none}
+    .tr-sign-opt:has(input:checked){background:var(--navy);border-color:var(--navy);color:#fff}
+    
+    .tr-cap-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0}
+    .tr-cap-btn{
+      height:40px;border-radius:8px;border:1.5px solid var(--border);
+      background:var(--white);font-size:12px;font-weight:700;color:#64748b;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      transition:all .18s;
+    }
+    .tr-cap-btn:hover:not(:disabled){border-color:var(--navy);color:var(--navy)}
+    .tr-cap-btn:disabled{opacity:.42;cursor:not-allowed}
+    
+    .tr-lm-card{
+      background:var(--bg);border:1.5px solid var(--border);
+      border-radius:8px;padding:10px 12px;
+      display:flex;flex-direction:column;gap:6px;flex-shrink:0;
+    }
+    .tr-lm-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:var(--text)}
+    .tr-lm-count{color:var(--navy);font-weight:900}
+    .tr-lm-bar{height:6px;border-radius:99px;background:#e2e8f0;overflow:hidden}
+    .tr-lm-fill{height:100%;border-radius:99px;background:var(--navy);width:0%;transition:width .25s}
+    .tr-lm-status{font-size:10px;color:var(--muted);font-weight:600}
+
+    .tr-bottom-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0;margin-top:auto;padding-top:10px}
+    .tr-ghost-btn{
+      height:38px;border-radius:8px;border:1.5px solid var(--border);
+      background:var(--white);font-size:12px;font-weight:700;color:#475569;
+      display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;
+    }
+    .tr-ghost-btn:hover{border-color:var(--navy);color:var(--navy)}
+    .tr-ghost-btn svg{width:12px;height:12px}
+    .tr-back-to-instr{
+      text-align:center;font-size:11px;font-weight:700;color:var(--muted);
+      background:none;border:none;padding:4px 0;transition:color .15s;flex-shrink:0;
+    }
+    .tr-back-to-instr:hover{color:var(--navy)}
+
+    /* Step 2 Train indicators */
+    .tr-summary-card{background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+    .tr-summary-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:var(--text)}
+    .tr-summary-val{color:var(--navy);font-weight:800}
+    .tr-epoch-row{display:flex;justify-content:space-between;font-size:11px;font-weight:700;margin-bottom:4px}
+    .tr-epoch-row span:first-child{color:var(--muted)}
+    .tr-epoch-row span:last-child{color:var(--navy)}
+    .tr-epoch-bar{height:6px;border-radius:99px;background:#e2e8f0;overflow:hidden}
+    .tr-epoch-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--gold),var(--orange));width:0%;transition:width .25s}
+    .tr-train-log{
+      background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+      padding:8px 10px;font-family:'Courier New',monospace;font-size:10px;
+      color:#4a6fa5;height:72px;overflow:hidden;line-height:1.4;flex-shrink:0;
+    }
+    .tr-train-log .log-ok{color:var(--green)}
+    .tr-train-log .log-warn{color:var(--gold)}
+    .tr-train-btn{
+      width:100%;height:46px;border-radius:10px;background:var(--navy);
+      border:none;color:#fff;font-size:14px;font-weight:800;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      transition:background .18s,transform .15s;flex-shrink:0;
+    }
+    .tr-train-btn:hover{background:var(--navy-light);transform:translateY(-1px)}
+    .tr-train-btn:disabled{opacity:.4;pointer-events:none}
+    .tr-train-note{
+      background:rgba(245,158,11,.1);border:1.5px solid rgba(245,158,11,.3);
+      border-radius:8px;padding:8px 10px;
+      font-size:11px;font-weight:600;color:#92400e;line-height:1.35;flex-shrink:0;
+    }
+
+    /* Step 3 Predict indicators */
+    .tr-pred-box{
+      background:var(--bg);border:1.5px solid var(--border);
+      border-radius:8px;padding:12px;text-align:center;flex-shrink:0;
+    }
+    .tr-pred-lbl{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+    .tr-pred-result{
+      font-size:24px;font-weight:900;color:var(--navy);
+      min-height:36px;display:flex;align-items:center;justify-content:center;
+    }
+    .tr-pred-result.detected{color:var(--green);animation:popIn .25s ease}
+    @keyframes popIn{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}
+    .tr-conf-bar{height:6px;border-radius:99px;background:#e2e8f0;overflow:hidden;margin-top:6px}
+    .tr-conf-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--gold),var(--orange));width:0%;transition:width .25s}
+    .tr-continue-btn{
+      width:100%;height:46px;border-radius:10px;background:var(--orange);
+      border:none;color:#fff;font-size:14px;font-weight:800;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      transition:background .18s,transform .15s;flex-shrink:0;
+    }
+    .tr-continue-btn:hover{background:var(--orange-deep);transform:translateY(-1px)}
+
+    /* Step 4 Translate inputs */
+    .tr-lang-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .tr-lang-chip{
+      height:40px;display:flex;align-items:center;justify-content:center;
+      border-radius:8px;border:1.5px solid var(--border);
+      font-size:12px;font-weight:800;cursor:pointer;
+      background:var(--white);color:var(--muted);transition:all .18s;
+    }
+    .tr-lang-chip.active{background:var(--navy);border-color:var(--navy);color:#fff}
+    .tr-word-card{background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+    .tr-word-row{display:flex;gap:6px}
+    .tr-word-add{height:36px;padding:0 12px;border-radius:6px;background:var(--navy);border:none;color:#fff;font-size:12px;font-weight:700;white-space:nowrap}
+    .tr-word-chips{display:flex;flex-wrap:wrap;gap:4px;min-height:20px;max-height:60px;overflow-y:auto}
+    .tr-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:4px;background:rgba(26,37,64,.08);border:1px solid rgba(26,37,64,.15);color:var(--navy);font-size:10px;font-weight:800}
+    .tr-chip button{background:none;border:none;color:inherit;font-size:11px;padding:0}
+    .tr-tl-hist{
+      background:var(--bg);border:1.5px solid var(--border);border-radius:8px;
+      padding:8px 12px;font-size:12px;line-height:1.5;color:var(--text);
+      max-height:56px;overflow:hidden;flex-shrink:0;
+    }
+    .tl-word{display:inline-block;background:rgba(26,37,64,.08);border-radius:4px;padding:1px 5px;margin:2px;color:var(--navy);font-weight:800;animation:popIn .2s ease}
+    .tl-word.stop-word{background:rgba(148,163,184,.15);color:var(--muted)}
+    .tl-empty{color:var(--muted);font-size:11px;font-style:italic}
+    .tr-tl-big{
+      background:var(--white);border:1.5px solid var(--border);border-radius:8px;
+      padding:10px 12px;font-size:16px;font-weight:800;color:var(--navy);
+      min-height:52px;line-height:1.3;word-break:break-word;flex-shrink:0;
+    }
+    .tr-tl-big span.word{color:var(--orange)}
+    .tl-big-empty{color:var(--muted);font-size:12px;font-weight:600;font-style:italic}
+    
+    .tr-voice-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex-shrink:0}
+    .tr-voice-btn{
+      height:38px;border-radius:8px;border:1.5px solid var(--border);
+      background:var(--white);font-size:11px;font-weight:800;color:var(--text);
+      display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;
+    }
+    .tr-voice-btn:hover{border-color:var(--navy);color:var(--navy)}
+    .tr-voice-btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}
+    .tr-voice-btn.primary:hover{background:var(--navy-light)}
+    .tr-voice-btn.speaking{background:var(--green);border-color:var(--green);color:#fff;animation:spkPulse 1s infinite}
+    @keyframes spkPulse{0%,100%{box-shadow:0 4px 14px rgba(34,197,94,.2)}50%{box-shadow:0 4px 24px rgba(34,197,94,.5)}}
+
+    /* Top panel (Camera) - stacked vertically on top in Portrait */
+    .tr-right-panel{
+      height: 42%; /* Takes top 42% */
+      width: 100%;
+      flex-shrink:0;
+      display:flex;flex-direction:column;
+      padding:12px;gap:6px;background:var(--bg);
+    }
+    .tr-cam-lbl{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);flex-shrink:0}
+    
+    .tr-cam-frame{
+      flex:1;min-height:0;background:#0d1520;border-radius:12px;
+      border:2px solid rgba(249,163,22,.22);overflow:hidden;
+      display:flex;align-items:center;justify-content:center;
+      position:relative;box-shadow:0 8px 32px rgba(0,0,0,.22);transition:border-color .25s;
+    }
+    .tr-cam-frame.glowing{border-color:var(--orange);box-shadow:0 0 0 4px rgba(249,115,22,.15),0 8px 32px rgba(0,0,0,.22)}
+    .tr-cam-frame.predicting{border-color:var(--green);box-shadow:0 0 0 4px rgba(34,197,94,.12),0 8px 32px rgba(0,0,0,.22)}
+    video#videoFeed{width:100%;height:100%;object-fit:contain;border-radius:12px;transform:scaleX(-1);display:none}
+    .tr-cam-placeholder{display:flex;flex-direction:column;align-items:center;gap:6px}
+    .tr-cam-icon{width:48px;height:48px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:20px}
+    .tr-cam-placeholder p{font-size:11px;color:rgba(255,255,255,.35);font-weight:600;text-align:center}
+    
+    .tr-cam-badge{
+      position:absolute;top:10px;right:10px;height:26px;
+      background:rgba(255,255,255,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+      border:1px solid rgba(0,0,0,.08);border-radius:6px;
+      padding:0 8px;font-size:10px;font-weight:800;
+      color:var(--muted);display:flex;align-items:center;gap:5px;
+    }
+    .tr-cam-badge.live{color:var(--green);border-color:rgba(34,197,94,.3)}
+    .live-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+    .live-dot.pulsing{animation:livePulse 1.2s infinite}
+    @keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.5)}}
+    
+    .tr-pred-overlay{
+      position:absolute;bottom:10px;left:10px;right:10px;
+      background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+      border:1px solid rgba(0,0,0,.08);border-radius:8px;
+      padding:6px 10px;display:none;align-items:center;gap:8px;
+    }
+    .tr-pred-overlay.show{display:flex}
+    .tr-pred-emoji-ov{font-size:14px;font-weight:900;color:var(--navy);min-width:28px}
+    .tr-pred-lbl-ov{flex:1}
+    .tr-pred-lbl-txt{font-size:12px;font-weight:800;color:var(--navy)}
+    .tr-pred-conf-txt{font-size:10px;color:var(--muted);font-weight:600}
+    .tr-pred-minibar{width:50px;height:5px;border-radius:99px;background:#e2e8f0;overflow:hidden}
+    .tr-pred-minifill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--gold),var(--orange));transition:width .25s}
+    
+    .tr-enable-cam{
+      width:100%;height:46px;flex-shrink:0;
+      background:var(--navy);border:none;border-radius:10px;
+      color:#fff;font-size:14px;font-weight:800;
+      display:flex;align-items:center;justify-content:center;gap:6px;
+      transition:background .18s;
+    }
+    .tr-enable-cam:hover{background:var(--navy-light)}
+
+    /* Toast styling */
+    #sk-toast{
+      position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+      background:var(--navy);color:#fff;padding:8px 18px;border-radius:8px;
+      font-size:12px;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.2);
+      opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     TRANSLATE-ONLY OVERLAY (?screen=translate)
+     ══════════════════════════════════════════════════════════ -->
+<div id="tl-page">
+  <header class="tl-topbar">
+    <a href="index.html" class="tl-back">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <path d="M9 2L4 7l5 5"/>
+      </svg>
+      Back
+    </a>
+    <div class="tl-topbar-title"><div class="tl-title-dot" id="tlDbStatusDot" title="Checking database connection..."></div>SIGN TO TEXT</div>
+    <a href="index.html?screen=voice" class="tl-mode-btn">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h12M4 12h12"/><path d="M7 5l-3 3 3 3"/><path d="M13 9l3 3-3 3"/></svg>
+      Translate Text to Sign
+    </a>
+  </header>
+
+  <div class="tl-body">
+    <div id="tl-state-cam">
+      <div class="tl-cam-col">
+        <div class="tl-camera-frame" id="tlCamFrame1">
+          <video id="tlVideo1" autoplay playsinline muted></video>
+          <div class="tl-cam-placeholder" id="tlPlaceholder1"><div class="tl-cam-dot"></div><p>Camera active — position your hand inside the frame</p></div>
+
+          <!-- AI Loading Overlay -->
+          <div id="tlAiLoadingOverlay1" style="position:absolute; inset:0; background:rgba(26,37,64,0.95); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; z-index:10; color:#fff; border-radius:12px;">
+            <div class="tl-live-dot" style="width:16px; height:16px; background:#f59e0b; box-shadow:0 0 12px #f59e0b;"></div>
+            <p style="font-size:14px; font-weight:800; letter-spacing:0.05em; margin:0;">AI is getting ready...</p>
+            <p style="font-size:11px; color:rgba(255,255,255,0.6); margin:0;">Please wait a moment</p>
+          </div>
+
+          <div class="tl-corner tl-corner-tl"></div><div class="tl-corner tl-corner-tr"></div>
+          <div class="tl-corner tl-corner-bl"></div><div class="tl-corner tl-corner-br"></div>
+          <div class="tl-live-badge"><div class="tl-live-dot"></div>LIVE</div>
+          <div class="tl-pred-overlay" id="tlPredOverlay1">
+            <div class="tl-pred-emoji" id="tlPredEmoji1">—</div>
+            <div class="tl-pred-label" id="tlPredLabel1">Show your sign</div>
+          </div>
+        </div>
+        <div class="tr-fgrp" style="margin: 4px 0;">
+          <div class="tr-lang-toggle">
+            <div class="tr-lang-chip active" id="tlLangEn1" role="button" tabindex="0" onclick="tlSetLang('en')">🇺🇸 English</div>
+            <div class="tr-lang-chip" id="tlLangFil1" role="button" tabindex="0" onclick="tlSetLang('fil')">🇵🇭 Filipino</div>
+          </div>
+        </div>
+        <button type="button" class="tl-translate-btn" id="tlTranslateBtn1" onclick="tlHandleTranslate()" disabled>
+          AI GETTING READY...
+        </button>
+      </div>
+    </div>
+
+    <div id="tl-state-result">
+      <div class="tl-result-col">
+        <div class="tl-output-label">TRANSLATION OUTPUT</div>
+        <div class="tl-output-box" id="tlOutputBox"><span class="tl-out-empty">Translation will appear here…</span></div>
+        <div class="tl-action-grid">
+          <button type="button" class="tl-act-btn" id="tlSpeakBtn" onclick="tlSpeakAll()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            Speak
+          </button>
+          <button type="button" class="tl-act-btn" onclick="tlCopyOutput()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button type="button" class="tl-act-btn danger" onclick="tlClearOutput()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            Clear
+          </button>
+          <button type="button" class="tl-act-btn" onclick="tlSaveLog()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Log
+          </button>
+        </div>
+        <button type="button" class="tl-translate-btn" style="margin-top: 15px;" onclick="tlTranslateAgain()">Translate Again</button>
+      </div>
+    </div>
+  </div>
+</div><!-- /#tl-page -->
+
+
+<!-- ══════════════════════════════════════════════════════════
+     TRAINING UI (no ?screen=translate)
+     ══════════════════════════════════════════════════════════ -->
+<div id="training-ui">
+  <!-- Nav -->
+  <nav class="tr-nav">
+    <a href="index.html" class="tr-back">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>
+      Dashboard
+    </a>
+    <div class="tr-pills">
+      <button class="tr-pill active" id="pill1" onclick="trClickPill(1)">
+        <span class="tr-pill-num">1</span><span class="tr-pill-lbl">Add Data</span>
+      </button>
+      <span class="tr-pill-sep">›</span>
+      <button class="tr-pill" id="pill2" onclick="trClickPill(2)">
+        <span class="tr-pill-num">2</span><span class="tr-pill-lbl">Train AI</span>
+      </button>
+      <span class="tr-pill-sep">›</span>
+      <button class="tr-pill" id="pill3" onclick="trClickPill(3)">
+        <span class="tr-pill-num">3</span><span class="tr-pill-lbl">Predict</span>
+      </button>
+      <span class="tr-pill-sep">›</span>
+      <button class="tr-pill" id="pill4" onclick="trClickPill(4)">
+        <span class="tr-pill-num">4</span><span class="tr-pill-lbl">Translate</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Instruction Screens -->
+  <div id="trInstrWrap">
+    <!-- Step 1 -->
+    <div id="trInstr1" class="tr-instr-card">
+      <div class="tr-step-badge">STEP 1 OF 4</div>
+      <h1>Step 1: Name and Capture</h1>
+      <p class="tr-instr-desc">Type a gesture name, choose the sign set, then capture hand samples using the camera.</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Name the gesture clearly.</li>
+        <li><span class="tr-bullet-num">2</span>Keep your hand inside the camera frame.</li>
+        <li><span class="tr-bullet-num">3</span>Capture enough samples, then continue to Train Gesture.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(1)">Next →</button>
+    </div>
+
+    <!-- Step 2 -->
+    <div id="trInstr2" class="tr-instr-card" style="display:none">
+      <div class="tr-step-badge">STEP 2 OF 4</div>
+      <h1>Step 2: Train Gesture</h1>
+      <p class="tr-instr-desc">Review the captured samples, then start training. Keep this screen open until training is complete.</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Check that you have enough start and stop samples.</li>
+        <li><span class="tr-bullet-num">2</span>Press the <strong>Train Gesture</strong> button to begin.</li>
+        <li><span class="tr-bullet-num">3</span>Wait for the progress bar to finish before continuing.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(2)">Next →</button>
+    </div>
+
+    <!-- Step 3 -->
+    <div id="trInstr3" class="tr-instr-card" style="display:none">
+      <div class="tr-step-badge">STEP 3 OF 4</div>
+      <h1>Step 3: Predict Gesture</h1>
+      <p class="tr-instr-desc">Test the trained model live with your camera before translating. The prediction result appears in the panel.</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Enable the camera if not already active.</li>
+        <li><span class="tr-bullet-num">2</span>Perform your gesture in front of the camera.</li>
+        <li><span class="tr-bullet-num">3</span>Continue when the confidence looks stable.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(3)">Next →</button>
+    </div>
+
+    <!-- Step 4 -->
+    <div id="trInstr4" class="tr-instr-card" style="display:none">
+      <div class="tr-step-badge">STEP 4 OF 4</div>
+      <h1>Step 4: Translate</h1>
+      <p class="tr-instr-desc">Perform your <strong>Start</strong> gesture to add a word. <strong>Stop</strong> gesture marks a pause. Words are spoken aloud!</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Perform the Start gesture to add a word to your translation.</li>
+        <li><span class="tr-bullet-num">2</span>Perform the Stop gesture to mark a pause.</li>
+        <li><span class="tr-bullet-num">3</span>Speak, copy, or save your translation when done.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(4)">Start Translating →</button>
+    </div>
+  </div><!-- /#trInstrWrap -->
+
+  <!-- Content Screen: Stacked vertically in Portrait mode -->
+  <div id="trContentWrap" style="display:none">
+    <!-- Top panel: Camera feed (First in visual flow for Portrait) -->
+    <div class="tr-right-panel">
+      <div class="tr-cam-lbl">Camera Feed</div>
+
+      <div class="tr-cam-frame" id="cameraFrame">
+        <video id="videoFeed" autoplay playsinline muted></video>
+        <div class="tr-cam-placeholder" id="cameraPlaceholder">
+          <div class="tr-cam-icon">📷</div>
+          <p>Enable the camera to start sign translation</p>
+        </div>
+        <div class="tr-corner tr-corner-tl"></div><div class="tr-corner tr-corner-tr"></div>
+        <div class="tr-corner tr-corner-bl"></div><div class="tr-corner tr-corner-br"></div>
+        <div class="tr-cam-badge" id="camBadge" role="status" aria-live="polite">
+          <div class="live-dot"></div> Camera Off
+        </div>
+        <div class="tr-pred-overlay" id="predictOverlay">
+          <div class="tr-pred-emoji-ov" id="predEmoji">—</div>
+          <div class="tr-pred-lbl-ov">
+            <div class="tr-pred-lbl-txt" id="predLabel">Show your sign</div>
+            <div class="tr-pred-conf-txt" id="predConf">Recognition confidence</div>
+          </div>
+          <div class="tr-pred-minibar"><div class="tr-pred-minifill" id="predFillMini" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <button type="button" class="tr-enable-cam" id="enableCamBtn">📷 Enable Camera</button>
+    </div>
+
+    <!-- Bottom panel: Controls (Scrollable) -->
+    <div class="tr-left-panel">
+      <!-- Step 1: Add Data -->
+      <div id="leftStep1" class="tr-left-content active">
+        <div class="tr-section-lbl">Gesture Sample Capture</div>
+
+        <div id="gestureDatasetCard" data-gesture-recorder>
+          <div class="tr-fgrp">
+            <label class="tr-flbl">Gesture Name</label>
+            <input id="gestureLabelInput" data-gesture-label type="text" class="tr-input"
+                   placeholder="Gesture name, e.g. hello" autocomplete="off" aria-label="Gesture name">
+          </div>
+
+          <div class="tr-fgrp" style="margin-top:2px">
+            <label class="tr-flbl">Sign Set</label>
+            <div class="tr-sign-toggle">
+              <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="ESL" data-gesture-language checked> ESL</label>
+              <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="FSL" data-gesture-language> FSL</label>
+            </div>
+          </div>
+
+          <div class="tr-cap-btns" style="margin-top:2px">
+            <button id="startGestureDataBtn" data-gesture-start class="tr-cap-btn" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Start Capture
+            </button>
+            <button id="stopGestureDataBtn" data-gesture-stop class="tr-cap-btn" type="button" disabled>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Finish Capture
+            </button>
+          </div>
+
+          <div class="tr-lm-card" id="gestureDataStatus" role="status" aria-live="polite" style="margin-top:2px">
+            <div class="tr-lm-row">
+              <span>Landmark frames</span>
+              <span class="tr-lm-count" id="gestureDataFrameCount" data-gesture-frame-count>0 / 30</span>
+            </div>
+            <div class="tr-lm-bar"><div class="tr-lm-fill"></div></div>
+            <div class="tr-lm-status" id="gestureDataStatusText" data-gesture-status-text>Ready to capture hand samples</div>
+          </div>
+        </div>
+
+        <div id="trainDataControls"></div>
+
+        <div class="tr-bottom-row">
+          <button type="button" class="tr-ghost-btn" id="downloadBtn">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v8M5 7l3 3 3-3M2 12h12"/></svg>
+            Export Data
+          </button>
+          <button type="button" class="tr-ghost-btn" id="loadBtn">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 10v2h12v-2M8 2v8M5 4l3-3 3 3"/></svg>
+            Load Saved
+          </button>
+        </div>
+
+        <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(1)">← Back to Instructions</button>
+      </div><!-- /#leftStep1 -->
+
+      <!-- Step 2: Train AI -->
+      <div id="leftStep2" class="tr-left-content" style="display:none">
+        <div class="tr-section-lbl">Train Gesture</div>
+
+        <div class="tr-summary-card">
+          <div class="tr-summary-row"><span>Start samples</span><span class="tr-summary-val" id="step2StartCount">0</span></div>
+          <div class="tr-summary-row"><span>Stop samples</span><span class="tr-summary-val" id="step2StopCount">0</span></div>
+        </div>
+
+        <div class="tr-fgrp">
+          <div class="tr-epoch-row">
+            <span>Training progress</span>
+            <span id="epochLabel">0 / 50 epochs</span>
+          </div>
+          <div class="tr-epoch-bar"><div class="tr-epoch-fill" id="epochBar" style="width:0%"></div></div>
+        </div>
+
+        <div class="tr-train-log" id="trainLog">
+          <span style="color:#94a3b8">Ready to train. Press Train Gesture when samples are ready.</span>
+        </div>
+
+        <button type="button" class="tr-train-btn" id="trainBtn" onclick="trainModel()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          Train Gesture
+        </button>
+
+        <div class="tr-train-note">Training runs on this kiosk. Wait for the progress bar to finish before continuing.</div>
+
+        <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(2)" style="margin-top:auto">← Back to Instructions</button>
+      </div><!-- /#leftStep2 -->
+
+      <!-- Step 3: Predict -->
+      <div id="leftStep3" class="tr-left-content" style="display:none">
+        <div class="tr-section-lbl">Live Prediction</div>
+
+        <div id="rightStep3">
+          <div class="tr-pred-box">
+            <div class="tr-pred-lbl">Prediction Result</div>
+            <div class="tr-pred-result" id="livePredResult">—</div>
+            <div class="tr-conf-bar"><div class="tr-conf-fill" id="confBar" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <p style="font-size:12px;color:#64748b;font-weight:600;line-height:1.45;flex-shrink:0">
+          Perform a gesture in front of the camera. Continue when the confidence looks stable.
+        </p>
+
+        <button type="button" class="tr-continue-btn" onclick="trGoToStep(4)">
+          Continue to Translate →
+        </button>
+
+        <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(3)" style="margin-top:auto">← Back to Instructions</button>
+      </div><!-- /#leftStep3 -->
+
+      <!-- Step 4: Translate -->
+      <div id="leftStep4" class="tr-left-content" style="display:none">
+        <div class="tr-section-lbl">Translation</div>
+
+        <div class="tr-fgrp">
+          <label class="tr-flbl">Output Language</label>
+          <div class="tr-lang-toggle">
+            <div class="tr-lang-chip active" id="langEn" role="button" tabindex="0" onclick="setLang('en')">🇺🇸 English</div>
+            <div class="tr-lang-chip" id="langFil" role="button" tabindex="0" onclick="setLang('fil')">🇵🇭 Filipino</div>
+          </div>
+        </div>
+
+        <div class="tr-word-card">
+          <label class="tr-flbl" style="font-size:11px">✏️ Custom Sign Words</label>
+          <div class="tr-word-row">
+            <input id="wordInput" type="text" class="tr-input" style="height:34px;font-size:12px"
+                   placeholder="e.g. Magandang umaga" maxlength="500" aria-label="Custom sign word">
+            <button type="button" class="tr-word-add" onclick="addCustomWord()">Add</button>
+          </div>
+          <div class="tr-word-chips" id="wordChips"></div>
+        </div>
+
+        <div class="tr-fgrp">
+          <label class="tr-flbl" style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)">Detected Signs</label>
+          <div class="tr-tl-hist" id="tlHistory"><span class="tl-empty">Wala pang na-detect na gestures...</span></div>
+        </div>
+
+        <div id="rightStep4">
+          <div class="tr-tl-big" id="tlBigOutput">
+            <span class="tl-big-empty">Show your start gesture to begin.</span>
+          </div>
+        </div>
+
+        <div class="tr-voice-grid">
+          <button type="button" class="tr-voice-btn primary" id="speakBtn" onclick="speakAll()">🔊 Speak All</button>
+          <button type="button" class="tr-voice-btn" id="speakBigBtn" onclick="speakAll()">🔊 Speak</button>
+          <button type="button" class="tr-voice-btn" onclick="clearTranslation()">🗑️ Clear</button>
+          <button type="button" class="tr-voice-btn" onclick="copyTranslation()">📋 Copy</button>
+        </div>
+
+        <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(4)" style="margin-top:auto">← Back to Instructions</button>
+      </div><!-- /#leftStep4 -->
+    </div>
+  </div><!-- /#trContentWrap -->
+</div><!-- /#training-ui -->
+
+<!-- Hidden nextBtn kept for JS compatibility -->
+<button id="nextBtn" style="display:none" onclick="nextStep()">Next</button>
+
+<div id="sk-toast" role="status" aria-live="polite"></div>
+
+<script src="js/db-local.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════
+// SHARED STATE
+// ══════════════════════════════════════════════════════════
+const TRANSLATE_ONLY = new URLSearchParams(window.location.search).get('screen') === 'translate';
+let stream = null, modelTrained = false, tfModel = null;
+let predictLoop = null;
+let currentStep = 1;
+let tlCountdownVal = 3;
+let tlCountdownTimer = null;
+const trainData = { start: [], stop: [] };
+const TARGET = 500;
+let startCount = 0, stopCount = 0;
+let isRecordingStart = false, isRecordingStop = false, recordInterval = null;
+let lastStartThumb = null, lastStopThumb = null;
+let translatedWords = [], wordIndex = 0, currentGesture = null, signLang = 'en';
+let currentSentence = [];
+let isSentenceActive = false;
+const GESTURE_HOLD_MS = 500;
+let customWords = [];
+let lastDetected = null, holdStart = null;
+let predictionHistory = [];
+let savedGestureSamplesMerged = false;
+let activeFeatureSize = 192;
+let activeLabels = ['start', 'stop'];
+const FEAT_W = 16, FEAT_H = 12, FEATURES = FEAT_W * FEAT_H;
+const EPOCHS = 50;
+
+function showToast(message, duration = 3000) {
+  const toast = document.getElementById('sk-toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.style.opacity = '1';
+  clearTimeout(window.skToastTimeout);
+  window.skToastTimeout = setTimeout(() => {
+    toast.style.opacity = '0';
+  }, duration);
+}
+window.showToast = showToast;
+
+const DEFAULT_WORDS_EN  = ['Hello','Thank you','Yes','No','Please','Help','Water','Food','Good','Stop','I love you','Wait','Come here','Good morning','Goodbye'];
+const DEFAULT_WORDS_FIL = ['Kumusta','Salamat','Oo','Hindi','Pakiusap','Tulong','Tubig','Pagkain','Mabuti','Hinto','Mahal kita','Sandali','Halika','Magandang umaga','Paalam'];
+
+const SIGN_TRANSLATIONS = {
+  "hello": { en: "Hello", fil: "Kumusta", emoji: "👋" },
+  "thank_you": { en: "Thank you", fil: "Salamat", emoji: "🙏" },
+  "salamat": { en: "Thank you", fil: "Salamat", emoji: "🙏" },
+  "yes": { en: "Yes", fil: "Oo", emoji: "👍" },
+  "oo": { en: "Yes", fil: "Oo", emoji: "👍" },
+  "no": { en: "No", fil: "Hindi", emoji: "👎" },
+  "hindi": { en: "No", fil: "Hindi", emoji: "👎" },
+  "please": { en: "Please", fil: "Pakiusap", emoji: "🥺" },
+  "pakiusap": { en: "Please", fil: "Pakiusap", emoji: "🥺" },
+  "help": { en: "Help", fil: "Tulong", emoji: "🆘" },
+  "tulong": { en: "Help", fil: "Tulong", emoji: "🆘" },
+  "water": { en: "Water", fil: "Tubig", emoji: "💧" },
+  "tubig": { en: "Water", fil: "Tubig", emoji: "💧" },
+  "food": { en: "Food", fil: "Pagkain", emoji: "🍞" },
+  "pagkain": { en: "Food", fil: "Pagkain", emoji: "🍞" },
+  "good": { en: "Good", fil: "Mabuti", emoji: "✨" },
+  "mabuti": { en: "Good", fil: "Mabuti", emoji: "✨" },
+  "stop": { en: "Stop", fil: "Hinto", emoji: "🛑" },
+  "hinto": { en: "Stop", fil: "Hinto", emoji: "🛑" },
+  "love": { en: "I love you", fil: "Mahal kita", emoji: "🤟" },
+  "mahal_kita": { en: "I love you", fil: "Mahal kita", emoji: "🤟" },
+  "wait": { en: "Wait", fil: "Sandali", emoji: "⏳" },
+  "sandali": { en: "Wait", fil: "Sandali", emoji: "⏳" },
+  "come_here": { en: "Come here", fil: "Halika", emoji: "👈" },
+  "halika": { en: "Come here", fil: "Halika", emoji: "👈" },
+  "good_morning": { en: "Good morning", fil: "Magandang umaga", emoji: "🌅" },
+  "magandang_umaga": { en: "Good morning", fil: "Magandang umaga", emoji: "🌅" },
+  "goodbye": { en: "Goodbye", fil: "Paalam", emoji: "👋" },
+  "paalam": { en: "Goodbye", fil: "Paalam", emoji: "👋" }
+};
+
+function translateGestureLabel(label, lang) {
+  const clean = String(label || "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (SIGN_TRANSLATIONS[clean]) {
+    return SIGN_TRANSLATIONS[clean][lang === 'fil' ? 'fil' : 'en'];
+  }
+  const base = clean.replace(/_(fsl|esl)$/, "");
+  if (SIGN_TRANSLATIONS[base]) {
+    return SIGN_TRANSLATIONS[base][lang === 'fil' ? 'fil' : 'en'];
+  }
+  return base.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getTranslatedWordText(w, lang) {
+  if (w.type === 'stop') return '⏸';
+  if (w.type === 'custom') return translateGestureLabel(w.label, lang);
+  return w.word || w.label;
+}
+
+// DOM refs (safe even if in hidden UI)
+const videoFeed      = document.getElementById('videoFeed');
+const cameraFrame    = document.getElementById('cameraFrame');
+const camPlaceholder = document.getElementById('cameraPlaceholder');
+const camBadge       = document.getElementById('camBadge');
+const enableCamBtn   = document.getElementById('enableCamBtn');
+const nextBtn        = document.getElementById('nextBtn');
+
+// ══════════════════════════════════════════════════════════
+// FEATURES
+// ══════════════════════════════════════════════════════════
+function extractFeatures(vid) {
+  vid = vid || videoFeed;
+  if (typeof window.extractLandmarkFeatures === 'function') {
+    const lf = window.extractLandmarkFeatures();
+    if (lf && lf.length) return lf;
+  }
+  const c = document.createElement('canvas');
+  c.width = FEAT_W; c.height = FEAT_H;
+  const ctx = c.getContext('2d');
+  ctx.save(); ctx.scale(-1,1); ctx.drawImage(vid,-FEAT_W,0,FEAT_W,FEAT_H); ctx.restore();
+  const d = ctx.getImageData(0,0,FEAT_W,FEAT_H).data;
+  const f = [];
+  for (let i=0;i<d.length;i+=4) f.push((d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114)/255);
+  return f;
+}
+
+async function mergeSavedGestureSamples() {
+  if (savedGestureSamplesMerged) return;
+  if (typeof window.loadGestureDatasetForTraining !== 'function') return;
+  try {
+    const rows = await window.loadGestureDatasetForTraining();
+    const targetLang = signLang === 'fil' ? 'FSL' : 'ESL';
+    let loadedCount = 0;
+    rows.forEach(({label,features,signLanguage}) => {
+      const itemLang = (signLanguage || 'ESL').toUpperCase();
+      if (itemLang === targetLang) {
+        if (!trainData[label]) trainData[label] = [];
+        trainData[label].push(features);
+        loadedCount++;
+      }
+    });
+    if (loadedCount) showToast(`Loaded ${loadedCount} saved landmark frames for ${targetLang}`);
+    savedGestureSamplesMerged = true;
+  } catch(err){
+    console.warn('Saved gesture dataset unavailable:',err);
+    const dot = document.getElementById('tlDbStatusDot');
+    if (dot) {
+      dot.classList.remove('connected');
+      dot.title = "Database connection error: " + err.message;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// CAMERA (Robust Try-Catch + Device Filtering)
+// ══════════════════════════════════════════════════════════
+async function initCameraWithFallback(idealWidth, idealHeight, successCallback, errorCallback) {
+  if (!navigator.mediaDevices) {
+    let msg = '⚠️ Ang camera API ay hindi magagamit. Siguraduhing naka-HTTPS o localhost ang URL!';
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      msg = '⚠️ Insecure context! Kailangan ng HTTPS o localhost para ma-access ang camera.';
+    }
+    console.error(msg);
+    if (errorCallback) errorCallback(new Error('InsecureContext'), msg);
+    return;
+  }
+
+  try {
+    console.log("Checking camera detectability...");
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+    
+    console.log("Detected video devices:", videoDevices);
+    
+    if (videoDevices.length === 0) {
+      const msg = '⚠️ Walang webcam na nade-detect! Pakisuri kung nakasaksak ang USB webcam.';
+      console.warn(msg);
+      if (errorCallback) errorCallback(new Error('NotFoundError'), msg);
+      return;
+    }
+
+    let selectedDeviceId = null;
+    const cleanDevices = videoDevices.filter(d => {
+      const label = (d.label || "").toLowerCase();
+      return !label.includes('metadata') && !label.includes('virtual') && !label.includes('control');
+    });
+
+    if (cleanDevices.length > 0) {
+      selectedDeviceId = cleanDevices[0].deviceId;
+      console.log("Selected video device (clean):", cleanDevices[0]);
+    } else {
+      selectedDeviceId = videoDevices[0].deviceId;
+      console.log("Selected video device (fallback):", videoDevices[0]);
+    }
+
+    const constraints = {
+      video: {
+        width: { ideal: idealWidth },
+        height: { ideal: idealHeight }
+      }
+    };
+    if (selectedDeviceId) {
+      constraints.video.deviceId = { exact: selectedDeviceId };
+    }
+
+    try {
+      console.log("Requesting stream with constraints:", constraints);
+      const s = await navigator.mediaDevices.getUserMedia(constraints);
+      if (successCallback) successCallback(s);
+    } catch (primaryError) {
+      console.warn("Primary constraints failed, trying without deviceId...", primaryError);
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: idealWidth }, height: { ideal: idealHeight } }
+        });
+        if (successCallback) successCallback(s);
+      } catch (fbError1) {
+        console.warn("Fallback constraints failed, trying minimum {video: true}...", fbError1);
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ video: true });
+          if (successCallback) successCallback(s);
+        } catch (fbError2) {
+          console.error("All getUserMedia attempts failed:", fbError2);
+          let msg = '⚠️ Hindi mabuksan ang camera. Pakisuri ang browser permissions.';
+          if (fbError2.name === 'NotReadableError' || fbError2.name === 'TrackStartError') {
+            msg = '⚠️ Ang camera ay kasalukuyang ginagamit ng ibang application.';
+          } else if (fbError2.name === 'NotAllowedError' || fbError2.name === 'PermissionDeniedError') {
+            msg = '⚠️ Hindi pinayagan ang camera access sa browser.';
+          }
+          if (errorCallback) errorCallback(fbError2, msg);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Device detection error:", err);
+    if (errorCallback) errorCallback(err, '⚠️ Error habang hinahanap ang camera: ' + err.message);
+  }
+}
+
+enableCamBtn.addEventListener('click', () => {
+  initCameraWithFallback(
+    320, 
+    240, 
+    (s) => {
+      stream = s;
+      videoFeed.srcObject = stream;
+      videoFeed.style.display = 'block';
+      camPlaceholder.style.display = 'none';
+      enableCamBtn.style.display = 'none';
+      camBadge.classList.add('live');
+      camBadge.innerHTML = '<div class="live-dot pulsing"></div> Camera Ready';
+      showToast('🟢 Camera successfully started!');
+    },
+    (err, msg) => {
+      console.error("Enable Camera Fail:", err);
+      if (err.name === 'NotFoundError') {
+        camBadge.innerHTML = '<div class="live-dot"></div> No Camera Found';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        camBadge.innerHTML = '<div class="live-dot"></div> Camera Busy';
+      } else {
+        camBadge.innerHTML = '<div class="live-dot"></div> Permission Denied';
+      }
+      showToast(msg, 5000);
+    }
+  );
+});
+
+// ══════════════════════════════════════════════════════════
+// STEP 1 — UPDATE COUNTS
+// ══════════════════════════════════════════════════════════
+function updateUI() {
+  document.getElementById('step2StartCount').textContent = startCount;
+  document.getElementById('step2StopCount').textContent  = stopCount;
+}
+
+document.getElementById('downloadBtn').addEventListener('click',()=>{
+  const blob=new Blob([JSON.stringify({start:trainData.start,stop:trainData.stop})],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='siningkamay-training.json';a.click();
+  showToast('📥 Training data exported!');
+});
+document.getElementById('loadBtn').addEventListener('click',()=>{
+  const inp=document.createElement('input');inp.type='file';inp.accept='.json';
+  inp.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      try{
+        const d=JSON.parse(ev.target.result);
+        if(d.start&&d.stop){trainData.start=d.start;trainData.stop=d.stop;startCount=d.start.length;stopCount=d.stop.length;updateUI();showToast(`✅ Loaded ${startCount+stopCount} samples!`);}
+      }catch{showToast('⚠️ Invalid file');}
+    };r.readAsText(f);
+  };inp.click();
+});
+
+// ══════════════════════════════════════════════════════════
+// STEP 2 — TRAIN
+// ══════════════════════════════════════════════════════════
+function jitterFeatures(features,amount=0.015){return features.map(v=>v+((Math.random()*2-1)*amount))}
+
+async function trainModel(epochsCount = EPOCHS) {
+  const btn = document.getElementById('trainBtn');
+  const log = document.getElementById('trainLog');
+  const epochBar = document.getElementById('epochBar');
+  const epochLabel = document.getElementById('epochLabel');
+  await mergeSavedGestureSamples();
+  if (btn) { btn.disabled=true; btn.textContent='Training…'; }
+  if (log) log.innerHTML='<span class="log-warn">Training started. Please wait...</span>\n';
+  const addLog=(msg,cls='')=>{
+    if (log) { log.innerHTML+=`<span class="${cls}">${msg}</span>\n`;log.scrollTop=log.scrollHeight; }
+  };
+
+  const xs=[],ys=[];
+  const firstRow=Object.values(trainData).flat().find(f=>Array.isArray(f)&&f.length);
+  activeFeatureSize=firstRow?firstRow.length:FEATURES;
+  activeLabels=Object.keys(trainData).filter(label=>trainData[label].some(f=>Array.isArray(f)&&f.length===activeFeatureSize));
+  if(activeLabels.length<2){
+    const msg = `Add at least 2 gesture labels before training. (Loaded ${activeLabels.length} labels)`;
+    console.error(msg, "activeLabels =", activeLabels, "trainData =", trainData);
+    showToast(msg, 5000);
+    btn.disabled=false;
+    btn.textContent='Train Gesture';
+    return;
+  }
+  activeLabels.forEach((label,labelIndex)=>{
+    trainData[label].forEach(f=>{
+      if(!Array.isArray(f)||f.length!==activeFeatureSize)return;
+      const target=Array(activeLabels.length).fill(0);target[labelIndex]=1;
+      xs.push(f);ys.push(target);
+      if(activeFeatureSize===63){xs.push(jitterFeatures(f,.01),jitterFeatures(f,.02));ys.push(target.slice(),target.slice());}
+    });
+  });
+  const idx=xs.map((_,i)=>i).sort(()=>Math.random()-.5);
+  const xS=idx.map(i=>xs[i]),yS=idx.map(i=>ys[i]);
+  const xT=tf.tensor2d(xS,[xS.length,activeFeatureSize]);
+  const yT=tf.tensor2d(yS,[yS.length,activeLabels.length]);
+  tfModel=tf.sequential();
+  tfModel.add(tf.layers.dense({inputShape:[activeFeatureSize],units:96,activation:'relu'}));
+  tfModel.add(tf.layers.dropout({rate:.18}));
+  tfModel.add(tf.layers.dense({units:48,activation:'relu'}));
+  tfModel.add(tf.layers.dense({units:activeLabels.length,activation:'softmax'}));
+  tfModel.compile({optimizer:tf.train.adam(.003),loss:'categoricalCrossentropy',metrics:['accuracy']});
+  addLog(`// Dataset: ${xS.length} samples, ${activeFeatureSize} features, ${activeLabels.length} labels`);
+  addLog('Training the gesture model...');
+  await tfModel.fit(xT,yT,{
+    epochs:epochsCount,batchSize:128,validationSplit:.15,shuffle:true,
+    callbacks:{onEpochEnd:(epoch,logs)=>{
+      const pct=Math.round(((epoch+1)/epochsCount)*100);
+      if (epochBar) epochBar.style.width=pct+'%';
+      if (epochLabel) epochLabel.textContent=`${epoch+1} / ${epochsCount} epochs`;
+      if((epoch+1)%10===0)addLog(`// Epoch ${epoch+1}: loss=${logs.loss.toFixed(4)}, acc=${(logs.acc*100).toFixed(1)}%`,'log-ok');
+    }}
+  });
+  xT.dispose();yT.dispose();
+  modelTrained=true;
+  try {
+    await tfModel.save('indexeddb://sining-kamay-model');
+    localStorage.setItem('sining_kamay_labels', JSON.stringify(activeLabels));
+    console.log('Trained model saved to IndexedDB & labels saved to LocalStorage!');
+  } catch(err) {
+    console.warn('Failed to save model to IndexedDB:', err);
+  }
+  addLog('Training complete. Click Next to test the gesture.','log-ok');
+  btn.textContent='Trained ✓ (Retrain)'; btn.disabled=false;
+  updateTrPills(currentStep);
+  if (TRANSLATE_ONLY) {
+    showToast('🎉 Translator ready!');
+  } else {
+    showToast('🎉 Model trained! Click Next →');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// LIVE PREDICTION
+// ══════════════════════════════════════════════════════════
+async function autoTrainForTranslate() {
+  if (modelTrained) return true;
+  
+  // Try loading from IndexedDB
+  try {
+    const savedLabels = localStorage.getItem('sining_kamay_labels');
+    if (savedLabels) {
+      activeLabels = JSON.parse(savedLabels);
+    }
+    tfModel = await tf.loadLayersModel('indexeddb://sining-kamay-model');
+    modelTrained = true;
+    if (tfModel && tfModel.inputs && tfModel.inputs[0]) {
+      activeFeatureSize = tfModel.inputs[0].shape[1];
+    }
+    console.log("Successfully loaded pre-trained model from IndexedDB. Shape =", activeFeatureSize, "Labels:", activeLabels);
+    return true;
+  } catch(e) {
+    console.log("No pre-trained model found in IndexedDB. Running quick training in background...", e);
+  }
+
+  // Fallback to training (50 epochs, optimized batch size 128)
+  try {
+    await trainModel(50);
+    try {
+      await tfModel.save('indexeddb://sining-kamay-model');
+      localStorage.setItem('sining_kamay_labels', JSON.stringify(activeLabels));
+    } catch(err) {
+      console.warn("Failed to save auto-trained model:", err);
+    }
+    return modelTrained;
+  } catch(err){
+    console.error('Auto train failed:',err);
+    showToast('⚠️ No trained AI model found. Please train your signs first in the training tab.', 5000);
+    return false;
+  }
+}
+
+function averageScores(history) {
+  const totals=Array(history[0].length).fill(0);
+  history.forEach(s=>s.forEach((v,i)=>totals[i]+=v));
+  return totals.map(t=>t/history.length);
+}
+
+function startLivePrediction(forTranslation=false) {
+  console.log("startLivePrediction triggered: stream =", !!stream, "modelTrained =", modelTrained);
+  if (!modelTrained||!stream) {
+    showToast("⚠️ Prediction skipped: Model or camera stream not ready.");
+    return;
+  }
+  clearInterval(predictLoop);
+  predictionHistory=[];
+  document.getElementById('predictOverlay').classList.add('show');
+  if (forTranslation) cameraFrame.classList.add('predicting');
+
+  predictLoop=setInterval(async()=>{
+    if(!stream||!modelTrained){
+      console.warn("Live prediction loop skipped: stream =", !!stream, "modelTrained =", modelTrained);
+      return;
+    }
+    try{
+      const f=extractFeatures();
+      if(!Array.isArray(f)||f.length!==activeFeatureSize){
+        console.warn("Live prediction loop skipped: feature size mismatch. f.length =", f ? f.length : 0, "activeFeatureSize =", activeFeatureSize);
+        return;
+      }
+      const inp=tf.tensor2d([f],[1,activeFeatureSize]);
+      const pr=tfModel.predict(inp);
+      const data=await pr.data();
+      inp.dispose();pr.dispose();
+      const raw=Array.from(data);
+      predictionHistory.push(raw);
+      if(predictionHistory.length>6)predictionHistory.shift();
+      const scores=predictionHistory.length>=3?averageScores(predictionHistory):raw;
+      const bi=scores.indexOf(Math.max(...scores));
+      const conf=scores[bi];
+      const detected=activeLabels[bi]||'unknown';
+      const confPct=Math.round(conf*100);
+      document.getElementById('predEmoji').textContent=detected==='start'?'▶':detected==='stop'?'⏹':'?';
+      document.getElementById('predLabel').textContent=detected==='start'?'Start Gesture':detected==='stop'?'Stop Gesture':detected.replace(/_/g,' ');
+      document.getElementById('predConf').textContent=`Confidence: ${confPct}%`;
+      document.getElementById('predFillMini').style.width=confPct+'%';
+      if(currentStep===3){
+        const res=document.getElementById('livePredResult');
+        const bar=document.getElementById('confBar');
+        res.textContent=detected==='start'?'Start':detected==='stop'?'Stop':detected.replace(/_/g,' ');
+        res.className='tr-pred-result'+(conf>.7?' detected':'');
+        bar.style.width=confPct+'%';
+      }
+      if(forTranslation&&conf>.65){
+        if(detected!==lastDetected){lastDetected=detected;holdStart=Date.now();return;}
+        if(Date.now()-holdStart<GESTURE_HOLD_MS)return;
+        if(detected==='start'&&currentGesture!=='start'){
+          currentGesture='start';
+          const words=getWordBank();const word=words[wordIndex%words.length];wordIndex++;
+          translatedWords.push({word: word, type: 'start'});renderTranslation();speakWord(word);
+          try{await DB_API.saveTranslation({sourceType:'sign_to_text',signLabel:word,translatedText:word,language:signLang==='fil'?'fil-PH':'en-US'});}catch(e){}
+          showToast(`🖐️ "${word}"`);
+        }else if(detected==='stop'&&currentGesture!=='stop'){
+          currentGesture='stop';translatedWords.push({word:'|',type:'stop'});renderTranslation();
+        }else if(detected!=='start'&&detected!=='stop'&&currentGesture!==detected){
+          currentGesture=detected;
+          const word = translateGestureLabel(detected, signLang);
+          translatedWords.push({label: detected, type: 'custom'});renderTranslation();speakWord(word);showToast(`Detected "${word}"`);
+        }
+      }else if(forTranslation){lastDetected=null;holdStart=null;}
+    }catch(e){}
+  },150);
+}
+
+function stopLivePrediction(){
+  clearInterval(predictLoop);
+  document.getElementById('predictOverlay').classList.remove('webcam-active');
+  document.getElementById('predictOverlay').classList.remove('show');
+  cameraFrame.classList.remove('predicting','glowing');
+}
+
+// ══════════════════════════════════════════════════════════
+// STEP 4 — TRANSLATE (training UI)
+// ══════════════════════════════════════════════════════════
+function getWordBank(){const base=signLang==='fil'?DEFAULT_WORDS_FIL:DEFAULT_WORDS_EN;return customWords.length?[...customWords,...base]:base;}
+
+function tlSetLang(lang){
+  signLang = lang;
+  const langEn = document.getElementById('langEn');
+  const langFil = document.getElementById('langFil');
+  if(langEn) langEn.classList.toggle('active', lang==='en');
+  if(langFil) langFil.classList.toggle('active', lang==='fil');
+  
+  ['En', 'Fil'].forEach(suffix => {
+    const isTarget = suffix.toLowerCase() === (lang === 'fil' ? 'fil' : 'en');
+    [1, 2].forEach(num => {
+      const el = document.getElementById(`tlLang${suffix}${num}`);
+      if(el) el.classList.toggle('active', isTarget);
+    });
+  });
+  
+  showToast(lang==='fil'?'🇵🇭 Filipino mode':'🇺🇸 English mode');
+  
+  if(typeof tlRenderOutput === 'function') tlRenderOutput();
+  if(typeof renderTranslation === 'function') renderTranslation();
+}
+
+function setLang(lang){
+  tlSetLang(lang);
+}
+
+function addCustomWord(){
+  const inp=document.getElementById('wordInput');const w=inp.value.trim();if(!w)return;
+  customWords.unshift(w);inp.value='';wordIndex=0;renderWordChips();showToast(`✏️ Added: "${w}"`);
+}
+document.getElementById('wordInput').addEventListener('keydown',e=>{if(e.key==='Enter')addCustomWord();});
+
+function removeCustomWord(idx){customWords.splice(idx,1);renderWordChips();}
+
+function renderWordChips(){
+  document.getElementById('wordChips').innerHTML=customWords.map((w,i)=>
+    `<span class="tr-chip">${w}<button type="button" onclick="removeCustomWord(${i})">✕</button></span>`
+  ).join('');
+}
+
+function renderTranslation(){
+  const hist=document.getElementById('tlHistory');
+  const big=document.getElementById('tlBigOutput');
+  if(!translatedWords.length){
+    hist.innerHTML='<span class="tl-empty">Wala pang na-detect na gestures...</span>';
+    big.innerHTML='<span class="tl-big-empty">Show your start gesture to begin.</span>';
+    return;
+  }
+  hist.innerHTML=translatedWords.map(w=>w.type==='stop'?'<span class="tl-word stop-word">⏸</span>':`<span class="tl-word">${getTranslatedWordText(w, signLang)}</span>`).join(' ');
+  hist.scrollTop=hist.scrollHeight;
+  const words=translatedWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang));
+  big.innerHTML=words.length?words.map(w=>`<span class="word">${w}</span>`).join(' '):'<span class="tl-big-empty">Show your start gesture to begin.</span>';
+}
+
+// ══════════════════════════════════════════════════════════
+// STEP 4 — TRANSLATE (training UI)
+// ══════════════════════════════════════════════════════════
+function getWordBank(){const base=signLang==='fil'?DEFAULT_WORDS_FIL:DEFAULT_WORDS_EN;return customWords.length?[...customWords,...base]:base;}
+
+function tlSetLang(lang){
+  signLang = lang;
+  const langEn = document.getElementById('langEn');
+  const langFil = document.getElementById('langFil');
+  if(langEn) langEn.classList.toggle('active', lang==='en');
+  if(langFil) langFil.classList.toggle('active', lang==='fil');
+  
+  ['En', 'Fil'].forEach(suffix => {
+    const isTarget = suffix.toLowerCase() === (lang === 'fil' ? 'fil' : 'en');
+    [1, 2].forEach(num => {
+      const el = document.getElementById(`tlLang${suffix}${num}`);
+      if(el) el.classList.toggle('active', isTarget);
+    });
+  });
+  
+  showToast(lang==='fil'?'🇵🇭 Filipino mode':'🇺🇸 English mode');
+  
+  if(typeof tlRenderOutput === 'function') tlRenderOutput();
+  if(typeof renderTranslation === 'function') renderTranslation();
+}
+
+function setLang(lang){
+  tlSetLang(lang);
+}
+
+function addCustomWord(){
+  const inp=document.getElementById('wordInput');const w=inp.value.trim();if(!w)return;
+  customWords.unshift(w);inp.value='';wordIndex=0;renderWordChips();showToast(`✏️ Added: "${w}"`);
+}
+document.getElementById('wordInput').addEventListener('keydown',e=>{if(e.key==='Enter')addCustomWord();});
+
+function removeCustomWord(idx){customWords.splice(idx,1);renderWordChips();}
+
+function renderWordChips(){
+  document.getElementById('wordChips').innerHTML=customWords.map((w,i)=>
+    `<span class="tr-chip">${w}<button type="button" onclick="removeCustomWord(${i})">✕</button></span>`
+  ).join('');
+}
+
+function renderTranslation(){
+  const hist=document.getElementById('tlHistory');
+  const big=document.getElementById('tlBigOutput');
+  if(!translatedWords.length){
+    hist.innerHTML='<span class="tl-empty">Wala pang na-detect na gestures...</span>';
+    big.innerHTML='<span class="tl-big-empty">Show your start gesture to begin.</span>';
+    return;
+  }
+  hist.innerHTML=translatedWords.map(w=>w.type==='stop'?'<span class="tl-word stop-word">⏸</span>':`<span class="tl-word">${getTranslatedWordText(w, signLang)}</span>`).join(' ');
+  hist.scrollTop=hist.scrollHeight;
+  const words=translatedWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang));
+  big.innerHTML=words.length?words.map(w=>`<span class="word">${w}</span>`).join(' '):'<span class="tl-big-empty">Show your start gesture to begin.</span>';
+}
+
+function speakWord(word){
+  if(!window.speechSynthesis)return;
+  const u=new SpeechSynthesisUtterance(word);u.lang=signLang==='fil'?'fil-PH':'en-US';u.rate=.9;u.pitch=1;
+  const voices=window.speechSynthesis.getVoices();
+  const filVoice=voices.find(v=>{const c=v.lang.toLowerCase();return c==='fil-ph'||c==='tl-ph'||c.startsWith('fil')||c.startsWith('tl');});
+  if(signLang==='fil'&&filVoice){u.voice=filVoice;}
+  window.speechSynthesis.cancel();window.speechSynthesis.speak(u);
+}
+
+function speakAll(){
+  const words=translatedWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang)).join(', ');
+  if(!words){showToast('⚠️ Wala pang salita.');return;}
+  const u=new SpeechSynthesisUtterance(words);u.lang=signLang==='fil'?'fil-PH':'en-US';u.rate=.85;
+  [document.getElementById('speakBtn'),document.getElementById('speakBigBtn')].forEach(btn=>{
+    if(!btn)return;btn.classList.add('speaking');btn.textContent='🔊 Speaking…';
+    u.onend=()=>{btn.classList.remove('speaking');btn.textContent=btn.id==='speakBtn'?'🔊 Speak All':'🔊 Speak';};
+  });
+  const voices=window.speechSynthesis.getVoices();
+  const filVoice=voices.find(v=>{const c=v.lang.toLowerCase();return c==='fil-ph'||c==='tl-ph'||c.startsWith('fil')||c.startsWith('tl');});
+  if(signLang==='fil'&&filVoice){u.voice=filVoice;}
+  window.speechSynthesis.cancel();window.speechSynthesis.speak(u);
+}
+
+function clearTranslation(){translatedWords=[];wordIndex=0;currentGesture=null;lastDetected=null;holdStart=null;renderTranslation();showToast('🗑️ Cleared');}
+function copyTranslation(){
+  const text=translatedWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang)).join(' ');
+  if(!text){showToast('⚠️ Wala pang text.');return;}
+  navigator.clipboard.writeText(text).then(()=>showToast('📋 Copied!'));
+}
+function downloadTranslation(){
+  const text=translatedWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang)).join(' ');
+  if(!text){showToast('⚠️ Wala pang translation.');return;}
+  const blob=new Blob([`SiningKamay Translation\n${new Date().toLocaleString()}\n\n${text}`],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`siningkamay-${Date.now()}.txt`;a.click();
+  showToast('💾 Saved!');
+}
+
+// ══════════════════════════════════════════════════════════
+// TRAINING STEP NAVIGATION (new instruction+content flow)
+// ══════════════════════════════════════════════════════════
+function updateTrPills(step){
+  [1,2,3,4].forEach(n=>{
+    const p=document.getElementById('pill'+n);
+    p.classList.remove('active','done');
+    if(n<step) p.classList.add('done');
+    if(n===step) p.classList.add('active');
+  });
+}
+
+function showStepInstruction(step){
+  stopLivePrediction();
+  currentStep=step;
+  updateTrPills(step);
+  document.getElementById('trInstrWrap').style.display='flex';
+  document.getElementById('trContentWrap').style.display='none';
+  [1,2,3,4].forEach(n=>{
+    document.getElementById('trInstr'+n).style.display=n===step?'flex':'none';
+  });
+}
+
+function showStepContent(step){
+  if(step>=3&&!modelTrained){showToast('Train the AI first in Step 2!');return;}
+  currentStep=step;
+  updateTrPills(step);
+  document.getElementById('trInstrWrap').style.display='none';
+  document.getElementById('trContentWrap').style.display='flex';
+  [1,2,3,4].forEach(n=>{
+    const el=document.getElementById('leftStep'+n);
+    el.classList.toggle('active',n===step);
+    if(n!==step) el.style.display='none'; else el.style.display='';
+  });
+  stopLivePrediction();
+  if(step===3) setTimeout(()=>startLivePrediction(false),600);
+  if(step===4) setTimeout(()=>startLivePrediction(true),600);
+}
+
+function trGoToStep(step){
+  if(step>=3&&!modelTrained){showToast('Train the AI first in Step 2!');return;}
+  showStepInstruction(step);
+}
+
+function trClickPill(step){
+  if(step>=3&&!modelTrained){showToast('Train the AI first in Step 2!');return;}
+  showStepInstruction(step);
+}
+
+function goToStep(step){trGoToStep(step);}
+function nextStep(){if(currentStep<4)goToStep(currentStep+1);}
+function setStep(step){trGoToStep(step);}
+
+// ══════════════════════════════════════════════════════════
+// TRANSLATE-ONLY UI STATE MACHINE
+// ══════════════════════════════════════════════════════════
+let tlUiState='idle',tlWords=[],tlWordIndex=0;
+let tlCurrentGesture=null,tlLastDetected=null,tlHoldStart=null;
+let tlPredHistory=[],tlPredLoop=null,tlStream=null,tlModelReady=false;
+
+async function tlInitCamera(){
+  initCameraWithFallback(
+    320,
+    240,
+    async (s) => {
+      tlStream = s;
+      const v1 = document.getElementById('tlVideo1');
+      if (v1) v1.srcObject = tlStream;
+      if (v1) v1.classList.add('active');
+      const p1 = document.getElementById('tlPlaceholder1');
+      if (p1) p1.style.display = 'none';
+      stream = tlStream;
+      if (typeof videoFeed !== 'undefined' && videoFeed) {
+        videoFeed.srcObject = tlStream;
+      }
+      if (window.GestureDataRecorder && typeof window.GestureDataRecorder.setupMediaPipe === 'function') {
+        window.GestureDataRecorder.setupMediaPipe(v1);
+      }
+      
+      // Initialize idle state immediately to activate overlays & start pred loop
+      tlSetState('idle');
+      
+      // Train AI model in the background asynchronously
+      autoTrainForTranslate().then((trained) => {
+        tlModelReady = trained;
+        const dot = document.getElementById('tlDbStatusDot');
+        const b1 = document.getElementById('tlTranslateBtn1');
+        const overlay = document.getElementById('tlAiLoadingOverlay1');
+        
+        if (overlay) overlay.style.display = 'none';
+        
+        if (dot) {
+          if (trained) {
+            dot.classList.add('connected');
+            dot.title = "Database connected & model ready!";
+          } else {
+            dot.classList.remove('connected');
+            dot.title = "Database connection or model training failed.";
+          }
+        }
+        
+        if (b1 && tlUiState === 'idle') {
+          b1.disabled = false;
+          b1.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> START';
+        }
+        
+        if (trained) {
+          showToast('🟢 AI Model Ready! Show "Start" sign or click START.');
+        } else {
+          showToast('⚠️ AI loading failed. Manual translation active.');
+        }
+      });
+    },
+    (err, msg) => {
+      console.error("tlInitCamera Fail:", err);
+      showToast(msg, 5000);
+    }
+  );
+}
+
+function tlUpdateOverlays(emoji,label){
+  const e1 = document.getElementById('tlPredEmoji1');
+  const l1 = document.getElementById('tlPredLabel1');
+  if (e1) e1.textContent=emoji;
+  if (l1) l1.textContent=label;
+}
+
+function tlStartPredLoop(){
+  clearInterval(tlPredLoop);tlPredHistory=[];
+  let tlLastHandTime = Date.now();
+  const o1 = document.getElementById('tlPredOverlay1');
+  if (o1) o1.classList.add('show');
+  console.log("Starting tlStartPredLoop: tlStream =", !!tlStream, "modelTrained =", modelTrained, "tfModel =", !!tfModel);
+  tlPredLoop=setInterval(async()=>{
+    if(!tlStream||!modelTrained||!tfModel){
+      console.warn("Kiosk prediction loop skipped: stream =", !!tlStream, "modelTrained =", modelTrained, "tfModel =", !!tfModel);
+      return;
+    }
+    try{
+      const hasHand = window.GestureDataRecorder && typeof window.GestureDataRecorder.getLatestLandmarks === 'function' && window.GestureDataRecorder.getLatestLandmarks();
+      if (!hasHand) {
+        if (Date.now() - tlLastHandTime > 1000) {
+          tlUpdateOverlays('—', 'Show your sign');
+          const dots = document.querySelectorAll('.status-dot');
+          const indTexts = document.querySelectorAll('.indicator-text');
+          dots.forEach(dot => { dot.className = 'status-dot searching'; });
+          indTexts.forEach(indText => { indText.textContent = 'Searching...'; });
+        }
+        return;
+      }
+      tlLastHandTime = Date.now();
+      const f=extractFeatures(document.getElementById('tlVideo1'));
+      if(!Array.isArray(f)||f.length!==activeFeatureSize){
+        console.warn("Kiosk prediction loop skipped: feature size mismatch. f.length =", f ? f.length : 0, "activeFeatureSize =", activeFeatureSize);
+        return;
+      }
+      const inp=tf.tensor2d([f],[1,activeFeatureSize]);const pr=tfModel.predict(inp);
+      const data=await pr.data();inp.dispose();pr.dispose();
+      const raw=Array.from(data);tlPredHistory.push(raw);
+      if(tlPredHistory.length>4)tlPredHistory.shift();
+      const scores=tlPredHistory.length>=2?averageScores(tlPredHistory):raw;
+      const bi=scores.indexOf(Math.max(...scores));const conf=scores[bi];
+      const detected=activeLabels[bi]||'unknown';
+      tlUpdateOverlays(detected==='start'?'▶':detected==='stop'?'⏹':'?',detected==='start'?'Start Gesture':detected==='stop'?'Stop Gesture':detected.replace(/_/g,' '));
+      
+      // ── 1. UPDATE UI INDICATOR DOT BATAY SA CONFIDENCE ──
+      const dots = document.querySelectorAll('.status-dot');
+      const indTexts = document.querySelectorAll('.indicator-text');
+      
+      if (conf > 0.65 && detected !== 'unknown') {
+        dots.forEach(dot => {
+          dot.className = 'status-dot active-gets'; // Turns Green
+        });
+        indTexts.forEach(indText => {
+          indText.textContent = `Gets: ${detected.replace(/_/g, ' ')}`;
+        });
+      } else {
+        dots.forEach(dot => {
+          dot.className = 'status-dot searching'; // Turns Red
+        });
+        indTexts.forEach(indText => {
+          indText.textContent = 'Searching...';
+        });
+      }
+
+      // ── 2. CONVERSATIONAL ACCUMULATION FLOW ──
+      if((tlUiState==='recording' || tlUiState==='idle') && conf>.65 && detected !== 'unknown'){
+        // A. Idle State -> Listen for 'start' gesture to trigger countdown
+        if(tlUiState==='idle'){
+          if(detected==='start'){
+            if(detected!==tlLastDetected){tlLastDetected=detected;tlHoldStart=Date.now();return;}
+            if(Date.now()-tlHoldStart<GESTURE_HOLD_MS)return;
+            
+            tlCurrentGesture='start';
+            tlLastDetected=null; tlHoldStart=null;
+            tlHandleTranslate(); // Trigger countdown manually
+          }
+        }
+        // B. Recording State -> Listen for 'stop' and 'custom' gestures
+        else if(tlUiState==='recording'){
+          if(detected!==tlLastDetected){tlLastDetected=detected;tlHoldStart=Date.now();return;}
+          if(Date.now()-tlHoldStart<GESTURE_HOLD_MS)return;
+          
+          if(detected==='stop'&&tlCurrentGesture!=='stop'){
+            tlCurrentGesture='stop';
+            tlLastDetected=null; tlHoldStart=null;
+            await tlProcessAndFinishSentence();
+            tlSetState('result');
+            showToast(signLang==='fil'?'⏹ Katapusan ng Pangungusap':'⏹ End of Sentence');
+          }
+          else if(detected!=='start'&&detected!=='stop'&&tlCurrentGesture!==detected){
+            tlCurrentGesture=detected;
+            const word = translateGestureLabel(detected, signLang);
+            currentSentence.push(word);
+            
+            // Ipakita agad ang naiipong mga salita sa screen bilang real-time draft
+            document.getElementById('tlOutputBox').innerHTML = `<span class="tl-out-word">${currentSentence.join(' ')}...</span>`;
+            showToast(`+ Added "${word}"`);
+          }
+        }
+      }else if(tlUiState!=='recording'&&tlUiState!=='idle'){tlLastDetected=null;tlHoldStart=null;}
+    }catch(e){
+      console.error("Prediction loop exception:", e);
+    }
+  },150);
+}
+
+function tlStopPredLoop(){
+  clearInterval(tlPredLoop);
+  const o1 = document.getElementById('tlPredOverlay1');
+  if (o1) o1.classList.remove('show');
+}
+
+function tlRenderOutput(){
+  const box=document.getElementById('tlOutputBox');
+  const words=tlWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang));
+  box.innerHTML=words.length?words.map(w=>`<span class="tl-out-word">${w}</span>`).join(' '):'<span class="tl-out-empty">Translation will appear here…</span>';
+}
+
+function formulateSmartSentence(wordsArray, lang) {
+  if (!wordsArray || wordsArray.length === 0) return "";
+  
+  const rawWords = wordsArray.map(w => w.trim().toLowerCase());
+  const sentenceKey = rawWords.join(' ');
+
+  if (lang === 'fil') {
+    const FSL_PHRASES = {
+      "kumusta": "Kumusta!",
+      "kumusta ka": "Kumusta ka?",
+      "magandang umaga": "Magandang umaga!",
+      "magandang hapon": "Magandang hapon!",
+      "magandang gabi": "Magandang gabi!",
+      "paalam": "Paalam!",
+      "tulong": "Tulong!",
+      "hinto": "Hinto!",
+      "mahal kita": "Mahal kita!",
+      "salamat": "Salamat!",
+      "pakiusap": "Pakiusap.",
+      "oo": "Oo.",
+      "hindi": "Hindi.",
+      "mabuti": "Mabuti naman.",
+      "salamat tulong": "Maraming salamat sa tulong mo!",
+      "tulong salamat": "Maraming salamat sa tulong mo!",
+      "pakiusap tubig": "Pakiusap, pahingi ng tubig.",
+      "tubig pakiusap": "Pakiusap, pahingi ng tubig.",
+      "pakiusap pagkain": "Pakiusap, pahingi ng pagkain.",
+      "pagkain pakiusap": "Pakiusap, pahingi ng pagkain.",
+      "hindi naintindihan": "Hindi ko naintindihan.",
+      "sandali pakiusap": "Pakiusap, maghintay sandali.",
+      "pakiusap sandali": "Pakiusap, maghintay sandali.",
+      "halika pakiusap": "Pakiusap, halika rito.",
+      "pakiusap halika": "Pakiusap, halika rito.",
+      "ako punta tindahan": "Pupunta ako sa tindahan.",
+      "ikaw kain": "Kumain ka na ba?",
+      "kain ikaw": "Kumain ka na ba?",
+      "ano pangalan mo": "Ano ang pangalan mo?",
+      "ano pangalan ikaw": "Ano ang pangalan mo?",
+      "sino ikaw": "Sino ka?",
+      "salamat po": "Maraming salamat po!",
+      "mahal kita pakiusap": "Mahal kita, pakiusap.",
+      "tulong pakiusap": "Tulong, pakiusap!"
+    };
+
+    if (FSL_PHRASES[sentenceKey]) {
+      return FSL_PHRASES[sentenceKey];
+    }
+  } else {
+    const ESL_PHRASES = {
+      "hello": "Hello!",
+      "hello thank you": "Hello, thank you very much!",
+      "thank you help": "Thank you for your help!",
+      "help thank you": "Thank you for your help!",
+      "please water": "Please give me some water.",
+      "water please": "Please give me some water.",
+      "please food": "Please give me some food.",
+      "food please": "Please give me some food.",
+      "come here please": "Please come here.",
+      "please come here": "Please come here.",
+      "no understand": "I do not understand.",
+      "wait please": "Please wait a moment.",
+      "please wait": "Please wait a moment.",
+      "i love you": "I love you!",
+      "how are you": "How are you?",
+      "you eat": "Have you eaten yet?",
+      "eat you": "Have you eaten yet?",
+      "me name": "My name is...",
+      "please help": "Please help me!",
+      "help please": "Please help me!",
+      "good morning": "Good morning!",
+      "good afternoon": "Good afternoon!",
+      "good evening": "Good evening!",
+      "goodbye": "Goodbye!",
+      "yes": "Yes.",
+      "no": "No.",
+      "good": "That is good.",
+      "stop": "Stop!",
+      "go store": "I am going to the store.",
+      "i go store": "I am going to the store."
+    };
+
+    if (ESL_PHRASES[sentenceKey]) {
+      return ESL_PHRASES[sentenceKey];
+    }
+  }
+
+  let cleanWords = wordsArray.map((w, idx) => {
+    let word = w.trim();
+    if (lang === 'en' && word.toLowerCase() === 'i') {
+      return 'I';
+    }
+    return word;
+  });
+  
+  const introWords = [
+    'hello', 'yes', 'no', 'please', 'goodbye', 'good morning', 'good afternoon', 'good evening',
+    'kumusta', 'oo', 'hindi', 'pakiusap', 'paalam', 'magandang umaga', 'magandang hapon', 'magandang gabi'
+  ];
+  if (cleanWords.length > 1) {
+    const firstWordLower = cleanWords[0].toLowerCase();
+    if (introWords.includes(firstWordLower)) {
+      cleanWords[0] = cleanWords[0] + ",";
+    }
+  }
+  
+  let sentence = cleanWords.join(' ');
+  sentence = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+  
+  const lower = sentence.toLowerCase();
+  if (lang === 'fil') {
+    if (lower.includes("kumain ka")) return "Kumain ka na ba?";
+    if (lower.includes("salamat tulong")) return "Maraming salamat sa tulong mo!";
+    if (lower === "kumusta ka" || lower === "kamusta ka") return "Kumusta ka?";
+  } else {
+    if (lower.includes("hello thank you")) return "Hello, thank you very much!";
+    if (lower.includes("you eat")) return "Have you eaten yet?";
+    if (lower === "how are you") return "How are you?";
+  }
+  
+  const enQuestionWords = ['how', 'what', 'who', 'where', 'why', 'when', 'are you', 'is it', 'do you', 'can you', 'have you', 'would you', 'should you', 'will you', 'did you', 'could you'];
+  const filQuestionWords = ['ano', 'sino', 'saan', 'bakit', 'kailan', 'paano', 'kumusta', 'kamusta', 'ba', 'ka na', 'nasaan', 'kanino', 'magkano'];
+  
+  const enExclamatoryWords = ['help', 'stop', 'i love you', 'goodbye', 'thank you', 'hello', 'wow', 'congratulations', 'oh no'];
+  const filExclamatoryWords = ['tulong', 'hinto', 'mahal kita', 'paalam', 'salamat', 'kumusta', 'hala', 'mabuhay'];
+  
+  let isQuestion = false;
+  if (lang === 'fil') {
+    const words = lower.split(/[\s,]+/);
+    isQuestion = filQuestionWords.some(q => words.includes(q)) || lower.startsWith('paano') || lower.startsWith('kumusta') || lower.startsWith('kamusta');
+  } else {
+    isQuestion = enQuestionWords.some(q => lower.startsWith(q) || lower.includes(' ' + q + ' ') || lower.endsWith(' ' + q));
+  }
+  
+  let isExclamation = false;
+  if (cleanWords.length === 1) {
+    const wordLower = cleanWords[0].replace(/,$/, '').toLowerCase();
+    if (lang === 'fil') {
+      isExclamation = filExclamatoryWords.includes(wordLower);
+    } else {
+      isExclamation = enExclamatoryWords.includes(wordLower);
+    }
+  } else {
+    const lastWord = cleanWords[cleanWords.length - 1].toLowerCase();
+    if (lang === 'fil') {
+      isExclamation = ['tulong', 'hinto', 'mahal kita'].includes(lastWord);
+    } else {
+      isExclamation = ['help', 'stop', 'i love you'].includes(lastWord);
+    }
+  }
+  
+  if (sentence.endsWith('?') || sentence.endsWith('.') || sentence.endsWith('!')) {
+    return sentence;
+  }
+  
+  if (isQuestion) {
+    return sentence + '?';
+  } else if (isExclamation) {
+    return sentence + '!';
+  } else {
+    return sentence + '.';
+  }
+}
+
+async function tlProcessAndFinishSentence() {
+  isSentenceActive = false;
+  window.isSentenceActive = false;
+  
+  const box = document.getElementById('tlOutputBox');
+  if (currentSentence.length > 0) {
+    const finalSentence = formulateSmartSentence(currentSentence, signLang);
+    if (box) box.innerHTML = `<span class="tl-out-word">${finalSentence}</span>`;
+    speakWord(finalSentence, signLang);
+    try {
+      await DB_API.saveTranslation({
+        sourceType: 'sign_to_text',
+        signLabel: 'sentence',
+        translatedText: finalSentence,
+        language: signLang === 'fil' ? 'fil-PH' : 'en-US',
+        confidence: 0.95
+      });
+    } catch(e) {
+      console.error("Failed to save translation history:", e);
+    }
+  } else {
+    if (box) box.innerHTML = `<span class="tl-out-empty">${signLang==='fil'?'Walang salitang narekord sa pangungusap.':'No words recorded in sentence.'}</span>`;
+  }
+}
+
+function tlSetState(newState){
+  if (newState !== 'countdown' && tlCountdownTimer) {
+    clearInterval(tlCountdownTimer);
+    tlCountdownTimer = null;
+    const b1 = document.getElementById('tlTranslateBtn1');
+    if (b1) b1.disabled = false;
+  }
+  tlUiState=newState;
+  const sc=document.getElementById('tl-state-cam');
+  const sr=document.getElementById('tl-state-result');
+  const b1=document.getElementById('tlTranslateBtn1');
+  const cf1=document.getElementById('tlCamFrame1');
+  if(newState==='idle'){
+    if (sc) {
+      sc.style.display = 'flex';
+      sc.classList.remove('hidden');
+    }
+    if (sr) {
+      sr.style.display = 'none';
+      sr.classList.remove('visible');
+    }
+    if (b1) {
+      b1.classList.remove('recording');
+      if (!modelTrained) {
+        b1.disabled = true;
+        b1.innerHTML = '⏳ AI GETTING READY...';
+      } else {
+        b1.disabled = false;
+        b1.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> START';
+      }
+    }
+    if (cf1) cf1.classList.remove('recording');
+    tlStartPredLoop();
+  }else if(newState==='recording'){
+    if (sc) {
+      sc.style.display = 'flex';
+      sc.classList.remove('hidden');
+    }
+    if (sr) {
+      sr.style.display = 'none';
+      sr.classList.remove('visible');
+    }
+    if (b1) {
+      b1.classList.add('recording');
+      b1.disabled = false;
+      b1.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> STOP';
+    }
+    if (cf1) cf1.classList.add('recording');
+    isSentenceActive = true;
+    window.isSentenceActive = true;
+    currentSentence = [];
+    window.currentSentence = [];
+    document.getElementById('tlOutputBox').innerHTML = `<span class="tl-out-empty">${signLang==='fil'?'Nagsimula nang makinig... I-senyas ang mga salita.':'Started listening... Show your signs.'}</span>`;
+    tlStartPredLoop();
+  }else if(newState==='result'){
+    if (sc) {
+      sc.style.display = 'none';
+      sc.classList.add('hidden');
+    }
+    if (sr) {
+      sr.style.display = 'flex';
+      sr.classList.add('visible');
+    }
+    tlStopPredLoop();
+  }
+}
+
+async function tlHandleTranslate(){
+  if(tlUiState==='idle'){
+    if(!tlStream){showToast('Camera not ready yet…');return;}
+    tlWords=[];tlWordIndex=0;tlCurrentGesture=null;tlLastDetected=null;tlHoldStart=null;
+    
+    tlUiState = 'countdown';
+    tlCountdownVal = 3;
+    
+    const b1 = document.getElementById('tlTranslateBtn1');
+    if (b1) {
+      b1.disabled = true;
+      b1.innerHTML = `⏳ Starting in ${tlCountdownVal}...`;
+    }
+    showToast(`⏳ Translation starting in ${tlCountdownVal}...`);
+
+    tlCountdownTimer = setInterval(() => {
+      tlCountdownVal--;
+      if (tlCountdownVal > 0) {
+        if (b1) b1.innerHTML = `⏳ Starting in ${tlCountdownVal}...`;
+      } else {
+        clearInterval(tlCountdownTimer);
+        tlCountdownTimer = null;
+        if (b1) b1.disabled = false;
+        tlSetState('recording');
+        showToast('🟢 Recording started — press again to finish');
+      }
+    }, 1000);
+
+  }else if(tlUiState==='recording'){
+    await tlProcessAndFinishSentence();
+    tlSetState('result');
+    showToast('✅ Translation complete!');
+  }else if(tlUiState==='result'){
+    tlWords=[];tlWordIndex=0;tlCurrentGesture=null;tlRenderOutput();tlSetState('idle');
+  }
+}
+
+function tlGetAccumulatedTranslation() {
+  const box = document.getElementById('tlOutputBox');
+  if (box) {
+    const text = box.innerText || box.textContent;
+    if (text && text.trim() && !text.includes('Translation will appear here') && !text.includes('Listening...') && !text.includes('Nagsimula nang makinig')) {
+      return text.replace(/\.\.\.$/, '').trim();
+    }
+  }
+  if (currentSentence && currentSentence.length > 0) {
+    return currentSentence.join(' ');
+  }
+  return '';
+}
+
+function tlSpeakAll(){
+  const words = tlGetAccumulatedTranslation();
+  if(!words){showToast('⚠️ No words to speak.');return;}
+  const btn=document.getElementById('tlSpeakBtn');
+  if (btn) {
+    btn.classList.add('speaking');
+    btn.textContent='🔊 Speaking…';
+  }
+  const u=new SpeechSynthesisUtterance(words);
+  u.lang=signLang==='fil'?'fil-PH':'en-US';
+  u.rate=.85;
+  u.onend=()=>{
+    if (btn) {
+      btn.classList.remove('speaking');
+      btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Speak';
+    }
+  };
+  const voices=window.speechSynthesis.getVoices();
+  const filVoice=voices.find(v=>{const c=v.lang.toLowerCase();return c==='fil-ph'||c==='tl-ph'||c.startsWith('fil')||c.startsWith('tl');});
+  if(signLang==='fil'&&filVoice){u.voice=filVoice;}
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+function tlCopyOutput(){
+  const text = tlGetAccumulatedTranslation();
+  if(!text){showToast('⚠️ Nothing to copy.');return;}
+  navigator.clipboard.writeText(text).then(()=>showToast('📋 Copied!'));
+}
+
+function tlClearOutput(){
+  currentSentence = [];
+  window.currentSentence = [];
+  tlWords = [];
+  tlWordIndex = 0;
+  tlCurrentGesture = null;
+  tlLastDetected = null;
+  tlHoldStart = null;
+  isSentenceActive = false;
+  window.isSentenceActive = false;
+  
+  const box = document.getElementById('tlOutputBox');
+  if (box) box.innerHTML = '<span class="tl-out-empty">Translation will appear here…</span>';
+  
+  tlSetState('idle');
+  showToast('🗑️ Cleared');
+}
+
+function tlSaveLog(){
+  const text = tlGetAccumulatedTranslation();
+  if(!text){showToast('⚠️ No translation to save.');return;}
+  const blob=new Blob([`SiningKamay Translation\n${new Date().toLocaleString()}\n\n${text}`],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`siningkamay-${Date.now()}.txt`;a.click();showToast('💾 Saved!');
+}
+
+function tlTranslateAgain() {
+  tlWords = [];
+  tlWordIndex = 0;
+  tlCurrentGesture = null;
+  tlLastDetected = null;
+  tlHoldStart = null;
+  currentSentence = [];
+  window.currentSentence = [];
+  isSentenceActive = false;
+  window.isSentenceActive = false;
+  
+  const box = document.getElementById('tlOutputBox');
+  if (box) box.innerHTML = '<span class="tl-out-empty">Translation will appear here…</span>';
+  
+  tlSetState('idle');
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
+if(TRANSLATE_ONLY){
+  document.getElementById('tl-page').classList.add('active');
+  tlInitCamera();
+}else{
+  document.getElementById('training-ui').classList.add('active');
+  showStepInstruction(1);
+  updateUI();
+</script>
+<script src="js/virtual-keyboard.js"></script>
+</body>
+</html>

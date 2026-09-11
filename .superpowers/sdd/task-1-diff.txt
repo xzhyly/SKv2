@@ -1,0 +1,363 @@
+New file: gesture_test.html (Updated with reviewer fixes)
+===================================================
+1: <!DOCTYPE html>
+2: <html lang="en">
+3: <head>
+4:   <meta charset="UTF-8">
+5:   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+6:   <title>Sining Kamay — Gesture Testing Tool</title>
+7:   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+8:   <style>
+9:     :root {
+10:       --bg: #090d16;
+11:       --panel: rgba(17, 24, 39, 0.75);
+12:       --border: rgba(255, 255, 255, 0.08);
+13:       --primary: #f97316;
+14:       --primary-hover: #ea6a0a;
+15:       --success: #10b981;
+16:       --text: #f3f4f6;
+17:       --text-muted: #9ca3af;
+18:       --font-sans: 'Inter', sans-serif;
+19:       --font-mono: 'JetBrains Mono', monospace;
+20:     }
+21:     * { box-sizing: border-box; margin: 0; padding: 0; }
+22:     body {
+23:       font-family: var(--font-sans);
+24:       background-color: var(--bg);
+25:       color: var(--text);
+26:       min-height: 100vh;
+27:       display: flex;
+28:       flex-direction: column;
+29:       align-items: center;
+30:       padding: 2rem 1rem;
+31:       background-image: 
+32:         radial-gradient(circle at 10% 20%, rgba(249, 115, 22, 0.15) 0%, transparent 40%),
+33:         radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+34:     }
+35:     .container { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 1.5rem; }
+36:     header { text-align: center; margin-bottom: 0.5rem; }
+37:     h1 {
+38:       font-size: 2.2rem;
+39:       font-weight: 800;
+40:       background: linear-gradient(to right, #f97316, #fb923c);
+41:       -webkit-background-clip: text;
+42:       -webkit-text-fill-color: transparent;
+43:       margin-bottom: 0.5rem;
+44:     }
+45:     p.subtitle { color: var(--text-muted); font-size: 1rem; }
+46:     .main-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem; }
+47:     @media (max-width: 768px) { .main-grid { grid-template-columns: 1fr; } }
+48:     .card {
+49:       background: var(--panel);
+50:       backdrop-filter: blur(12px);
+51:       -webkit-backdrop-filter: blur(12px);
+52:       border: 1px solid var(--border);
+53:       border-radius: 16px;
+54:       padding: 1.5rem;
+55:       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+56:       display: flex;
+57:       flex-direction: column;
+58:       gap: 1.2rem;
+59:     }
+60:     .card-title { font-size: 1rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+61:     .camera-wrapper {
+62:       position: relative;
+63:       width: 100%;
+64:       aspect-ratio: 4/3;
+65:       background: #05070c;
+66:       border-radius: 12px;
+67:       overflow: hidden;
+68:       border: 1px solid var(--border);
+69:     }
+70:     video, canvas {
+71:       position: absolute;
+72:       top: 0;
+73:       left: 0;
+74:       width: 100%;
+75:       height: 100%;
+76:       object-fit: cover;
+77:     }
+78:     video { transform: scaleX(-1); }
+79:     canvas { z-index: 10; transform: scaleX(-1); }
+80:     .controls { display: flex; gap: 1rem; }
+81:     button {
+82:       flex: 1;
+83:       padding: 0.85rem;
+84:       border-radius: 10px;
+85:       font-weight: 700;
+86:       cursor: pointer;
+87:       border: none;
+88:       transition: all 0.2s;
+90:     }
+91:     .btn-start { background: var(--success); color: #090d16; }
+92:     .btn-start:hover:not(:disabled) { background: #34d399; }
+93:     .btn-stop { background: #27272a; color: var(--text); border: 1px solid rgba(255, 255, 255, 0.1); }
+94:     .btn-stop:hover:not(:disabled) { background: #3f3f46; }
+95:     button:disabled { opacity: 0.4; cursor: not-allowed; }
+96:     
+97:     .stats-list { display: flex; flex-direction: column; gap: 0.8rem; }
+98:     .stat-item {
+99:       display: flex;
+100:       justify-content: space-between;
+101:       align-items: center;
+102:       padding: 0.75rem;
+103:       background: rgba(0, 0, 0, 0.2);
+104:       border-radius: 8px;
+105:       border: 1px solid rgba(255,255,255,0.03);
+106:     }
+107:     .stat-label { font-size: 0.85rem; color: var(--text-muted); }
+108:     .stat-val { font-family: var(--font-mono); font-weight: 600; font-size: 0.95rem; }
+109:     .stat-val.highlight { color: var(--primary); font-size: 1.1rem; }
+110:     
+111:     .console-log {
+112:       flex: 1;
+113:       background: #04060b;
+114:       border-radius: 10px;
+115:       border: 1px solid var(--border);
+116:       padding: 0.85rem;
+117:       font-family: var(--font-mono);
+118:       font-size: 0.8rem;
+119:       height: 150px;
+120:       overflow-y: auto;
+121:       color: #38bdf8;
+122:     }
+123:   </style>
+124:   <script>
+125:     if (!window._simdOverrideApplied) {
+126:       window._simdOverrideApplied = true;
+127:       const origValidate = WebAssembly.validate;
+128:       WebAssembly.validate = function(buffer) {
+129:         try {
+130:           const bytes = new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer || buffer);
+131:           for (let i = 0; i < Math.min(bytes.length, 256); i++) {
+132:             if (bytes[i] === 0xFD) {
+133:               console.warn('SIMD WASM detected — forcing non-SIMD fallback for stability.');
+134:               return false;
+135:             }
+136:           }
+137:         } catch(e) { /* ignore */ }
+138:         return origValidate.call(WebAssembly, buffer);
+139:       };
+140:     }
+141:   </script>
+142:   <script src="js/lib/mediapipe/hands.js"></script>
+143: </head>
+144: <body>
+145: <div class="container">
+146:   <header>
+147:     <h1>Sining Kamay — Gesture Testing Tool</h1>
+148:     <p class="subtitle">Subukan ang MediaPipe detection at FPS sa Laptop o Raspberry Pi</p>
+149:   </header>
+150:   <div class="main-grid">
+151:     <div class="card">
+152:       <span class="card-title">Live Hand skeleton view</span>
+153:       <div class="camera-wrapper">
+154:         <video id="videoFeed" autoplay playsinline muted></video>
+155:         <canvas id="canvasFeed"></canvas>
+156:       </div>
+157:       <div class="controls">
+158:         <button class="btn-start" id="startBtn">Start Capture</button>
+159:         <button class="btn-stop" id="stopBtn" disabled>Stop Capture</button>
+160:       </div>
+161:     </div>
+162:     <div class="card">
+163:       <span class="card-title">Diagnostics</span>
+164:       <div class="stats-list">
+165:         <div class="stat-item">
+166:           <span class="stat-label">System FPS:</span>
+167:           <span class="stat-val highlight" id="fpsVal">0.0</span>
+168:         </div>
+169:         <div class="stat-item">
+170:           <span class="stat-label">Hand State:</span>
+171:           <span class="stat-val" id="stateVal">No hand detected</span>
+172:         </div>
+173:         <div class="stat-item">
+174:           <span class="stat-label">Index Tip (X, Y, Z):</span>
+175:           <span class="stat-val" id="coordsVal">x: 0, y: 0, z: 0</span>
+176:         </div>
+177:       </div>
+178:       <span class="card-title">Console Output</span>
+179:       <div class="console-log" id="consoleBox">Ready. Click Start Capture.</div>
+180:     </div>
+181:   </div>
+182: </div>
+183: <script>
+184:   const video = document.getElementById('videoFeed');
+185:   const canvas = document.getElementById('canvasFeed');
+186:   const ctx = canvas.getContext('2d');
+187:   const startBtn = document.getElementById('startBtn');
+188:   const stopBtn = document.getElementById('stopBtn');
+189:   const fpsVal = document.getElementById('fpsVal');
+190:   const stateVal = document.getElementById('stateVal');
+191:   const coordsVal = document.getElementById('coordsVal');
+192:   const consoleBox = document.getElementById('consoleBox');
+193:   let activeStream = null;
+194:   let hands = null;
+195:   let cameraLoop = null;
+196:   let lastFrameTime = performance.now();
+197:   let fpsHistory = [];
+198:   const offscreenCanvas = document.createElement('canvas');
+199:   offscreenCanvas.width = 320;
+200:   offscreenCanvas.height = 240;
+201:   const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+202:   function log(message, type = 'info') {
+203:     const time = new Date().toTimeString().split(' ')[0];
+204:     const prefix = type === 'warn' ? '⚠️ ' : type === 'error' ? '❌ ' : 'ℹ️ ';
+205:     const logLine = `[${time}] ${prefix}${message}`;
+206:     consoleBox.textContent += `\n${logLine}`;
+207:     consoleBox.scrollTop = consoleBox.scrollHeight;
+208:     console.log(logLine);
+209:   }
+210:   async function initMediaPipe() {
+211:     if (!window.Hands) {
+212:       log('MediaPipe Hands is not loaded! Check js/lib/mediapipe/hands.js path.', 'error');
+213:       return false;
+214:     }
+215:     log('Initializing MediaPipe Hands...', 'info');
+216:     hands = new window.Hands({
+217:       locateFile: (file) => `js/lib/mediapipe/${file}`
+218:     });
+219:     hands.setOptions({
+220:       maxNumHands: 2,
+221:       modelComplexity: 1,
+222:       minDetectionConfidence: 0.65,
+223:       minTrackingConfidence: 0.65
+224:     });
+225:     hands.onResults(onResults);
+226:     log('MediaPipe Hands initialized.', 'info');
+227:     return true;
+228:   }
+229:   function calculateFPS() {
+230:     const now = performance.now();
+231:     const duration = now - lastFrameTime;
+232:     lastFrameTime = now;
+233:     if (duration > 0 && duration <= 500) {
+234:       const currentFps = 1000 / duration;
+235:       fpsHistory.push(currentFps);
+236:       if (fpsHistory.length > 10) fpsHistory.shift();
+237:       const avgFps = fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length;
+238:       fpsVal.textContent = avgFps.toFixed(1);
+239:     }
+240:   }
+241:   function onResults(results) {
+242:     if (!activeStream) return;
+243:     calculateFPS();
+244:     const bounds = canvas.getBoundingClientRect();
+245:     if (canvas.width !== bounds.width || canvas.height !== bounds.height) {
+246:       canvas.width = bounds.width;
+247:       canvas.height = bounds.height;
+248:     }
+249:     ctx.clearRect(0, 0, canvas.width, canvas.height);
+250:     const detectedHands = results.multiHandLandmarks || [];
+251:     if (detectedHands.length === 0) {
+252:       stateVal.textContent = 'No hand detected';
+253:       coordsVal.textContent = 'x: 0, y: 0, z: 0';
+254:       return;
+255:     }
+256:     stateVal.textContent = `${detectedHands.length} hand(s) detected`;
+257:     detectedHands.forEach((landmarks) => {
+258:       const indexTip = landmarks[8];
+259:       coordsVal.textContent = `x: ${indexTip.x.toFixed(3)}, y: ${indexTip.y.toFixed(3)}, z: ${indexTip.z.toFixed(3)}`;
+260:       const connections = [
+261:         [0, 1], [1, 2], [2, 3], [3, 4],
+262:         [0, 5], [5, 6], [6, 7], [7, 8],
+263:         [0, 9], [9, 10], [10, 11], [11, 12],
+264:         [0, 13], [13, 14], [14, 15], [15, 16],
+265:         [0, 17], [17, 18], [18, 19], [19, 20],
+266:         [5, 9], [9, 13], [13, 17]
+267:       ];
+268:       ctx.lineWidth = 4;
+269:       ctx.strokeStyle = '#10b981';
+270:       connections.forEach(([start, end]) => {
+271:         const pt1 = landmarks[start];
+272:         const pt2 = landmarks[end];
+273:         ctx.beginPath();
+274:         ctx.moveTo(pt1.x * canvas.width, pt1.y * canvas.height);
+275:         ctx.lineTo(pt2.x * canvas.width, pt2.y * canvas.height);
+276:         ctx.stroke();
+277:       });
+278:       ctx.fillStyle = '#ef4444';
+279:       landmarks.forEach((point) => {
+280:         ctx.beginPath();
+281:         ctx.arc(point.x * canvas.width, point.y * canvas.height, 6, 0, 2 * Math.PI);
+282:         ctx.fill();
+283:       });
+284:     });
+285:   }
+286:   async function runCameraLoop() {
+287:     if (!hands || !activeStream) return;
+288:     if (video.readyState >= 2) {
+289:       try {
+290:         const sw = video.videoWidth;
+291:         const sh = video.videoHeight;
+292:         if (sw && sh) {
+293:           const targetAspect = 4 / 3;
+294:           const currentAspect = sw / sh;
+295:           let sx = 0, sy = 0, sWidth = sw, sHeight = sh;
+296:           if (currentAspect > targetAspect) {
+297:             sWidth = sh * targetAspect;
+298:             sx = (sw - sWidth) / 2;
+299:           } else if (currentAspect < targetAspect) {
+300:             sHeight = sw / targetAspect;
+301:             sy = (sh - sHeight) / 2;
+302:           }
+303:           offscreenCtx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, 320, 240);
+304:         } else {
+305:           offscreenCtx.drawImage(video, 0, 0, 320, 240);
+306:         }
+307:         await hands.send({ image: offscreenCanvas });
+308:       } catch (err) {
+309:         log('MediaPipe send frame error: ' + err.message, 'error');
+310:       }
+311:     }
+312:     cameraLoop = requestAnimationFrame(runCameraLoop);
+313:   }
+314:   async function startCapture() {
+315:     log('Starting camera capture...', 'info');
+316:     startBtn.disabled = true;
+317:     if (!hands) {
+318:       const ok = await initMediaPipe();
+319:       if (!ok) {
+320:         startBtn.disabled = false;
+321:         return;
+322:       }
+323:     }
+324:     try {
+325:       activeStream = await navigator.mediaDevices.getUserMedia({
+326:         video: { width: { ideal: 640 }, height: { ideal: 480 } }
+327:       });
+328:       video.srcObject = activeStream;
+329:       video.play().catch(e => log('Video play failed: ' + e.message, 'warn'));
+330:       log('Webcam connected successfully.', 'info');
+331:       stopBtn.disabled = false;
+332:       lastFrameTime = performance.now();
+333:       runCameraLoop();
+334:     } catch (err) {
+335:       log('Camera access failed: ' + err.message, 'error');
+336:       startBtn.disabled = false;
+337:     }
+338:   }
+339:   function stopCapture() {
+340:     log('Stopping camera capture...', 'info');
+341:     stopBtn.disabled = true;
+342:     if (cameraLoop) {
+343:       cancelAnimationFrame(cameraLoop);
+344:       cameraLoop = null;
+345:     }
+346:     if (activeStream) {
+347:       activeStream.getTracks().forEach(track => track.stop());
+348:       activeStream = null;
+349:     }
+350:     video.srcObject = null;
+351:     ctx.clearRect(0, 0, canvas.width, canvas.height);
+352:     fpsVal.textContent = '0.0';
+353:     stateVal.textContent = 'No hand detected';
+354:     coordsVal.textContent = 'x: 0, y: 0, z: 0';
+355:     startBtn.disabled = false;
+356:     log('Capture stopped.', 'info');
+357:   }
+358:   startBtn.addEventListener('click', startCapture);
+359:   stopBtn.addEventListener('click', stopCapture);
+360: </script>
+361: </body>
+362: </html>

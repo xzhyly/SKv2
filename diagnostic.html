@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sining Kamay — System Diagnostic Tool</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #f8fafc; padding: 24px; line-height: 1.5; }
+    h1 { color: #f97316; border-bottom: 2px solid #334155; padding-bottom: 12px; margin-top: 0; }
+    .card { background: #1e293b; border-radius: 8px; padding: 18px; margin-bottom: 16px; border: 1px solid #334155; }
+    .card-title { font-weight: bold; font-size: 16px; margin-bottom: 12px; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
+    .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .status.ok { background: #16a34a; color: #fff; }
+    .status.warn { background: #d97706; color: #fff; }
+    .status.error { background: #dc2626; color: #fff; }
+    .log-box { background: #020617; color: #10b981; font-family: monospace; padding: 12px; border-radius: 6px; overflow-x: auto; max-height: 250px; font-size: 13px; border: 1px solid #1e293b; margin-top: 10px; }
+    button { background: #f97316; border: none; color: white; padding: 10px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #ea580c; }
+    ul { padding-left: 20px; margin: 8px 0; }
+    li { margin-bottom: 6px; }
+  </style>
+  <script src="js/lib/tf.min.js"></script>
+  <script src="js/lib/mediapipe/hands.js"></script>
+  <script src="js/db-api.js"></script>
+  <script src="js/gesture-data.js"></script>
+</head>
+<body>
+  <h1>Sining Kamay — System Diagnostics</h1>
+  <p>Use this page to check why the camera translator cannot load the gestures or train the AI model.</p>
+  
+  <div class="card">
+    <div class="card-title">1. Cloud CDNs (Library Load Status)</div>
+    <ul>
+      <li>TensorFlow.js: <span id="status-tf" class="status error">Not Loaded</span></li>
+      <li>MediaPipe Hands: <span id="status-mp" class="status error">Not Loaded</span></li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">2. API Endpoints Check</div>
+    <ul>
+      <li>API Base Directory: <code id="api-base">-</code></li>
+      <li>Connection Status: <span id="status-api" class="status error">Not Tested</span></li>
+    </ul>
+    <div id="api-log" class="log-box" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">3. Loaded Gesture Dataset</div>
+    <ul>
+      <li>Total Samples Loaded: <span id="status-samples" class="status error">0</span></li>
+      <li>Gesture Words Found: <span id="status-labels" class="status error">None</span></li>
+    </ul>
+    <div id="dataset-log" class="log-box" style="display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">4. Browser Console Logs & Errors</div>
+    <div id="console-log" class="log-box">Console output will appear here...</div>
+  </div>
+
+  <button onclick="runDiagnostics()">🔄 Re-run Diagnostics</button>
+
+  <script>
+    const consoleBuffer = [];
+    const origLog = console.log;
+    const origWarn = console.warn;
+    const origErr = console.error;
+
+    function addConsoleMessage(type, args) {
+      const msg = Array.from(args).map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      consoleBuffer.push(`[${type}] ${msg}`);
+      const logBox = document.getElementById('console-log');
+      if (logBox) {
+        logBox.textContent = consoleBuffer.join('\n');
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+    }
+
+    console.log = function() { origLog.apply(console, arguments); addConsoleMessage('LOG', arguments); };
+    console.warn = function() { origWarn.apply(console, arguments); addConsoleMessage('WARN', arguments); };
+    console.error = function() { origErr.apply(console, arguments); addConsoleMessage('ERROR', arguments); };
+
+    async function runDiagnostics() {
+      consoleBuffer.length = 0;
+      console.log("Starting diagnostic checks...");
+
+      // 1. CDNs Check
+      const tfStatus = document.getElementById('status-tf');
+      if (window.tf) {
+        tfStatus.textContent = "Loaded (v" + tf.version.tfjs + ")";
+        tfStatus.className = "status ok";
+      } else {
+        tfStatus.textContent = "Error: Not Loaded (Check internet connection)";
+        tfStatus.className = "status error";
+      }
+
+      const mpStatus = document.getElementById('status-mp');
+      if (window.Hands) {
+        mpStatus.textContent = "Loaded";
+        mpStatus.className = "status ok";
+      } else {
+        mpStatus.textContent = "Error: Not Loaded (Check internet connection)";
+        mpStatus.className = "status error";
+      }
+
+      // 2. API Check
+      const apiBase = document.getElementById('api-base');
+      const apiStatus = document.getElementById('status-api');
+      const apiLog = document.getElementById('api-log');
+      
+      const SAVE_ENDPOINT = (location.protocol === "file:" || (location.port && location.port !== "80" && location.port !== "443"))
+        ? "http://localhost" + (window.location.pathname.includes('/SKR') ? '/SKR' : '/Sining_kamay') + "/php/api/save_gesture.php"
+        : "php/api/save_gesture.php";
+
+      apiBase.textContent = SAVE_ENDPOINT;
+      apiLog.style.display = 'block';
+      apiLog.textContent = "Testing connection to: " + SAVE_ENDPOINT + "\n";
+
+      try {
+        const t0 = performance.now();
+        const res = await fetch(SAVE_ENDPOINT);
+        const t1 = performance.now();
+        apiLog.textContent += `HTTP Status: ${res.status} ${res.statusText} (${Math.round(t1 - t0)}ms)\n`;
+        
+        const json = await res.json();
+        apiLog.textContent += `JSON Response Keys: ${Object.keys(json).join(', ')}\n`;
+        
+        if (json.success) {
+          apiStatus.textContent = "Connected & Working";
+          apiStatus.className = "status ok";
+        } else {
+          apiStatus.textContent = "API Error: " + (json.error || "Unknown");
+          apiStatus.className = "status warn";
+        }
+      } catch (err) {
+        console.error("API Fetch failed:", err);
+        apiStatus.textContent = "Connection Failed";
+        apiStatus.className = "status error";
+        apiLog.textContent += `Error Details: ${err.message}\n`;
+      }
+
+      // 3. Dataset Check
+      const samplesStatus = document.getElementById('status-samples');
+      const labelsStatus = document.getElementById('status-labels');
+      const datasetLog = document.getElementById('dataset-log');
+      datasetLog.style.display = 'block';
+      datasetLog.textContent = "Attempting to load training dataset...\n";
+
+      if (typeof window.loadGestureDatasetForTraining !== 'function') {
+        datasetLog.textContent += "Error: window.loadGestureDatasetForTraining is not defined. Make sure js/gesture-data.js is loaded.\n";
+        return;
+      }
+
+      try {
+        const rows = await window.loadGestureDatasetForTraining();
+        datasetLog.textContent += `Total landmark rows loaded: ${rows.length}\n`;
+        
+        const labelsMap = {};
+        rows.forEach(r => {
+          labelsMap[r.label] = (labelsMap[r.label] || 0) + 1;
+        });
+
+        const labelNames = Object.keys(labelsMap);
+        datasetLog.textContent += `Labels found:\n`;
+        labelNames.forEach(name => {
+          datasetLog.textContent += ` - "${name}": ${labelsMap[name]} landmark frames\n`;
+        });
+
+        samplesStatus.textContent = rows.length;
+        samplesStatus.className = rows.length > 0 ? "status ok" : "status warn";
+
+        if (labelNames.length >= 2) {
+          labelsStatus.textContent = `${labelNames.length} categories (${labelNames.join(', ')})`;
+          labelsStatus.className = "status ok";
+        } else {
+          labelsStatus.textContent = `${labelNames.length} categories (Needs at least 2 for AI training!)`;
+          labelsStatus.className = "status error";
+        }
+      } catch (err) {
+        console.error("Dataset load failed:", err);
+        samplesStatus.textContent = "Error";
+        samplesStatus.className = "status error";
+        labelsStatus.textContent = "Error";
+        labelsStatus.className = "status error";
+        datasetLog.textContent += `Error Details: ${err.message}\n`;
+      }
+    }
+
+    // Auto-run on load
+    window.onload = runDiagnostics;
+  </script>
+</body>
+</html>

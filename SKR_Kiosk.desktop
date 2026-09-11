@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SKR Kiosk
+Comment=Run Sining Kamay Kiosk Mode
+Exec=/home/crystelle/start_kiosk.sh
+Icon=chromium-browser
+Terminal=false
+Categories=Utility;
+X-KeepTerminal=false

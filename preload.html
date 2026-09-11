@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sining Kamay — AI Preloader</title>
+  <!-- Exclude virtual keyboard popup from preload page -->
+  <meta name="no-keyboard" content="true">
+  <script src="js/lib/tf.min.js"></script>
+  <script src="js/lib/mediapipe/hands.js"></script>
+</head>
+<body>
+  <script>
+    console.log("[Preloader] Warm-starting MediaPipe Hands in background...");
+    
+    // Force non-SIMD WebAssembly on Raspberry Pi to prevent "memory access out of bounds" crashes.
+    // MediaPipe internally calls ed() to detect SIMD support. We patch the WebAssembly.validate
+    // function to intercept SIMD WASM files and report them as invalid, forcing fallback to
+    // the stable non-SIMD binary (hands_solution_wasm_bin.wasm).
+    if (!window._simdOverrideApplied) {
+      window._simdOverrideApplied = true;
+      const origValidate = WebAssembly.validate;
+      WebAssembly.validate = function(buffer) {
+        try {
+          const bytes = new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer || buffer);
+          // SIMD detection: WebAssembly SIMD uses opcode 0xFD. If present at start, it's SIMD.
+          // We return false to force MediaPipe to use the non-SIMD fallback.
+          if (bytes.length < 1000) {
+            for (let i = 0; i < Math.min(bytes.length, 256); i++) {
+              if (bytes[i] === 0xFD) {
+                console.log('[Preloader] SIMD WASM detected — forcing non-SIMD fallback for Pi stability.');
+                return false;
+              }
+            }
+          }
+        } catch(e) { /* ignore */ }
+        return origValidate.call(WebAssembly, buffer);
+      };
+    }
+
+    if (window.Hands) {
+      try {
+        const hands = new window.Hands({
+          locateFile: (file) => `js/lib/mediapipe/${file}`
+        });
+        hands.setOptions({
+          maxNumHands: 2,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.65,
+          minTrackingConfidence: 0.65
+        });
+        
+        // Triggers WASM fetch and compile
+        hands.initialize()
+          .then(() => {
+            console.log("[Preloader] AI compiled and ready!");
+          })
+          .catch(err => {
+            // Some versions of hands.js might not expose .initialize(), fallback is automatic on first send
+            console.log("[Preloader] Model pre-flight done (using auto-load fallback if initialize is not supported)");
+          });
+      } catch (err) {
+        console.error("[Preloader] Model setup failed:", err);
+      }
+    } else {
+      console.error("[Preloader] Hands class not found in window");
+    }
+  </script>
+</body>
+</html>

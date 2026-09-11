@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Video Importer & Extractor - Sining Kamay</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(17, 24, 39, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-color: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.35);
+            --success-color: #34d399;
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.05) 0%, transparent 40%),
+                              radial-gradient(circle at 90% 80%, rgba(99, 102, 241, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            padding: 24px 40px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(11, 15, 25, 0.8);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            color: #ffffff;
+        }
+
+        .header-title span {
+            color: var(--accent-color);
+        }
+
+        .back-btn {
+            padding: 10px 18px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-color);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 40px;
+            display: grid;
+            grid-template-columns: 1fr 450px;
+            gap: 40px;
+            flex-grow: 1;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Upload Area */
+        .upload-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            background: rgba(255, 255, 255, 0.02);
+            position: relative;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent-color);
+            background: rgba(56, 189, 248, 0.04);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .upload-zone input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-icon {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+
+        .upload-text h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .upload-text p {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Queue List */
+        .queue-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            max-height: 450px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .queue-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .queue-table th {
+            text-align: left;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-muted);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .queue-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .queue-table tr:hover {
+            background: rgba(255, 255, 255, 0.01);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-pending { background: rgba(156, 163, 175, 0.15); color: #e5e7eb; }
+        .status-converting { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+        .status-extracting { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+        .status-completed { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+        .status-failed { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+        /* Controls */
+        .controls-row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .select-input {
+            height: 46px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            padding: 0 16px;
+            font-size: 14px;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .select-input:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        .primary-btn {
+            height: 46px;
+            padding: 0 24px;
+            background: var(--accent-color);
+            color: #0b0f19;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px var(--accent-glow);
+        }
+
+        .primary-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .primary-btn:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-muted);
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Right Panel: Live Trace Viewer */
+        .viewer-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .preview-box {
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000000;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid var(--border-color);
+        }
+
+        .preview-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .preview-box canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .console-box {
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #a7f3d0;
+            overflow-y: auto;
+            max-height: 250px;
+            white-space: pre-wrap;
+        }
+
+        /* Toast Alert */
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            padding: 14px 24px;
+            background: rgba(17, 24, 39, 0.95);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--accent-color);
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-title">
+            <span>🤟</span>
+            Sining Kamay — Kiosk Bulk Importer & Extractor
+        </div>
+        <a href="index.html" class="back-btn">← Back to Dashboard</a>
+    </header>
+
+    <div class="container">
+        
+        <!-- Left Panel: Video Selection & Queue List -->
+        <div class="panel">
+            <div class="panel-title">
+                Import Queue
+                <span id="queue-count" style="font-size: 13px; color: var(--text-muted);">0 files loaded</span>
+            </div>
+
+            <!-- Upload dropzone -->
+            <div class="upload-zone">
+                <input type="file" id="file-input" multiple accept="video/*">
+                <div class="upload-icon">📂</div>
+                <div class="upload-text">
+                    <h3>Select or Drag raw videos to start</h3>
+                    <p>Supported formats: MP4, WebM, MOV, AVI</p>
+                </div>
+            </div>
+
+            <!-- Configuration & Actions -->
+            <div class="controls-row">
+                <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Sign Language Dataset</label>
+                    <select id="sign-lang-select" class="select-input">
+                        <option value="ESL">🇺🇸 English Sign Language (ESL)</option>
+                        <option value="FSL">🇵🇭 Filipino Sign Language (FSL)</option>
+                        <option value="BOTH">✨ Both (ESL & FSL with Auto-Translate)</option>
+                    </select>
+                </div>
+                
+                <button type="button" id="start-btn" class="primary-btn" disabled>
+                    ⚡ Start Processing
+                </button>
+            </div>
+
+            <!-- Queue table -->
+            <div class="queue-container">
+                <table class="queue-table">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Target Label</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queue-list">
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 30px; color: var(--text-muted);">No videos loaded. Drag files above to add them to the queue.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right Panel: Live Video Preview & Skeletal Trace -->
+        <div class="panel viewer-panel">
+            <div class="panel-title">Live Landmark Trace</div>
+            
+            <div class="preview-box">
+                <video id="preview-video" muted playsinline></video>
+                <canvas id="preview-canvas"></canvas>
+            </div>
+
+            <div class="panel-title" style="font-size: 14px; color: var(--text-muted);">Console Logs</div>
+            <div id="console-logs" class="console-box">> Console initialized. Ready to process...</div>
+        </div>
+
+    </div>
+
+    <div id="toast">Ready</div>
+
+    <!-- SIMD override MUST run before hands.js loads. Forces non-SIMD WebAssembly fallback. -->
+    <script>
+        if (!window._simdOverrideApplied) {
+            window._simdOverrideApplied = true;
+            const origValidate = WebAssembly.validate;
+            WebAssembly.validate = function(buffer) {
+                try {
+                    const bytes = new Uint8Array(buffer instanceof ArrayBuffer ? buffer : buffer.buffer || buffer);
+                    if (bytes.length < 1000) {
+                        for (let i = 0; i < Math.min(bytes.length, 256); i++) {
+                            if (bytes[i] === 0xFD) {
+                                console.log('[bulk-importer] SIMD WASM detected — forcing non-SIMD fallback.');
+                                return false;
+                            }
+                        }
+                    }
+                } catch(e) { /* ignore */ }
+                return origValidate.call(WebAssembly, buffer);
+            };
+        }
+    </script>
+
+    <!-- MediaPipe Hands SDK (loads AFTER patch) -->
+    <script src="js/lib/mediapipe/hands.js"></script>
+    
+    <script>
+
+        let fileQueue = [];
+        let isProcessing = false;
+        let activeIndex = -1;
+        let handsDetector = null;
+        let currentFramesData = [];
+
+        const fileInput = document.getElementById('file-input');
+        const startBtn = document.getElementById('start-btn');
+        const queueList = document.getElementById('queue-list');
+        const queueCount = document.getElementById('queue-count');
+        const signLangSelect = document.getElementById('sign-lang-select');
+        const videoElement = document.getElementById('preview-video');
+        const canvasElement = document.getElementById('preview-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const consoleLogs = document.getElementById('console-logs');
+        const toast = document.getElementById('toast');
+        
+        // Hidden input canvas to isolate MediaPipe memory buffers and avoid WebGL conflicts
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = 320;
+        offscreenCanvas.height = 240;
+        const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+        // MediaPipe Hands will be lazily initialized when processing starts.
+        logConsole("Ready. MediaPipe Hands will load on demand.");
+
+        // Handle File selections
+        fileInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if (files.length === 0) return;
+
+            if (fileQueue.length === 0) {
+                fileQueue = [];
+            }
+
+            files.forEach(file => {
+                // Auto extract label from filename (e.g. "hello_sign_1.mp4" -> "hello_sign")
+                let label = file.name.split('.')[0]
+                                    .toLowerCase()
+                                    .replace(/\s+/g, '_')
+                                    .replace(/[^a-z0-9_-]/g, '')
+                                    .replace(/_\d+$/, '') // strip trailing sample indexes
+                                    .replace(/_sample$/, '');
+                
+                fileQueue.push({
+                    file: file,
+                    label: label,
+                    status: 'pending', // pending, converting, extracting, completed, failed
+                    error: null
+                });
+            });
+
+            updateQueueUI();
+        });
+
+        startBtn.addEventListener('click', startBatchProcessing);
+
+        function updateQueueUI() {
+            if (fileQueue.length === 0) {
+                queueList.innerHTML = `<tr><td colspan="3" style="text-align: center; padding: 30px; color: var(--text-muted);">No videos loaded. Drag files above to add them to the queue.</td></tr>`;
+                startBtn.disabled = true;
+                queueCount.textContent = "0 files loaded";
+                return;
+            }
+
+            queueCount.textContent = `${fileQueue.length} file(s) loaded`;
+            startBtn.disabled = isProcessing;
+
+            queueList.innerHTML = fileQueue.map((item, idx) => {
+                let badgeClass = `status-${item.status}`;
+                let statusText = item.status.toUpperCase();
+                return `
+                    <tr style="${idx === activeIndex ? 'background: rgba(56, 189, 248, 0.05); border-left: 3px solid var(--accent-color);' : ''}">
+                        <td style="font-weight: 500;">${item.file.name}</td>
+                        <td>
+                            <input type="text" value="${item.label}" 
+                                   onchange="updateItemLabel(${idx}, this.value)" 
+                                   style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: #ffffff; padding: 4px 8px; border-radius: 6px; font-size: 13px; width: 140px;"
+                                   ${isProcessing ? 'disabled' : ''}>
+                        </td>
+                        <td>
+                            <span class="status-badge ${badgeClass}">${statusText}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateItemLabel(idx, val) {
+            if (fileQueue[idx]) {
+                fileQueue[idx].label = val.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_-]/g, '');
+            }
+        }
+
+        function logConsole(msg) {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            consoleLogs.innerHTML += `\n[${time}] ${msg}`;
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        // NORMALIZATION HELPERS — must match gesture-data.js exactly
+        // flattenHand: wrist-relative coords, divided by scale
+        // flattenLandmarksBI: flattens 1-2 hands into 126-element array
+        // ──────────────────────────────────────────────────────────────
+        function flattenHandBI(hand) {
+            if (!Array.isArray(hand) || hand.length < 21) return Array(63).fill(0);
+            const wrist = hand[0];
+            const normalized = hand.map(p => ({
+                x: (Number(p.x) || 0) - (Number(wrist.x) || 0),
+                y: (Number(p.y) || 0) - (Number(wrist.y) || 0),
+                z: (Number(p.z) || 0) - (Number(wrist.z) || 0),
+            }));
+            const scale = Math.max(
+                ...normalized.map(p => Math.hypot(p.x, p.y, p.z)),
+                0.0001
+            );
+            const out = [];
+            normalized.forEach(p => out.push(p.x / scale, p.y / scale, p.z / scale));
+            return out;
+        }
+
+        function flattenLandmarksBI(hands) {
+            if (!Array.isArray(hands) || hands.length === 0) return Array(126).fill(0);
+            const hand1 = flattenHandBI(hands[0]);
+            const hand2 = hands.length >= 2 ? flattenHandBI(hands[1]) : Array(63).fill(0);
+            return hand1.concat(hand2);
+        }
+
+        function showToast(msg) {
+            toast.textContent = msg;
+
+            toast.style.opacity = '1';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 3000);
+        }
+
+        // Batch processing runner
+        async function startBatchProcessing() {
+            if (isProcessing || fileQueue.length === 0) return;
+            isProcessing = true;
+            startBtn.disabled = true;
+            fileInput.disabled = true;
+            signLangSelect.disabled = true;
+
+            logConsole(`Starting batch processing for ${fileQueue.length} files...`);
+
+            for (let i = 0; i < fileQueue.length; i++) {
+                if (fileQueue[i].status === 'completed') continue;
+                activeIndex = i;
+                updateQueueUI();
+                
+                try {
+                    await processVideoQueueItem(fileQueue[i]);
+                    fileQueue[i].status = 'completed';
+                } catch (e) {
+                    fileQueue[i].status = 'failed';
+                    fileQueue[i].error = e.message;
+                    logConsole(`ERROR on item ${fileQueue[i].file.name}: ${e.message}`);
+                    logConsole(`ERROR stack: ${e.stack ? e.stack.split('\n').slice(0,3).join(' | ') : 'no stack'}`);
+                }
+                
+                updateQueueUI();
+            }
+
+            isProcessing = false;
+            activeIndex = -1;
+            fileInput.disabled = false;
+            signLangSelect.disabled = false;
+            updateQueueUI();
+            logConsole("Batch processing completely finished.");
+            showToast("🎉 Batch processing finished!");
+        }
+
+        // Process a single video queue item
+        function processVideoQueueItem(item) {
+            return new Promise(async (resolve, reject) => {
+                logConsole(`----------------------------------------------`);
+                
+                // Initialize MediaPipe Hands lazily
+                if (!handsDetector) {
+                    logConsole("Loading MediaPipe Hands SDK on demand...");
+                    if (!window.Hands) {
+                        reject(new Error("MediaPipe Hands SDK is not loaded."));
+                        return;
+                    }
+                    try {
+                        const cacheBust = '?v=' + Date.now();
+                        handsDetector = new window.Hands({
+                            locateFile: (file) => {
+                                // Force non-SIMD: redirect SIMD binary requests to stable non-SIMD version for stability
+                                const safeFile = file.includes('simd')
+                                    ? file.replace('simd_wasm_bin', 'wasm_bin')
+                                    : file;
+                                return `js/lib/mediapipe/${safeFile}`;
+                            }
+                        });
+                        handsDetector.setOptions({
+                            maxNumHands: 2,
+                            modelComplexity: 1,
+                            minDetectionConfidence: 0.65,
+                            minTrackingConfidence: 0.65
+                        });
+                        logConsole("MediaPipe Hands initialized (stable non-SIMD config).");
+                    } catch (initErr) {
+                        reject(new Error("MediaPipe init failed: " + initErr.message));
+                        return;
+                    }
+                }
+
+                const signLanguage = signLangSelect.value;
+
+                // ══════════════════════════════════════════════════════════
+                // PRE-CHECK: CHECK IF GESTURE ALREADY EXISTS TO PREVENT DUPLICATES
+                // ══════════════════════════════════════════════════════════
+                try {
+                    const checkResponse = await fetch(`php/api/bulk_importer_api.php?action=check_duplicate&label=${encodeURIComponent(item.label)}&sign_language=${signLanguage}`);
+                    const checkData = await checkResponse.json();
+                    if (checkData.success && checkData.exists) {
+                        logConsole(`[SKIP] Gesture "${item.label}" already exists in the database for ${signLanguage}. Skipping.`);
+                        item.status = 'completed';
+                        updateQueueUI();
+                        resolve();
+                        return;
+                    }
+                } catch (chkErr) {
+                    logConsole(`[WARNING] Duplicate pre-check failed: ${chkErr.message}. Proceeding anyway.`);
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // STEP 1: FFMPEG CONVERT FOR RASPBERRY PI FIRST
+                // ══════════════════════════════════════════════════════════
+                logConsole(`[1/3] Converting raw video to browser-compatible WebM...`);
+                item.status = 'converting';
+                updateQueueUI();
+
+                const formData = new FormData();
+                formData.append('video', item.file);
+                formData.append('label', item.label);
+                formData.append('sign_language', signLanguage);
+
+                let convertData;
+                try {
+                    const response = await fetch('php/api/bulk_importer_api.php?action=convert_video', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    convertData = await response.json();
+                    if (!convertData.success) {
+                        throw new Error(convertData.error || 'Conversion failed.');
+                    }
+                } catch (err) {
+                    reject(err);
+                    return;
+                }
+
+                logConsole(`Converted successfully: ${convertData.video_url}`);
+
+                // ══════════════════════════════════════════════════════════
+                // STEP 2: EXTRACT LANDMARKS FROM CONVERTED WEBM
+                // ══════════════════════════════════════════════════════════
+                logConsole(`[2/3] Extracting landmarks from converted WebM...`);
+                item.status = 'extracting';
+                updateQueueUI();
+
+                const tempVideo = document.createElement('video');
+                tempVideo.muted = true;
+                tempVideo.playsInline = true;
+                tempVideo.src = convertData.video_url;
+
+                tempVideo.onloadedmetadata = async () => {
+                    try {
+                        const duration = tempVideo.duration;
+                        
+                        // Dynamic frame count: ~10 frames per second, min 10, max 60
+                        let targetFrameCount = Math.round(duration * 10);
+                        if (targetFrameCount < 10) targetFrameCount = 10;
+                        if (targetFrameCount > 60) targetFrameCount = 60;
+                        
+                        logConsole(`Video duration: ${duration.toFixed(2)}s → extracting ${targetFrameCount} frames`);
+                        
+                        currentFramesData = [];
+                        
+                        canvasElement.width = 320;
+                        canvasElement.height = 240;
+                        
+                        // Per-video onResults listener
+                        let latestLandmarks = null;
+                        handsDetector.onResults((results) => {
+                            const multiHands = results.multiHandLandmarks || [];
+                            latestLandmarks = multiHands;
+                            
+                            // Draw preview
+                            canvasCtx.drawImage(results.image, 0, 0, 320, 240);
+                            multiHands.forEach(lm => drawSkeleton(lm));
+                        });
+
+                        // Fresh per-video canvas
+                        const extractCanvas = document.createElement('canvas');
+                        extractCanvas.width = 320;
+                        extractCanvas.height = 240;
+                        const extractCtx = extractCanvas.getContext('2d', { willReadFrequently: true });
+
+                        for (let i = 0; i < targetFrameCount; i++) {
+                            const time = (i / (targetFrameCount - 1)) * duration;
+                            tempVideo.currentTime = time;
+
+                            // Wait for seek event (with 250ms safety timeout to prevent hanging on corrupted videos)
+                            await new Promise(resSeek => {
+                                let resolved = false;
+                                const done = () => {
+                                    if (resolved) return;
+                                    resolved = true;
+                                    tempVideo.onseeked = null;
+                                    resSeek();
+                                };
+                                tempVideo.onseeked = done;
+                                setTimeout(done, 250);
+                            });
+
+                            latestLandmarks = null;
+
+                            // Draw video frame preserving its aspect ratio (fit within 320x240)
+                            const vWidth = tempVideo.videoWidth || 320;
+                            const vHeight = tempVideo.videoHeight || 240;
+                            const targetWidth = 320;
+                            const targetHeight = 240;
+                            
+                            const videoRatio = vWidth / vHeight;
+                            const targetRatio = targetWidth / targetHeight;
+                            
+                            let dWidth = targetWidth;
+                            let dHeight = targetHeight;
+                            let dx = 0;
+                            let dy = 0;
+                            
+                            if (videoRatio > targetRatio) {
+                                dHeight = targetWidth / videoRatio;
+                                dy = (targetHeight - dHeight) / 2;
+                            } else {
+                                dWidth = targetHeight * videoRatio;
+                                dx = (targetWidth - dWidth) / 2;
+                            }
+                            
+                            extractCtx.fillStyle = '#000';
+                            extractCtx.fillRect(0, 0, targetWidth, targetHeight);
+                            extractCtx.drawImage(tempVideo, dx, dy, dWidth, dHeight);
+
+                            try {
+                                await handsDetector.send({ image: extractCanvas });
+                            } catch (mpErr) {
+                                logConsole(`[FRAME ${i+1}/${targetFrameCount}] Skipped: ${mpErr.message}`);
+                            }
+
+                            // 2-hand flatten → 126 coords (wrist-relative + scale-normalized)
+                            if (latestLandmarks && latestLandmarks.length > 0) {
+                                const frameCoords = flattenLandmarksBI(latestLandmarks);
+                                currentFramesData.push(frameCoords);
+                            }
+
+                            if ((i+1) % 10 === 0) {
+                                logConsole(`[FRAME] ${i+1}/${targetFrameCount} done — landmarks: ${currentFramesData.length}`);
+                            }
+                        }
+
+                        logConsole(`Extraction done. ${currentFramesData.length} landmark frames captured.`);
+
+                        if (currentFramesData.length === 0) {
+                            throw new Error("No hand landmarks detected. Ensure hands are visible in the video.");
+                        }
+
+                        // ══════════════════════════════════════════════════════════
+                        // STEP 3: SAVE LANDMARKS + VIDEO PATH TO DATABASE
+                        // ══════════════════════════════════════════════════════════
+                        logConsole(`[3/3] Saving to database...`);
+                        const saveResponse = await fetch('php/api/bulk_importer_api.php?action=save_landmarks', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                label: item.label,
+                                sign_language: signLanguage,
+                                frames: currentFramesData,
+                                video_path: convertData.video_url
+                            })
+                        });
+                        const saveData = await saveResponse.json();
+                        if (!saveData.success) {
+                            throw new Error(saveData.error || 'Failed to save to DB');
+                        }
+                        
+                        // Output success logs for each processed language
+                        if (saveData.processed && Array.isArray(saveData.processed)) {
+                            saveData.processed.forEach(p => {
+                                if (p.status === 'skipped') {
+                                    logConsole(`⚠️ [SKIP] "${p.label}" already exists in ${p.signLanguage}. Skipped.`);
+                                } else {
+                                    logConsole(`✅ SUCCESS [${p.signLanguage}]: "${p.label}" saved → ${p.file}`);
+                                }
+                            });
+                        } else {
+                            logConsole(`✅ SUCCESS: ${item.label} saved (${currentFramesData.length} frames)`);
+                        }
+                        resolve();
+                    } catch (err) {
+                        reject(err);
+                    }
+                };
+
+                tempVideo.onerror = () => {
+                    reject(new Error("Failed to load converted video file."));
+                };
+            });
+        }
+
+
+
+        function drawSkeleton(landmarks) {
+            canvasCtx.fillStyle = '#ff0055';
+            canvasCtx.strokeStyle = '#38bdf8';
+            canvasCtx.lineWidth = 2.5;
+
+            // Draw connecting lines
+            const connections = [
+                [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+                [0, 5], [5, 6], [6, 7], [7, 8], // Index
+                [5, 9], [9, 10], [10, 11], [11, 12], // Middle
+                [9, 13], [13, 14], [14, 15], [15, 16], // Ring
+                [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+                [5, 9], [9, 13], [13, 17] // Palm base connection
+            ];
+
+            connections.forEach(([start, end]) => {
+                const ptStart = landmarks[start];
+                const ptEnd = landmarks[end];
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(ptStart.x * canvasElement.width, ptStart.y * canvasElement.height);
+                canvasCtx.lineTo(ptEnd.x * canvasElement.width, ptEnd.y * canvasElement.height);
+                canvasCtx.stroke();
+            });
+
+            // Draw landmark dots
+            landmarks.forEach((pt) => {
+                canvasCtx.beginPath();
+                canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 4, 0, 2 * Math.PI);
+                canvasCtx.fill();
+            });
+        }
+    </script>
+</body>
+</html>

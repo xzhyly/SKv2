@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports | Sining Kamay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#f0f2f5;
+      --bg-soft:#f8fafc;
+      --surface:#ffffff;
+      --surface2:#ffffff;
+      --surface3:#f1f5f9;
+      --border:#e2e8f0;
+      --border-md:#cbd5e0;
+      --primary:#1a2540;
+      --primary-deep:#0f1a2e;
+      --gold:#f59e0b;
+      --green:#22c55e;
+      --text:#1e293b;
+      --text-body:#334e68;
+      --muted:#94a3b8;
+      --radius:8px;
+      --radius-panel:14px;
+      --shadow:0 8px 32px rgba(0,0,0,.1);
+      
+      /* PIN overlay colors */
+      --navy:#1a2540;
+      --navy2:#0f1a2e;
+      --white:#ffffff;
+      --orange:#f97316;
+      --border2:#cbd5e0;
+    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden}
+    body{margin:0;padding:0;font-family:'Inter','Nunito','Segoe UI',sans-serif;background:radial-gradient(circle at 10% 10%,rgba(26,37,64,.12),transparent 56%),radial-gradient(circle at 90% 90%,rgba(249,115,22,.15),transparent 54%),var(--bg);color:var(--text-body)}
+    button,a{-webkit-tap-highlight-color:transparent}
+    button:focus-visible,a:focus-visible{outline:3px solid rgba(249,115,22,.8);outline-offset:2px}
+    .page{display:none;width:100vw;height:100vh;grid-template-rows:auto auto auto minmax(0,1fr);background:rgba(255,255,255,.98);border:none;border-radius:0;box-shadow:none;overflow:hidden}
+    .page.active{display:grid}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--surface)}
+    h1{margin:0;font-size:28px;line-height:1;color:var(--text);letter-spacing:.01em}
+    header div div{margin-top:5px;color:var(--muted);font-size:13px;font-weight:650}
+    .header-actions{display:flex;gap:10px;align-items:center;flex-shrink:0}
+    .back,.print-btn,.tab{min-height:48px;border-radius:var(--radius);display:inline-flex;align-items:center;justify-content:center;font-weight:850;text-decoration:none;cursor:pointer;transition:background .18s,border-color .18s,transform .18s,filter .18s}
+    .back{padding:0 16px;border:1px solid var(--border-md);background:var(--surface2);color:var(--text-body)}
+    .print-btn{padding:0 16px;border:0;background:var(--orange);color:#fff;box-shadow:0 8px 20px rgba(249,115,22,.18)}
+    .back:hover,.tab:hover{border-color:var(--orange);background:rgba(249,115,22,.08);color:var(--navy)}
+    .print-btn:hover{background:#ea6a0a;transform:translateY(-1px)}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px 24px;background:var(--surface)}
+    .metric{min-height:86px;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;background:var(--surface2);box-shadow:0 8px 18px rgba(16,24,40,.08)}
+    .metric span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:900}
+    .metric strong{display:block;font-size:36px;line-height:1;margin-top:8px;color:var(--orange);font-weight:900}
+    .tabs{display:flex;gap:8px;padding:0 24px 12px;background:var(--surface)}
+    .tab{flex:1;border:1px solid var(--border-md);background:var(--surface2);color:var(--text-body);font-size:14px}
+    .tab.active{background:linear-gradient(135deg,var(--primary),var(--primary-deep));color:#fff;border-color:transparent}
+    section{display:none;min-height:0;padding:0 24px 24px;overflow:hidden}
+    section.active{display:block}
+    .table-wrap{height:100%;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+    table{width:100%;border-collapse:collapse;table-layout:fixed}
+    th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);font-size:12px;line-height:1.25;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    th{position:sticky;top:0;z-index:10;height:38px;background:var(--surface2);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:900;border-bottom:1.5px solid var(--border)}
+    tr:nth-child(even) td{background:rgba(26,37,64,.035)}
+    tr:last-child td{border-bottom:none}
+    td{color:var(--text-body)}
+    .empty{padding:28px;text-align:center;color:var(--muted);font-weight:800}
+    .pill{display:inline-flex;align-items:center;max-width:100%;border-radius:var(--radius);padding:3px 8px;background:rgba(0,119,182,.08);border:1px solid rgba(0,119,182,.2);color:var(--primary);font-weight:900;font-size:11px;overflow:hidden;text-overflow:ellipsis}
+    #tab-esl th:nth-child(1),#tab-fsl th:nth-child(1),#tab-translations th:nth-child(1){width:48px}
+    #tab-esl th:nth-child(2),#tab-fsl th:nth-child(2),#tab-translations th:nth-child(2){width:112px}
+    #tab-esl th:nth-child(6),#tab-fsl th:nth-child(6),#tab-translations th:nth-child(7){width:136px}
+    #tab-translations th:nth-child(5),#tab-translations th:nth-child(6){width:92px}
+    @media(max-width:760px){body{padding:10px}.page{height:calc(100vh - 20px)}header{padding:12px;gap:10px}.summary{padding:10px 12px;gap:8px}.metric{padding:10px;min-height:74px}.metric strong{font-size:28px}.tabs{padding:0 12px 10px}.tab{font-size:12px}section{padding:0 12px 12px}th,td{padding:7px 8px;font-size:11px}}
+    @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
+    body.printing section{display:block!important}
+    @media print{
+      body{background:#fff;color:#000;padding:0}
+      .page{display:block!important;width:100%;height:auto!important;margin:0;box-shadow:none;border-radius:0;overflow:visible!important}
+      header{background:#fff;padding:0 0 14px}
+      .back,.print-btn,.tabs{display:none!important}
+      .summary{padding:14px 0;grid-template-columns:repeat(3,1fr)}
+      .metric{background:#fff;border:1px solid #999}
+      section,section.active{display:block!important;padding:0 0 18px;page-break-inside:avoid}
+      section::before{display:block;margin:18px 0 8px;font-size:18px;font-weight:800;color:#000}
+      #tab-esl::before{content:'ESL Signs'}
+      #tab-fsl::before{content:'FSL Signs'}
+      #tab-translations::before{content:'Translations'}
+      .table-wrap{border:1px solid #999;overflow:visible}
+      table{min-width:0;font-size:11px}
+      th{background:#eee!important;color:#000}
+      th,td{padding:7px;border-color:#bbb}
+      .pill{background:#fff;border:1px solid #aaa;color:#000}
+    }
+
+    /* ── PIN Password Screen ── */
+    .pin-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: var(--navy2);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 12000;
+      padding: 20px;
+    }
+    .pin-screen.active {
+      display: flex;
+    }
+    .pin-card {
+      background: var(--white);
+      border-radius: 24px;
+      padding: 30px 24px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 16px;
+    }
+    .pin-card.shake {
+      animation: shake 0.4s ease-in-out;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+    .pin-badge {
+      font-size: 32px;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(249, 115, 22, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pin-card h2 {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--navy);
+      margin: 0;
+    }
+    .pin-card p {
+      font-size: 13px;
+      color: var(--text-body);
+      line-height: 1.4;
+      margin: 0;
+    }
+    .pin-dots {
+      display: flex;
+      gap: 16px;
+      margin: 10px 0;
+    }
+    .pin-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--border2);
+      transition: all 0.15s;
+    }
+    .pin-dot.active {
+      background: var(--orange);
+      border-color: var(--orange);
+      transform: scale(1.15);
+      box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+    }
+    .pin-pad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .pin-key {
+      height: 54px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--navy);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.1s, transform 0.05s;
+    }
+    .pin-key:active {
+      background: #e2e8f0;
+      transform: scale(0.95);
+    }
+    .pin-key.ctrl {
+      font-size: 13px;
+      font-weight: 800;
+      background: #f1f5f9;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .pin-back-btn {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      transition: color 0.15s;
+      margin-top: 10px;
+      text-decoration: none;
+    }
+    .pin-back-btn:hover {
+      color: var(--orange);
+    }
+
+    #sk-toast{
+      position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+      background:var(--navy);color:#fff;padding:8px 18px;border-radius:8px;
+      font-size:12px;font-weight:700;z-index:99999;box-shadow:0 8px 24px rgba(0,0,0,.2);
+      opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap;
+    }
+
+    /* ── Asset Preview Modal ── */
+    .asset-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 26, 46, 0.85); /* Semi-transparent navy */
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 13000;
+      padding: 20px;
+    }
+    .asset-modal.active {
+      display: flex;
+    }
+    .asset-modal-card {
+      background: var(--white);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 600px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .asset-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .asset-modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: .01em;
+    }
+    .asset-modal-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .asset-modal-close-btn:hover {
+      background: rgba(0,0,0,0.05);
+      color: var(--text);
+    }
+    .asset-modal-body {
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #0d1520; /* Dark background to pop the video/image */
+      min-height: 300px;
+      max-height: 60vh;
+      overflow: hidden;
+    }
+    #asset-media-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #asset-media-container video,
+    #asset-media-container img {
+      max-width: 100%;
+      max-height: 50vh;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .asset-modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+      display: flex;
+      justify-content: flex-end;
+    }
+    .asset-back-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 20px;
+      border: 1px solid var(--border-md);
+      background: var(--white);
+      color: var(--text-body);
+      border-radius: var(--radius);
+      font-weight: 850;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background .18s, border-color .18s, transform .18s;
+    }
+    .asset-back-btn:hover {
+      border-color: var(--orange);
+      background: rgba(249, 115, 22, 0.08);
+      color: var(--navy);
+    }
+  </style>
+</head>
+<body>
+
+<!-- PIN Password Entry Screen -->
+<div id="pin-screen" class="pin-screen active">
+  <div class="pin-card">
+    <div class="pin-badge">🔐</div>
+    <h2>Admin Access Required</h2>
+    <p>Please enter the PIN code to access the reports dashboard.</p>
+    <div class="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+    <div class="pin-pad">
+      <button type="button" class="pin-key" onclick="trPressPin('1')">1</button>
+      <button type="button" class="pin-key" onclick="trPressPin('2')">2</button>
+      <button type="button" class="pin-key" onclick="trPressPin('3')">3</button>
+      <button type="button" class="pin-key" onclick="trPressPin('4')">4</button>
+      <button type="button" class="pin-key" onclick="trPressPin('5')">5</button>
+      <button type="button" class="pin-key" onclick="trPressPin('6')">6</button>
+      <button type="button" class="pin-key" onclick="trPressPin('7')">7</button>
+      <button type="button" class="pin-key" onclick="trPressPin('8')">8</button>
+      <button type="button" class="pin-key" onclick="trPressPin('9')">9</button>
+      <button type="button" class="pin-key ctrl" onclick="trClearPin()">Clear</button>
+      <button type="button" class="pin-key" onclick="trPressPin('0')">0</button>
+      <button type="button" class="pin-key ctrl" onclick="trDeletePin()">⌫</button>
+    </div>
+    <a href="index.html" class="pin-back-btn">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div id="sk-toast" role="status" aria-live="polite"></div>
+
+  <main class="page">
+    <header>
+      <div>
+        <h1>Reports</h1>
+        <div>ESL signs, FSL signs, and translation history from the database.</div>
+      </div>
+      <div class="header-actions">
+        <button class="print-btn" type="button" onclick="printReport()">Print / Save PDF</button>
+        <a class="back" href="index.html">Dashboard</a>
+      </div>
+    </header>
+
+    <div class="summary">
+      <div class="metric"><span>ESL Signs</span><strong id="eslCount">0</strong></div>
+      <div class="metric"><span>FSL Signs</span><strong id="fslCount">0</strong></div>
+      <div class="metric"><span>Translations</span><strong id="translationCount">0</strong></div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Report categories">
+      <button class="tab active" type="button" data-tab="esl" role="tab" aria-selected="true" aria-controls="tab-esl" id="tab-btn-esl">ESL Signs</button>
+      <button class="tab" type="button" data-tab="fsl" role="tab" aria-selected="false" aria-controls="tab-fsl" id="tab-btn-fsl">FSL Signs</button>
+      <button class="tab" type="button" data-tab="translations" role="tab" aria-selected="false" aria-controls="tab-translations" id="tab-btn-translations">Translations</button>
+    </div>
+
+    <section id="tab-esl" class="active" role="tabpanel" aria-labelledby="tab-btn-esl">
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Key</th><th>Label</th><th>Text</th><th>Asset</th><th>Created</th></tr></thead><tbody id="eslRows"></tbody></table></div>
+    </section>
+    <section id="tab-fsl" role="tabpanel" aria-labelledby="tab-btn-fsl" hidden>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Key</th><th>Label</th><th>Text</th><th>Asset</th><th>Created</th></tr></thead><tbody id="fslRows"></tbody></table></div>
+    </section>
+    <section id="tab-translations" role="tabpanel" aria-labelledby="tab-btn-translations" hidden>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Source</th><th>Sign</th><th>Text</th><th>Language</th><th>Confidence</th><th>Created</th></tr></thead><tbody id="translationRows"></tbody></table></div>
+    </section>
+  </main>
+
+  <!-- Asset Preview Modal -->
+  <div id="asset-modal" class="asset-modal">
+    <div class="asset-modal-card">
+      <div class="asset-modal-header">
+        <h2 id="asset-modal-title">Sign Asset Preview</h2>
+        <button type="button" class="asset-modal-close-btn" onclick="closeAssetModal()">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="asset-modal-body">
+        <div id="asset-media-container"></div>
+      </div>
+      <div class="asset-modal-footer">
+        <button type="button" class="asset-back-btn" onclick="closeAssetModal()">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+          </svg>
+          Back to Reports
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── PIN Password Logic ──
+    const CORRECT_PIN = '2026';
+    let pinInput = '';
+
+    function trPressPin(digit) {
+      if (pinInput.length >= 4) return;
+      pinInput += digit;
+      updatePinDots();
+      if (pinInput.length === 4) {
+        setTimeout(trVerifyPin, 120);
+      }
+    }
+
+    // Delete single digit
+    function trDeletePin() {
+      pinInput = pinInput.slice(0, -1);
+      updatePinDots();
+    }
+
+    // Clear entire pin input
+    function trClearPin() {
+      pinInput = '';
+      updatePinDots();
+    }
+
+    // Update dots representation
+    function updatePinDots() {
+      const dots = document.querySelectorAll('.pin-dot');
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('active', i < pinInput.length);
+      });
+    }
+
+    function showToast(msg, ms = 3000) {
+      const t = document.getElementById('sk-toast');
+      if (!t) return;
+      t.textContent = msg;
+      t.style.opacity = '1';
+      t.style.pointerEvents = 'auto';
+      setTimeout(() => {
+        t.style.opacity = '0';
+        t.style.pointerEvents = 'none';
+      }, ms);
+    }
+
+    function trVerifyPin() {
+      if (pinInput === CORRECT_PIN) {
+        const pinScreen = document.getElementById('pin-screen');
+        const reportsUI = document.querySelector('.page');
+        if (pinScreen) pinScreen.classList.remove('active');
+        if (reportsUI) reportsUI.classList.add('active');
+        pinInput = '';
+        updatePinDots();
+      } else {
+        const card = document.querySelector('.pin-card');
+        if (card) card.classList.add('shake');
+        showToast('❌ Incorrect PIN. Try again.');
+        setTimeout(() => {
+          if (card) card.classList.remove('shake');
+          pinInput = '';
+          updatePinDots();
+        }, 450);
+      }
+    }
+
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+
+    function viewAsset(path, label) {
+      const modal = document.getElementById('asset-modal');
+      const title = document.getElementById('asset-modal-title');
+      const container = document.getElementById('asset-media-container');
+      
+      title.textContent = label ? `Asset Preview: ${label}` : 'Sign Asset Preview';
+      container.innerHTML = '';
+      
+      const fileExt = path.split('.').pop().toLowerCase();
+      if (['mp4', 'webm', 'ogg'].includes(fileExt)) {
+        const video = document.createElement('video');
+        video.src = path;
+        video.controls = true;
+        video.autoplay = true;
+        video.loop = true;
+        video.playsInline = true;
+        container.appendChild(video);
+      } else {
+        const img = document.createElement('img');
+        img.src = path;
+        img.alt = label || 'Sign Asset';
+        container.appendChild(img);
+      }
+      
+      modal.classList.add('active');
+    }
+    
+    function closeAssetModal() {
+      const modal = document.getElementById('asset-modal');
+      const container = document.getElementById('asset-media-container');
+      
+      const video = container.querySelector('video');
+      if (video) {
+        video.pause();
+        video.src = '';
+        video.load();
+      }
+      
+      container.innerHTML = '';
+      modal.classList.remove('active');
+    }
+
+    // Close modal on clicking outside the card
+    window.addEventListener('click', (e) => {
+      const modal = document.getElementById('asset-modal');
+      if (e.target === modal) {
+        closeAssetModal();
+      }
+    });
+
+    function renderSigns(target, rows) {
+      target.innerHTML = rows.length ? rows.map(row => `
+        <tr>
+          <td>${esc(row.id)}</td>
+          <td><span class="pill">${esc(row.sign_key)}</span></td>
+          <td>${esc(row.sign_label)}</td>
+          <td>${esc(row.text_value)}</td>
+          <td>${row.asset_path ? `<button type="button" onclick="viewAsset('${esc(row.asset_path)}', '${esc(row.sign_label)}')" class="pill" style="background:rgba(249,115,22,0.08); border-color:rgba(249,115,22,0.2); color:var(--orange); cursor:pointer; font-family:inherit; border:1px solid rgba(249,115,22,0.2);">View Asset</button>` : '-'}</td>
+          <td>${esc(row.created_at)}</td>
+        </tr>
+      `).join('') : '<tr><td class="empty" colspan="6">No records found.</td></tr>';
+    }
+
+    function renderTranslations(target, rows) {
+      target.innerHTML = rows.length ? rows.map(row => `
+        <tr>
+          <td>${esc(row.id)}</td>
+          <td><span class="pill">${esc(row.source_type)}</span></td>
+          <td>${esc(row.sign_label || '-')}</td>
+          <td>${esc(row.translated_text || '-')}</td>
+          <td>${esc(row.language || '-')}</td>
+          <td>${row.confidence === null || row.confidence === undefined ? '-' : esc(Math.round(Number(row.confidence) * 100) + '%')}</td>
+          <td>${esc(row.created_at)}</td>
+        </tr>
+      `).join('') : '<tr><td class="empty" colspan="7">No translation records found.</td></tr>';
+    }
+
+    document.querySelectorAll('.tab').forEach(button => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(tab => {
+          tab.classList.remove('active');
+          tab.setAttribute('aria-selected', 'false');
+        });
+        document.querySelectorAll('section').forEach(section => {
+          section.classList.remove('active');
+          section.hidden = true;
+        });
+        button.classList.add('active');
+        button.setAttribute('aria-selected', 'true');
+        const panel = document.getElementById(`tab-${button.dataset.tab}`);
+        panel.classList.add('active');
+        panel.hidden = false;
+      });
+    });
+
+    function printReport() {
+      document.body.classList.add('printing');
+      setTimeout(() => window.print(), 50);
+    }
+
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('printing');
+    });
+
+    const REPORTS_API = (location.protocol === "file:" || (location.port && location.port !== "80" && location.port !== "443"))
+      ? 'http://localhost/Sining_kamay/php/api/reports.php'
+      : 'php/api/reports.php';
+
+    fetch(REPORTS_API)
+      .then(response => response.json())
+      .then(json => {
+        if (!json.success) throw new Error(json.error || 'Report load failed');
+        document.getElementById('eslCount').textContent = json.summary.esl_signs;
+        document.getElementById('fslCount').textContent = json.summary.fsl_signs;
+        document.getElementById('translationCount').textContent = json.summary.translations;
+        renderSigns(document.getElementById('eslRows'), json.data.esl_signs);
+        renderSigns(document.getElementById('fslRows'), json.data.fsl_signs);
+        renderTranslations(document.getElementById('translationRows'), json.data.translations);
+      })
+      .catch(error => {
+        document.querySelector('.page').insertAdjacentHTML('beforeend', `<div class="empty">${esc(error.message)}</div>`);
+      });
+  </script>
+</body>
+</html>

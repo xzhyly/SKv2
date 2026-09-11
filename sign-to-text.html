@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign to Text Translator ✿ Sining Kamay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/sign-to-text.css">
+  <script src="js/lib/tf.min.js"></script>
+  <script src="js/lib/mediapipe/hands.js"></script>
+  <script src="js/db-api.js"></script>
+  <script src="js/gesture-data.js"></script>
+  <script src="js/camera-helper.js"></script>
+  <script src="js/speech-synthesis.js"></script>
+  <script src="js/db-local.js"></script>
+</head>
+<body>
+
+<div id="tl-page" class="active">
+  <header class="tl-topbar">
+    <a href="index.html" class="tl-back">Back</a>
+    <div class="tl-topbar-title"><div class="tl-title-dot" id="tlDbStatusDot" title="Checking database..."></div>SIGN TO TEXT</div>
+    <a href="index.html?screen=voice" class="tl-mode-btn">Translate Text to Sign</a>
+  </header>
+
+  <div class="tl-body">
+    <!-- Onboarding Instructions Container -->
+    <div id="tl-state-instr" class="tl-instr-container">
+      <div class="tl-instr-card">
+        <div class="tl-step-badge">Guide</div>
+        <h1 class="tl-instr-title">Sign to Text Guide</h1>
+        <p class="tl-instr-desc">Maligayang pagdating sa real-time sign translator! Narito ang dalawang paraan upang magsalin:</p>
+        <ul class="tl-instr-list">
+          <li class="tl-instr-item">
+            <span class="tl-instr-num">1</span>
+            <div class="tl-instr-item-content">
+              <strong class="tl-instr-item-title">Simulan ang Pagsasalin (Start):</strong>
+              <div class="tl-instr-item-sub">• <em>Awtomatiko:</em> Senyasan ang camera ng <strong>"start"</strong> para simulan ang 3s countdown.</div>
+              <div class="tl-instr-item-sub">• <em>Manwal:</em> O i-click ang <strong>"TRANSLATE"</strong> button.</div>
+            </div>
+          </li>
+          <li class="tl-instr-item">
+            <span class="tl-instr-num">2</span>
+            <div class="tl-instr-item-content">
+              <strong class="tl-instr-item-title">I-senyas ang mga Salita (Sign Words):</strong>
+              <div class="tl-instr-item-sub">Gawin ang iyong mga custom gestures (hal. hello, thank you) nang may maikling sandali (pause) upang maipon ang mga salita.</div>
+            </div>
+          </li>
+          <li class="tl-instr-item">
+            <span class="tl-instr-num">3</span>
+            <div class="tl-instr-item-content">
+              <strong class="tl-instr-item-title">I-stop at Basahin (Stop):</strong>
+              <div class="tl-instr-item-sub">• <em>Awtomatiko:</em> Senyasan ang <strong>"stop"</strong> para tapusin, pakinggan, at i-save ang pangungusap.</div>
+              <div class="tl-instr-item-sub">• <em>Manwal:</em> O i-click ang <strong>"STOP & TRANSLATE"</strong> button.</div>
+            </div>
+          </li>
+        </ul>
+        <button type="button" class="tl-translate-btn" style="width:100%; margin-top:10px;" onclick="tlStartTranslationKiosk()">Start Translating →</button>
+      </div>
+    </div>
+ 
+    <div id="tl-state-cam" style="display:none">
+      <div class="tl-cam-col">
+        <div class="tl-camera-frame" id="tlCamFrame1">
+          <video id="tlVideo1" autoplay playsinline muted></video>
+          <canvas id="tlCanvas1" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; transform:scaleX(-1);"></canvas>
+          <div class="tl-cam-placeholder" id="tlPlaceholder1"><div class="tl-cam-dot"></div><p>Camera active</p></div>
+          <div class="tl-live-badge"><div class="tl-live-dot"></div>LIVE</div>
+          
+          <!-- AI Loading Overlay -->
+          <div id="tlAiLoadingOverlay1" style="position:absolute; inset:0; background:rgba(26,37,64,0.95); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; z-index:10; color:#fff; border-radius:12px;">
+            <div class="tl-live-dot" style="width:16px; height:16px; background:#f59e0b; box-shadow:0 0 12px #f59e0b;"></div>
+            <p style="font-size:14px; font-weight:800; letter-spacing:0.05em; margin:0;">AI is getting ready...</p>
+            <p style="font-size:11px; color:rgba(255,255,255,0.6); margin:0;">Please wait a moment</p>
+          </div>
+
+          <div class="tl-pred-overlay" id="tlPredOverlay1">
+            <div class="status-dot searching" id="tlStatusDot1"></div>
+            <div class="tl-pred-emoji" id="tlPredEmoji1">—</div>
+            <div class="tl-pred-label" id="tlPredLabel1">Show your sign</div>
+          </div>
+        </div>
+        <div class="tr-fgrp" style="margin: 8px 0; width: 100%;">
+          <div class="tr-lang-toggle" style="display: grid; grid-template-columns: 1.2fr 1.2fr 1fr; gap: 6px; width: 100%;">
+            <div class="tr-lang-chip active" id="tlLangEn1" onclick="tlSetLang('en')">🇺🇸 ESL Mode</div>
+            <div class="tr-lang-chip" id="tlLangFil1" onclick="tlSetLang('fil')">🇵🇭 FSL Mode</div>
+            <button type="button" class="tr-lang-chip tr-skeleton-btn on" id="tlSkeletonToggle" onclick="tlToggleSkeleton()">🟢 Hand Guide</button>
+          </div>
+        </div>
+        <button type="button" class="tl-translate-btn" id="tlTranslateBtn1" onclick="tlHandleTranslate()" disabled>AI GETTING READY...</button>
+      </div>
+    </div>
+
+    <div id="tl-state-result">
+      <div class="tl-result-col">
+        <div class="tl-output-label">TRANSLATION OUTPUT</div>
+        <div class="tl-output-box" id="tlOutputBox"><span class="tl-out-empty">Translation will appear here…</span></div>
+        <!-- Speaker Volume Control Slider -->
+        <div class="tl-volume-container" style="margin: 12px 0 8px 0; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px;" id="tlVolumeIcon">🔊</span>
+          <input type="range" id="tlVolumeSlider" min="0" max="100" value="100" style="flex: 1; accent-color: var(--orange); cursor: pointer; height: 5px;" oninput="tlUpdateVolume(this.value)">
+          <span id="tlVolumeVal" style="font-size: 12px; font-weight: 800; color: var(--navy); min-width: 38px; text-align: right;">100%</span>
+        </div>
+        <div class="tl-action-grid">
+          <button type="button" class="tl-act-btn" id="tlSpeakBtn" onclick="tlSpeakAll()">Speak</button>
+          <button type="button" class="tl-act-btn" onclick="tlCopyOutput()">Copy</button>
+          <button type="button" class="tl-act-btn danger" onclick="tlClearOutput()">Clear</button>
+          <button type="button" class="tl-act-btn" onclick="tlSaveLog()">Save Log</button>
+        </div>
+        <button type="button" class="tl-translate-btn" style="margin-top: 15px;" onclick="tlTranslateAgain()">Translate Again</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="sk-toast" role="status" aria-live="polite"></div>
+
+<script src="js/sign-to-text-ui.js"></script>
+</body>
+</html>

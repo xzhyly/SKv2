@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Train Gestures ✿ Sining Kamay</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.5">
+  <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
+  <script src="js/lib/tf.min.js"></script>
+  <script src="js/lib/mediapipe/hands.js"></script>
+  <script src="js/db-api.js"></script>
+  <script src="js/gesture-data.js"></script>
+  <script src="js/camera-helper.js"></script>
+  <script src="js/speech-synthesis.js"></script>
+  <script src="js/db-local.js"></script>
+  <style>
+    /* Step 2 only: data list scrolls, buttons stay fixed at bottom */
+    #trContentWrap.step-2-active #leftStep2 {
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      height: 100% !important;
+    }
+    #step2SummaryCard {
+      flex: 1 !important;
+      min-height: 0 !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+    }
+    #leftStep2 > *:not(#step2SummaryCard) {
+      flex-shrink: 0 !important;
+    }
+  </style>
+</head>
+<body>
+
+<!-- PIN Password Entry Screen -->
+<div id="pin-screen" class="pin-screen active">
+  <div class="pin-card">
+    <div class="pin-badge">🔐</div>
+    <h2>Admin Access Required</h2>
+    <p>Please enter the PIN code to access the gesture training system.</p>
+    <div class="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+    <div class="pin-pad">
+      <button type="button" class="pin-key" onclick="trPressPin('1')">1</button>
+      <button type="button" class="pin-key" onclick="trPressPin('2')">2</button>
+      <button type="button" class="pin-key" onclick="trPressPin('3')">3</button>
+      <button type="button" class="pin-key" onclick="trPressPin('4')">4</button>
+      <button type="button" class="pin-key" onclick="trPressPin('5')">5</button>
+      <button type="button" class="pin-key" onclick="trPressPin('6')">6</button>
+      <button type="button" class="pin-key" onclick="trPressPin('7')">7</button>
+      <button type="button" class="pin-key" onclick="trPressPin('8')">8</button>
+      <button type="button" class="pin-key" onclick="trPressPin('9')">9</button>
+      <button type="button" class="pin-key ctrl" onclick="trClearPin()">Clear</button>
+      <button type="button" class="pin-key" onclick="trPressPin('0')">0</button>
+      <button type="button" class="pin-key ctrl" onclick="trDeletePin()">⌫</button>
+    </div>
+    <a href="index.html" class="pin-back-btn">← Back to Dashboard</a>
+  </div>
+</div>
+
+<div id="training-ui">
+  <!-- Nav -->
+  <nav class="tr-nav">
+    <a href="index.html" class="tr-back">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>
+      Dashboard
+    </a>
+    <div class="tr-pills">
+      <button class="tr-pill active" id="pill1" onclick="trClickPill(1)">
+        <span class="tr-pill-num">1</span><span class="tr-pill-lbl">Add Data</span>
+      </button>
+      <span class="tr-pill-sep">›</span>
+      <button class="tr-pill" id="pill2" onclick="trClickPill(2)">
+        <span class="tr-pill-num">2</span><span class="tr-pill-lbl">Train AI</span>
+      </button>
+      <span class="tr-pill-sep">›</span>
+      <button class="tr-pill" id="pill3" onclick="trClickPill(3)">
+        <span class="tr-pill-num">3</span><span class="tr-pill-lbl">Predict</span>
+      </button>
+      <span class="tr-pill-sep">›</span>
+      <button class="tr-pill" id="pill4" onclick="trClickPill(4)">
+        <span class="tr-pill-num">4</span><span class="tr-pill-lbl">Translate</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Instruction Screens -->
+  <div id="trInstrWrap">
+    <div id="trInstr1" class="tr-instr-card">
+      <div class="tr-step-badge">STEP 1 OF 4</div>
+      <h1>Step 1: Name and Capture / Import</h1>
+      <p class="tr-instr-desc">Enter a gesture name, choose the sign set, then capture hand samples using the camera or import a pre-recorded video clip.</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Type a gesture name, or leave it blank to auto-label from your video's filename.</li>
+        <li><span class="tr-bullet-num">2</span>Record live using the camera, OR click **Upload & Process Video** to import a video.</li>
+        <li><span class="tr-bullet-num">3</span>Review the preview (use zoom/panning if needed), save the sample, then continue.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(1)">Next →</button>
+    </div>
+
+    <div id="trInstr2" class="tr-instr-card" style="display:none">
+      <div class="tr-step-badge">STEP 2 OF 4</div>
+      <h1>Step 2: Train Gesture</h1>
+      <p class="tr-instr-desc">Review the captured samples, then start training. Keep this screen open until training is complete.</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Check that you have enough start and stop samples.</li>
+        <li><span class="tr-bullet-num">2</span>Press the <strong>Train Gesture</strong> button to begin.</li>
+        <li><span class="tr-bullet-num">3</span>Wait for the progress bar to finish before continuing.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(2)">Next →</button>
+    </div>
+
+    <div id="trInstr3" class="tr-instr-card" style="display:none">
+      <div class="tr-step-badge">STEP 3 OF 4</div>
+      <h1>Step 3: Predict Gesture</h1>
+      <p class="tr-instr-desc">Test the trained model live with your camera before translating. The prediction result appears in the panel.</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Enable the camera if not already active.</li>
+        <li><span class="tr-bullet-num">2</span>Perform your gesture in front of the camera.</li>
+        <li><span class="tr-bullet-num">3</span>Continue when the confidence looks stable.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(3)">Next →</button>
+    </div>
+
+    <div id="trInstr4" class="tr-instr-card" style="display:none">
+      <div class="tr-step-badge">STEP 4 OF 4</div>
+      <h1>Step 4: Translate</h1>
+      <p class="tr-instr-desc">Perform your <strong>Start</strong> gesture to add a word. <strong>Stop</strong> gesture marks a pause. Words are spoken aloud!</p>
+      <ul class="tr-instr-bullets">
+        <li><span class="tr-bullet-num">1</span>Perform the Start gesture to add a word to your translation.</li>
+        <li><span class="tr-bullet-num">2</span>Perform the Stop gesture to mark a pause.</li>
+        <li><span class="tr-bullet-num">3</span>Speak, copy, or save your translation when done.</li>
+      </ul>
+      <button class="tr-next-btn" onclick="showStepContent(4)">Start Translating →</button>
+    </div>
+  </div>
+
+  <!-- Content Screen -->
+  <div id="trContentWrap" style="display:none">
+    <!-- Top Panel: Camera -->
+    <div class="tr-right-panel">
+      <div class="tr-cam-lbl">Camera Feed</div>
+      <div class="tr-cam-frame" id="cameraFrame">
+        <!-- Countdown Overlay -->
+        <div id="countdownOverlay" class="tr-countdown-overlay">
+          <div id="countdownNumber" class="tr-countdown-number">3</div>
+        </div>
+
+        <video id="videoFeed" autoplay playsinline muted></video>
+        <div class="tr-cam-placeholder" id="cameraPlaceholder">
+          <div class="tr-cam-icon">📷</div>
+          <p>Enable the camera to start sign translation</p>
+        </div>
+        <div class="tr-corner tr-corner-tl"></div><div class="tr-corner tr-corner-tr"></div>
+        <div class="tr-corner tr-corner-bl"></div><div class="tr-corner tr-corner-br"></div>
+        <div class="tr-cam-badge" id="camBadge" role="status" aria-live="polite">
+          <div class="live-dot"></div> Camera Off
+        </div>
+        <div class="tr-cam-badge" id="camStatusBadge" style="top: 42px; right: 10px;">
+          <div class="status-dot searching" id="indicatorDot"></div> 
+          <span class="indicator-text" id="indicatorText">Searching...</span>
+        </div>
+        <div class="tr-pred-overlay" id="predictOverlay">
+          <div class="tr-pred-emoji-ov" id="predEmoji">—</div>
+          <div class="tr-pred-lbl-ov">
+            <div class="tr-pred-lbl-txt" id="predLabel">Show your sign</div>
+            <div class="tr-pred-conf-txt" id="predConf">Recognition confidence</div>
+          </div>
+          <div class="tr-pred-minibar"><div class="tr-pred-minifill" id="predFillMini" style="width:0%"></div></div>
+        </div>
+
+        <!-- Floating Prediction Result for Step 3 Full Screen (bottom-left) -->
+        <div class="tr-step3-pred" id="trStep3Pred" style="display: none;">
+          <div class="tr-s3pred-label">Prediction Result</div>
+          <div class="tr-s3pred-result" id="livePredResult">—</div>
+          <div class="tr-s3pred-bar"><div class="tr-s3pred-fill" id="confBar" style="width:0%"></div></div>
+        </div>
+      </div>
+      <div class="tr-step3-action-row" id="trStep3ActionRow">
+        <button type="button" class="tr-enable-cam" id="enableCamBtn">📷 Enable Camera</button>
+
+        <!-- Floating Actions for Step 3 Full Screen -->
+        <div class="tr-step3-nav" id="trStep3Nav" style="display: none;">
+          <button type="button" class="tr-nav-btn predict-next" onclick="trGoToStep(4)">Continue to Translate →</button>
+          <button type="button" class="tr-nav-btn predict-back" onclick="showStepInstruction(3)">← Instructions</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Panel: Controls -->
+    <div class="tr-left-panel">
+      <!-- Step 1 -->
+      <div id="leftStep1" class="tr-left-content active">
+        <!-- Capture Controls (hidden during preview) -->
+        <div id="step1CaptureControls" style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
+          <div class="tr-section-lbl">Gesture Sample Capture</div>
+          <div id="gestureDatasetCard" data-gesture-recorder>
+            <div class="tr-fgrp">
+              <label class="tr-flbl">Gesture Name</label>
+              <input id="gestureLabelInput" data-gesture-label type="text" class="tr-input" placeholder="Gesture name, e.g. hello" autocomplete="off" aria-label="Gesture name">
+            </div>
+            <div class="tr-fgrp" style="margin-top:2px">
+              <label class="tr-flbl">Sign Set</label>
+              <div class="tr-sign-toggle">
+                <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="ESL" data-gesture-language checked> ESL</label>
+                <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="FSL" data-gesture-language> FSL</label>
+              </div>
+            </div>
+            <div class="tr-cap-btns" style="margin-top:2px">
+              <button id="startGestureDataBtn" data-gesture-start class="tr-cap-btn" type="button">Start Capture</button>
+              <button id="stopGestureDataBtn" data-gesture-stop class="tr-cap-btn" type="button" disabled>Finish Capture</button>
+            </div>
+            <div class="tr-import-section" style="margin-top: 6px; border-top: 1px dashed var(--border); padding-top: 6px; width: 100%;">
+              <label class="tr-flbl">Or Import Pre-recorded Video</label>
+              <input type="file" id="importVideoInput" accept="video/mp4,video/webm" style="display: none;">
+              <button id="importVideoBtn" class="tr-ghost-btn" type="button" style="width: 100%; font-weight: 700; margin-top: 4px;">📁 Upload & Process Video</button>
+              <div id="importProgressWrap" style="display: none; margin-top: 8px;">
+                <div class="tr-lm-row" style="font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 4px;">
+                  <span>Extracting landmarks...</span>
+                  <span id="importProgressPercent">0%</span>
+                </div>
+                <div class="tr-lm-bar"><div id="importProgressBar" class="tr-lm-fill" style="width: 0%; background: var(--orange);"></div></div>
+              </div>
+            </div>
+            <div class="tr-lm-card" id="gestureDataStatus" role="status" aria-live="polite" style="margin-top:2px">
+              <div class="tr-lm-row">
+                <span>Landmark frames</span>
+                <span class="tr-lm-count" id="gestureDataFrameCount" data-gesture-frame-count>0</span>
+              </div>
+              <div class="tr-lm-bar"><div class="tr-lm-fill"></div></div>
+              <div class="tr-lm-status" id="gestureDataStatusText" data-gesture-status-text>Ready to capture hand samples</div>
+            </div>
+          </div>
+
+          <!-- Hidden container kept for data syncing -->
+          <div id="gestureDatasetTableWrap" style="display:none">
+            <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center; padding:10px;">Loading dataset...</p>
+          </div>
+
+          <!-- Dataset Trigger Button -->
+          <button type="button" id="viewDatasetBtn" onclick="trOpenDatasetModal()" class="tr-lm-card" style="margin-top:6px; cursor:pointer; width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; border:none; padding:8px 10px;">
+            <span style="font-weight:800; color:var(--navy); font-size:12px;">📁 View Active Gesture Dataset</span>
+            <span style="display:flex;align-items:center;gap:6px;">
+              <span class="tr-lm-status" id="datasetCount">0 categories</span>
+              <span style="color:var(--orange);font-weight:900;font-size:14px;">›</span>
+            </span>
+          </button>
+
+          <div id="trainDataControls"></div>
+          <div class="tr-bottom-row">
+            <button type="button" class="tr-ghost-btn" id="downloadBtn">Export Data</button>
+            <button type="button" class="tr-ghost-btn" id="loadBtn">Load Saved</button>
+          </div>
+          <button type="button" class="tr-train-btn" style="margin-top: 6px;" onclick="trClickPill(2)">Next: Train AI →</button>
+          <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(1)">← Back to Instructions</button>
+        </div>
+
+        <!-- Preview Controls (shown during preview) -->
+        <div id="step1PreviewControls" class="tr-preview-panel">
+          <div class="tr-preview-title">📹 Confirm Gesture Recording</div>
+          <div class="tr-preview-video-container">
+            <video id="capturePreviewVideo" class="tr-preview-video" autoplay loop muted playsinline></video>
+          </div>
+          <div class="tr-preview-zoom-ctrl" style="margin-top: 2px; display: flex; align-items: center; gap: 8px; width: 100%;">
+            <span style="font-size: 11px; font-weight: 700; color: var(--navy);">🔍 Zoom:</span>
+            <input type="range" id="previewZoom" min="100" max="250" value="100" style="flex: 1; height: 4px; accent-color: var(--orange); cursor: pointer;">
+            <span id="previewZoomVal" style="font-size: 11px; font-weight: 700; color: var(--muted); min-width: 32px; text-align: right;">100%</span>
+          </div>
+          <div class="tr-preview-actions">
+            <button type="button" class="tr-preview-btn save" id="savePreviewBtn">
+              ✅ Save Gesture
+            </button>
+            <button type="button" class="tr-preview-btn retry" id="retryPreviewBtn">
+              🔄 Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div id="leftStep2" class="tr-left-content" style="display:none">
+        <div class="tr-section-lbl">Train Gesture</div>
+        <!-- DYNAMIC SUMMARY CARD (Bago) -->
+        <div class="tr-summary-card" id="step2SummaryCard">
+          <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center;">No training samples loaded yet.</p>
+        </div>
+        <div class="tr-fgrp">
+          <div class="tr-epoch-row"><span>Training progress</span><span id="epochLabel">0 / 50 epochs</span></div>
+          <div class="tr-epoch-bar"><div class="tr-epoch-fill" id="epochBar" style="width:0%"></div></div>
+        </div>
+        <div class="tr-train-log" id="trainLog">Ready to train. Press Train Gesture when samples are ready.</div>
+        <button type="button" class="tr-train-btn" id="trainBtn" onclick="trainModel()">Train Gesture</button>
+        <button type="button" class="tr-continue-btn" id="step2NextBtn" style="margin-top: 6px; display: none;" onclick="trClickPill(3)">Next: Predict →</button>
+        <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(2)" style="margin-top:auto">← Back to Instructions</button>
+      </div>
+
+      <!-- Step 3 -->
+      <div id="leftStep3" class="tr-left-content" style="display:none">
+        <div class="tr-section-lbl">Live Prediction</div>
+        <div id="rightStep3">
+          <div class="tr-pred-box">
+            <div class="tr-pred-lbl">Prediction Result</div>
+            <div class="tr-pred-result" id="livePredResultAlt">—</div>
+            <div class="tr-conf-bar"><div class="tr-conf-fill" id="confBarAlt" style="width:0%"></div></div>
+          </div>
+        </div>
+        <!-- Debug Console for tracking Predict Loop state -->
+        <div id="predictDebugConsole" style="margin-top: 8px; font-family: monospace; font-size: 10px; color: #a7f3d0; background: #064e3b; padding: 8px; border-radius: 6px; border: 1px solid #047857; white-space: pre-wrap; line-height: 1.4;">[Debug Console Ready]</div>
+        <button type="button" class="tr-continue-btn" onclick="trGoToStep(4)">Continue to Translate →</button>
+        <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(3)" style="margin-top:auto">← Back to Instructions</button>
+      </div>
+
+      <!-- Step 4 -->
+      <div id="leftStep4" class="tr-left-content" style="display:none">
+        <div class="tr-section-lbl">Translation</div>
+        <div class="tr-fgrp">
+          <label class="tr-flbl">Output Language</label>
+          <div class="tr-lang-toggle">
+            <div class="tr-lang-chip active" id="langEn" role="button" onclick="setLang('en')">🇺🇸 English</div>
+            <div class="tr-lang-chip" id="langFil" role="button" onclick="setLang('fil')">🇵🇭 Filipino</div>
+          </div>
+        </div>
+        <div class="tr-word-card">
+          <label class="tr-flbl">✏️ Custom Sign Words</label>
+          <div class="tr-word-row">
+            <input id="wordInput" type="text" class="tr-input" style="height:34px;" placeholder="e.g. Magandang umaga">
+            <button type="button" class="tr-word-add" onclick="addCustomWord()">Add</button>
+          </div>
+          <div class="tr-word-chips" id="wordChips"></div>
+        </div>
+        <div class="tr-fgrp">
+          <label class="tr-flbl">Detected Signs</label>
+          <div class="tr-tl-hist" id="tlHistory"><span class="tl-empty">Wala pang na-detect na gestures...</span></div>
+        </div>
+        <div id="rightStep4"><div class="tr-tl-big" id="tlBigOutput"><span class="tl-big-empty">Show your start gesture to begin.</span></div></div>
+      <div class="tr-voice-grid">
+        <button type="button" class="tr-voice-btn primary" id="speakBtn" onclick="speakAll()">🔊 Speak All</button>
+        <button type="button" class="tr-voice-btn" id="speakBigBtn" onclick="speakAll()">🔊 Speak</button>
+        <button type="button" class="tr-voice-btn" onclick="clearTranslation()">🗑️ Clear</button>
+        <button type="button" class="tr-voice-btn" onclick="copyTranslation()">📋 Copy</button>
+      </div>
+      <button type="button" class="tr-train-btn" style="margin-top: 6px; background: var(--green); box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);" onclick="showSuccessScreen()">Finish & Complete</button>
+      <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(4)" style="margin-top:auto">← Back to Instructions</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="sk-toast" role="status" aria-live="polite"></div>
+
+<!-- Success Completion Screen Overlay -->
+<div id="trSuccessOverlay" class="tr-success-overlay">
+  <div class="tr-success-card">
+    <div class="tr-success-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </div>
+    <h2>Training Completed!</h2>
+    <p>You have successfully captured and trained your custom gestures. Your AI model is now ready for use!</p>
+    <div class="tr-success-actions">
+      <a href="index.html" class="tr-success-btn primary">Go to Dashboard</a>
+      <button type="button" class="tr-success-btn secondary" onclick="resetToStepOne()">Train Another Gesture / Retrain</button>
+    </div>
+  </div>
+</div>
+
+<!-- Active Gesture Dataset Modal -->
+<div id="datasetModal" class="tr-modal-overlay">
+  <div class="tr-modal-card">
+    <div class="tr-modal-header">
+      <h3>📁 Active Gesture Dataset</h3>
+      <button type="button" class="tr-modal-close" onclick="trCloseDatasetModal()">✕</button>
+    </div>
+    <div class="tr-modal-body" id="datasetModalBody">
+      <p style="font-size:11px; color:#94a3b8; text-align:center; padding:16px;">No gestures recorded yet.</p>
+    </div>
+  </div>
+</div>
+
+<script src="js/gesture-training-ui.js"></script>
+<script src="js/virtual-keyboard.js"></script>
+
+</body>
+</html>

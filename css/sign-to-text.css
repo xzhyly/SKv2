@@ -1,0 +1,338 @@
+/* css/sign-to-text.css */
+/* Styles for Standalone Sign-to-Text Translator */
+
+/* ── Reset ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#cbd5e0;border-radius:99px}
+body{font-family:'Inter','Nunito','Segoe UI',Arial,sans-serif;background:#f0f2f5}
+button,input{font:inherit;cursor:pointer}
+a{text-decoration:none}
+
+/* ── Shared vars ── */
+:root{
+  --navy:#1a2540;--navy2:#0f1a2e;--navy-light:#243060;
+  --orange:#f97316;--orange-deep:#ea6a0a;
+  --bg:#f0f2f5;--white:#ffffff;
+  --border:#e2e8f0;--border2:#cbd5e0;
+  --text:#1e293b;--text-mid:#334e68;--muted:#94a3b8;
+  --gold:#f59e0b;--green:#22c55e;
+  --shadow:0 8px 32px rgba(0,0,0,.1);
+}
+
+/* ══════════════════════════════════════════════════════
+   PORTRAIT REDESIGN: TRANSLATE-ONLY PAGE (#tl-page)
+   ══════════════════════════════════════════════════════ */
+#tl-page{
+  display:none;position:fixed;inset:0;z-index:500;
+  flex-direction:column;background:#f0f2f5;
+  font-family:'Inter','Nunito','Segoe UI',Arial,sans-serif;
+}
+#tl-page.active{display:flex}
+
+.tl-topbar{
+  height:56px;flex-shrink:0;background:var(--navy);
+  border-bottom:2.5px solid var(--orange);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;
+}
+.tl-back{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  color:#fff;border-radius:8px;padding:0 12px;height:36px;
+  font-size:13px;font-weight:700;transition:background .18s;
+}
+.tl-back:hover{background:rgba(255,255,255,.16)}
+.tl-back svg{width:14px;height:14px;flex-shrink:0}
+.tl-topbar-title{
+  display:flex;align-items:center;gap:8px;
+  color:#fff;font-size:14px;font-weight:800;letter-spacing:.06em;
+}
+.tl-title-dot{
+  display: inline-block;
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444; /* Default: red */
+  box-shadow: 0 0 6px #ef4444;
+  transition: background-color .3s, box-shadow .3s;
+}
+.tl-title-dot.connected{
+  background: #22c55e; /* Connected: green */
+  box-shadow: 0 0 10px #22c55e, 0 0 4px #22c55e;
+}
+.tl-mode-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  background:var(--orange);color:#fff;border:none;border-radius:8px;
+  padding:0 12px;height:36px;font-size:12px;font-weight:700;
+  transition:background .18s,transform .15s;
+}
+.tl-mode-btn:hover{background:var(--orange-deep);transform:translateY(-1px)}
+.tl-mode-btn svg{width:14px;height:14px;flex-shrink:0}
+
+/* Outer Body layout */
+.tl-body{
+  flex:1;display:flex;flex-direction:column;padding:12px;gap:10px;min-height:0;overflow:hidden;
+}
+
+/* CAM SCREEN (Before translation starts) */
+#tl-state-cam{
+  flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;
+}
+#tl-state-cam.hidden{display:none}
+
+/* CAM COLUMN (Contains video frame and bottom button) */
+.tl-cam-col{
+  display:flex;flex-direction:column;gap:10px;min-height:0;flex:1;
+}
+
+/* RESULT SCREEN (Stacked vertically in Portrait Mode) */
+#tl-state-result{
+  flex:1;display:none;flex-direction:column;gap:10px;min-height:0;
+}
+#tl-state-result.visible{display:flex}
+
+/* Translation output area (Takes full screen) */
+.tl-result-col{
+  flex:1;display:flex;flex-direction:column;gap:10px;min-height:0;
+}
+
+/* Premium Camera Frame with rounded borders & shadows */
+.tl-camera-frame{
+  position:relative;background:#0d1520;border-radius:14px;
+  border:2px solid rgba(249,163,22,.22);overflow:hidden;
+  flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 8px 32px rgba(0,0,0,.28);transition:border-color .25s;
+}
+.tl-camera-frame.recording{border-color:var(--orange);box-shadow:0 0 0 4px rgba(249,115,22,.18),0 8px 32px rgba(0,0,0,.28)}
+.tl-camera-frame video{width:100%;height:100%;object-fit:contain;border-radius:12px;transform:scaleX(-1);display:none}
+.tl-camera-frame video.active{display:block}
+.tl-cam-placeholder{display:flex;flex-direction:column;align-items:center;gap:8px}
+.tl-cam-dot{width:16px;height:16px;border-radius:50%;background:#e53e3e;box-shadow:0 0 12px rgba(229,62,62,.6)}
+.tl-cam-placeholder p{font-size:12px;color:rgba(255,255,255,.42);font-weight:600;text-align:center;padding:0 20px;}
+
+/* Overlay anchors */
+.tl-corner{position:absolute;width:18px;height:18px}
+.tl-corner-tl{top:12px;left:12px;border-top:2.5px solid var(--gold);border-left:2.5px solid var(--gold);border-radius:4px 0 0 0}
+.tl-corner-tr{top:12px;right:12px;border-top:2.5px solid var(--gold);border-right:2.5px solid var(--gold);border-radius:0 4px 0 0}
+.tl-corner-bl{bottom:12px;left:12px;border-bottom:2.5px solid var(--gold);border-left:2.5px solid var(--gold);border-radius:0 0 0 4px}
+.tl-corner-br{bottom:12px;right:12px;border-bottom:2.5px solid var(--gold);border-right:2.5px solid var(--gold);border-radius:0 0 4px 0}
+
+.tl-live-badge{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:6px;
+  background:rgba(0,0,0,.6);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border:1px solid rgba(249,163,22,.22);border-radius:20px;
+  padding:4px 10px;font-size:10px;font-weight:800;color:#fff;letter-spacing:.08em;
+}
+.tl-live-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);animation:tlPulse 1.2s infinite}
+@keyframes tlPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.6)}}
+
+/* Realtime Prediction Overlay HUD */
+.tl-pred-overlay{
+  position:absolute;bottom:14px;left:14px;right:14px;
+  background:rgba(15,23,42,0.8);
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  border:1.5px solid rgba(255,255,255,0.12);
+  border-radius:14px;
+  padding:10px 16px;
+  display:none;
+  align-items:center;
+  gap:12px;
+  box-shadow:0 12px 36px rgba(0,0,0,0.35);
+}
+.tl-pred-overlay.show{display:flex}
+.tl-pred-emoji{font-size:18px;font-weight:900;color:#fff;min-width:32px;text-align:center}
+.tl-pred-label{font-size:14.5px;font-weight:700;color:#fff;letter-spacing:0.02em}
+
+/* Large Action Buttons */
+.tl-translate-btn{
+  width:100%;height:60px;flex-shrink:0;
+  background:var(--orange);color:#fff;border:none;border-radius:12px;
+  font-size:17px;font-weight:900;letter-spacing:.06em;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:0 4px 18px rgba(249,115,22,.38);
+  transition:background .18s,transform .15s,box-shadow .18s;
+}
+.tl-translate-btn:hover{background:var(--orange-deep);transform:translateY(-1px)}
+.tl-translate-btn.recording{background:#ef4444;animation:recPulse 1.2s infinite}
+@keyframes recPulse{0%,100%{box-shadow:0 4px 18px rgba(239,68,68,.32)}50%{box-shadow:0 4px 28px rgba(239,68,68,.6)}}
+.tl-translate-btn svg{width:18px;height:18px;flex-shrink:0}
+
+/* Translation UI components */
+.tl-output-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.1em;color:#64748b;flex-shrink:0}
+.tl-output-box{
+  background:#fff;border-radius:14px;border:1px solid #e2e8f0;
+  padding:16px 20px;flex:1;min-height:0;
+  font-size:26px;font-weight:700;color:var(--navy);
+  line-height:1.45;overflow-y:auto;box-shadow:0 2px 12px rgba(0,0,0,.06);
+}
+.tl-output-box .tl-out-word{color:var(--navy)}
+.tl-output-box .tl-out-empty{color:#94a3b8;font-size:16px;font-weight:600;font-style:italic}
+
+/* Actions Grid (Stacked cleanly below output) */
+.tl-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex-shrink:0}
+.tl-act-btn{
+  height:58px;border-radius:10px;border:1.5px solid #e2e8f0;
+  background:#fff;color:var(--navy);font-size:15px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:background .15s,border-color .15s,transform .12s;
+}
+.tl-act-btn:hover{background:#f1f5f9;border-color:#94a3b8;transform:translateY(-1px)}
+.tl-act-btn.danger{border-color:var(--orange);color:var(--orange)}
+.tl-act-btn.danger:hover{background:rgba(249,115,22,.07)}
+.tl-act-btn.speaking{background:#22c55e;color:#fff;border-color:#22c55e}
+.tl-act-btn svg{width:16px;height:16px;flex-shrink:0}
+
+/* Language Chips for sign-to-text */
+.tr-fgrp{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.tr-lang-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tr-lang-chip{
+  height:40px;display:flex;align-items:center;justify-content:center;
+  border-radius:8px;border:1.5px solid var(--border);
+  font-size:12px;font-weight:800;cursor:pointer;
+  background:var(--white);color:var(--muted);transition:all .18s;
+}
+.tr-lang-chip.active{background:var(--navy);border-color:var(--navy);color:#fff}
+
+/* Toast styling */
+#sk-toast{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  background:var(--navy);color:#fff;padding:8px 18px;border-radius:8px;
+  font-size:12px;font-weight:700;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.2);
+  opacity:0;transition:opacity .4s;pointer-events:none;white-space:nowrap;
+}
+
+/* ── Status Dot Indicators ── */
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  transition: background-color 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+
+/* Red / Gray state kapag hindi nade-detect */
+.status-dot.searching {
+  background-color: #ef4444; /* Red */
+  box-shadow: 0 0 8px #ef4444;
+}
+
+/* Green state kapag naintindihan ang sign language */
+.status-dot.active-gets {
+  background-color: #22c55e; /* Green */
+  box-shadow: 0 0 12px #22c55e, 0 0 4px #22c55e;
+}
+
+/* Onboarding/Guide Instruction Layout - 1020x600 Redesign */
+.tl-instr-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+.tl-instr-card {
+  background: #fff;
+  border-radius: 24px;
+  padding: 36px 40px;
+  max-width: 660px;
+  width: 100%;
+  box-shadow: 0 16px 48px rgba(0,0,0,.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 20px;
+  border: 1px solid rgba(26, 37, 64, 0.05);
+}
+.tl-step-badge {
+  background: rgba(249,115,22,.1);
+  border: 1.5px solid rgba(249,115,22,.35);
+  color: var(--orange);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border-radius: 20px;
+  padding: 6px 18px;
+}
+.tl-instr-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.25;
+  margin: 0;
+}
+.tl-instr-desc {
+  font-size: 15.5px;
+  color: #4a6fa5;
+  line-height: 1.55;
+  margin: 0;
+}
+.tl-instr-list {
+  list-style: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-align: left;
+  margin: 8px 0;
+}
+.tl-instr-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  font-size: 15px;
+  color: var(--text-mid);
+  line-height: 1.5;
+}
+.tl-instr-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  font-weight: 900;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px rgba(26,37,64,0.25);
+}
+.tl-instr-item-content {
+  flex: 1;
+}
+.tl-instr-item-title {
+  font-weight: 700;
+  color: var(--navy);
+}
+.tl-instr-item-sub {
+  font-size: 13.5px;
+  color: #64748b;
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.tr-skeleton-btn {
+  padding: 0 16px;
+  border: none;
+  font-family: inherit;
+}
+.tr-skeleton-btn.on {
+  background: #10b981 !important;
+  border-color: #10b981 !important;
+  color: #fff !important;
+}
+.tr-skeleton-btn.off {
+  background: #64748b !important;
+  border-color: #64748b !important;
+  color: #fff !important;
+}
+

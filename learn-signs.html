@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Learn Signs - Sining Kamay</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Iframe takes up entire viewport */
+        #learn-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        /* Premium floating back button */
+        .kiosk-back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 9999;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 20px;
+            background: rgba(26, 37, 64, 0.85); /* Semi-transparent navy */
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 700;
+            text-decoration: none;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+
+        .kiosk-back-btn:hover {
+            background: #f97316; /* Kiosk accent orange */
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(249, 115, 22, 0.4);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        .kiosk-back-btn:active {
+            transform: translateY(0);
+        }
+
+        .kiosk-back-btn svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            stroke-width: 2.5;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Floating Back Button overlay -->
+    <a href="index.html" class="kiosk-back-btn" aria-label="Back to Sining Kamay Kiosk">
+        <svg viewBox="0 0 24 24">
+            <line x1="19" y1="12" x2="5" y2="12"></line>
+            <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        <span>Back to Kiosk</span>
+    </a>
+
+    <!-- Embedded External Netlify Site -->
+    <iframe 
+        id="learn-iframe" 
+        src="https://6878790f1e3f65fc09b5c339--startling-zabaione-53aad1.netlify.app/?fbclid=IwY2xjawRiz7pleHRuA2FlbQIxMABicmlkETFMV0RwTEFQbmV0TFlJRXZNc3J0YwZhcHBfaWQQMjIyMDM5MTc4ODIwMDg5MgABHoFWVI9g89Vvn87c-FSADujZOYWh0e36ssQQGR8eeCX-Me3aZDQsPqsa6B06_aem_oY2d5QYIX0mHhbEDF7-Orw" 
+        allow="fullscreen" 
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups">
+    </iframe>
+
+</body>
+</html>

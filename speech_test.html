@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Speech API Test</title>
+    <script src="js/vosk.js"></script>
+</head>
+<body style="background:#111;color:#fff;font-family:sans-serif;padding:40px;text-align:center;">
+<h1>Web Speech API & Vosk Test</h1>
+
+<button onclick="startTest(false)" style="padding:15px 30px;font-size:20px;cursor:pointer;background:#22c55e;color:#fff;border:none;border-radius:12px;margin:10px;">
+    🎙️ TEST SPEECH (Standard Cloud)
+</button>
+<button onclick="startTest(true)" style="padding:15px 30px;font-size:20px;cursor:pointer;background:#3b82f6;color:#fff;border:none;border-radius:12px;margin:10px;">
+    🎙️ TEST SPEECH (On-Device Local Vosk)
+</button>
+
+<div id="r" style="margin-top:30px;font-size:20px;padding:20px;background:#222;border-radius:8px;">Waiting... tap button and speak</div>
+<div id="log" style="margin-top:20px;font-size:14px;text-align:left;background:#1a1a2e;padding:16px;border-radius:8px;max-height:300px;overflow-y:auto;font-family:monospace;"></div>
+
+<script>
+function log(msg) {
+    const d = document.getElementById('log');
+    const t = new Date().toLocaleTimeString();
+    d.innerHTML += `<div>[${t}] ${msg}</div>`;
+    d.scrollTop = d.scrollHeight;
+    console.log(msg);
+}
+
+// --- VOSK OFFLINE SPEECH RECOGNITION ADAPTER ---
+class VoskSpeechRecognition {
+    constructor() {
+        this.lang = 'en-US';
+        this.interimResults = true;
+        this.continuous = false;
+        
+        this.onstart = null;
+        this.onresult = null;
+        this.onerror = null;
+        this.onend = null;
+        
+        this.model = null;
+        this.recognizer = null;
+        this.mediaStream = null;
+        this.audioContext = null;
+        this.processorNode = null;
+        this.isStarted = false;
+    }
+    
+    async initModel() {
+        if (this.model) return;
+        try {
+            log("Loading offline model...");
+            const currentPath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+            const modelUrl = window.location.origin + currentPath + '/models/vosk-model-small-en-us-0.15.tar.gz.zip';
+            this.model = await Vosk.createModel(modelUrl);
+            log("Offline model loaded!");
+        } catch (e) {
+            log("Model load failed: " + e.message);
+            if (this.onerror) this.onerror({ error: 'network', message: e.message });
+        }
+    }
+    
+    async start() {
+        if (this.isStarted) return;
+        this.isStarted = true;
+        
+        try {
+            if (!this.model) {
+                await this.initModel();
+            }
+            if (!this.model) throw new Error("Vosk model not loaded");
+            
+            // Start audio capture
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({
+                video: false,
+                audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
+            });
+            
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            
+            // Initialize KaldiRecognizer with the actual AudioContext sample rate
+            if (this.recognizer) {
+                this.recognizer = null;
+            }
+            this.recognizer = new this.model.KaldiRecognizer(this.audioContext.sampleRate);
+            
+            this.recognizer.on("result", (message) => {
+                const text = message.result.text;
+                log("Vosk Result: " + text);
+                if (this.onresult && text) {
+                    const event = {
+                        resultIndex: 0,
+                        results: [[{ transcript: text }]]
+                    };
+                    this.onresult(event);
+                }
+            });
+            
+            this.recognizer.on("partialresult", (message) => {
+                const text = message.result.partial;
+                if (this.onresult && text) {
+                    const event = {
+                        resultIndex: 0,
+                        results: [[{ transcript: text }]]
+                    };
+                    this.onresult(event);
+                }
+            });
+            
+            this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+            this.processorNode.onaudioprocess = (event) => {
+                if (this.recognizer && this.isStarted) {
+                    try {
+                        this.recognizer.acceptWaveform(event.inputBuffer);
+                    } catch (err) {
+                        console.error("acceptWaveform error:", err);
+                    }
+                }
+            };
+            
+            source.connect(this.processorNode);
+            this.processorNode.connect(this.audioContext.destination);
+            
+            if (this.onstart) this.onstart();
+            log("Vosk audio stream capture started at sample rate: " + this.audioContext.sampleRate);
+            
+        } catch (e) {
+            log("Vosk start failed: " + e.message);
+            this.isStarted = false;
+            if (this.onerror) this.onerror({ error: 'audio-capture', message: e.message });
+            if (this.onend) this.onend();
+        }
+    }
+    
+    stop() {
+        if (!this.isStarted) return;
+        this.isStarted = false;
+        log("Vosk stop called");
+        
+        try {
+            if (this.processorNode) {
+                this.processorNode.disconnect();
+                this.processorNode = null;
+            }
+            if (this.audioContext && this.audioContext.state !== 'closed') {
+                this.audioContext.close();
+                this.audioContext = null;
+            }
+            if (this.mediaStream) {
+                this.mediaStream.getTracks().forEach(track => track.stop());
+                this.mediaStream = null;
+            }
+        } catch (e) {
+            log("Vosk stop cleanup failed: " + e.message);
+        }
+        
+        if (this.onend) this.onend();
+    }
+}
+
+let activeRec = null;
+
+function startTest(useLocalVosk) {
+    if (activeRec) {
+        activeRec.stop();
+        activeRec = null;
+    }
+
+    const r = document.getElementById('r');
+    
+    // Choose SpeechRecognition engine
+    let SpeechRecognitionEngine = null;
+    if (useLocalVosk) {
+        SpeechRecognitionEngine = VoskSpeechRecognition;
+        log("Testing: Local Offline (Vosk)");
+    } else {
+        SpeechRecognitionEngine = window.SpeechRecognition || window.webkitSpeechRecognition;
+        log("Testing: Standard Cloud (Browser Native)");
+    }
+    
+    if (!SpeechRecognitionEngine) {
+        r.textContent = 'ERROR: Selected SpeechRecognition engine not available!';
+        log('Selected SpeechRecognition engine not found');
+        return;
+    }
+    
+    const rec = new SpeechRecognitionEngine();
+    activeRec = rec;
+    rec.lang = 'en-US';
+    rec.interimResults = true;
+    rec.continuous = false;
+    
+    rec.onstart = () => {
+        r.textContent = '🔴 LISTENING... speak now';
+        r.style.color = '#22c55e';
+        log('onstart fired - engine is listening');
+    };
+    
+    rec.onresult = (e) => {
+        const text = e.results[0][0].transcript;
+        r.textContent = 'RESULT: "' + text + '"';
+        r.style.color = '#60a5fa';
+        log('onresult: "' + text + '"');
+    };
+    
+    rec.onerror = (e) => {
+        r.textContent = '❌ ERROR: ' + e.error;
+        r.style.color = '#ef4444';
+        log('onerror: ' + e.error + (e.message ? ' - ' + e.message : ''));
+    };
+    
+    rec.onend = () => {
+        log('onend fired - engine stopped');
+        if (activeRec === rec) activeRec = null;
+    };
+    
+    log('Calling start()...');
+    rec.start();
+}
+</script>
+</body>
+</html>
