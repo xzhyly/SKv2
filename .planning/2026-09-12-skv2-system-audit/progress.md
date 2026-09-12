@@ -54,6 +54,22 @@ each draft to disk verbatim as it arrives and commits individually (not batched)
 DEAD_CODE.md has no subagent - orchestrator writes it directly from
 INVENTORY.md Section 6 in Pass 3.
 
+### Pass 2 completion + Pass 3 assembly (2026-09-12)
+All 5 subagents returned. UI-A, UI-B (Explore) and Vendored+ML (Explore) returned
+drafts as text for the orchestrator to write to disk; Backend and Hardware/Boot
+(general-purpose) wrote their files directly. All committed individually:
+- e3abd96..225da55 range: UI.md part 1, UI.md part 2 (initially missed its own
+  commit - caught and fixed in the Pass 3 commit), BACKEND.md, HARDWARE_BOOT.md,
+  VENDORED.md, ML.md.
+Pass 3: wrote docs/system/DEAD_CODE.md (deletion manifest only, per user's
+correction #2 - not a permanent doc), docs/system/DEBT.md (every problem found,
+ranked, Google Fonts ranked high per user's correction, dual-screen gap recorded
+as planned work per user's correction), and CLAUDE.md (36-line router). Commit
+225da55.
+Pass 4 (PDF): checked `which`/`where` for pandoc, wkhtmltopdf, weasyprint - none
+installed. Per instructions, did not install one or work around it. Stopped and
+will report this to the user.
+
 ### Key findings for the Pass 1 report to user
 - Actual core code: ~20,560 lines (html+js-excl-lib+php+css), close to but above
   the "roughly 17,000" estimate in the brief.

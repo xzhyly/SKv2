@@ -6,10 +6,10 @@ sessions do not need to re-read the full 17,000-line codebase. Audit only — no
 changes, no improvement suggestions yet.
 
 ## Next Step
-User approved Pass 1 layer split with 3 changes (see findings.md). Dispatch the
-5 Pass 2 subagents (UI-A, UI-B, Backend, Hardware/Boot, Vendored+ML) in one
-message via the dispatching-parallel-agents skill. Write each returned draft to
-disk and commit as it arrives.
+Audit complete: docs/system/ (INVENTORY, UI, BACKEND, HARDWARE_BOOT, VENDORED,
+ML, DEAD_CODE, DEBT), CLAUDE.md, all committed. No PDF tool available - not
+generated. Report final summary to user; nothing further planned unless user
+requests changes or a fresh session picks up the revision work itself.
 
 ## Current Phase
 Phase 1
@@ -31,34 +31,36 @@ Phase 1
 
 ### Phase 2: Pass 2 - Deep dive (subagents, only after user approval)
 - [x] Get user approval on layer boundaries + doc list from Pass 1 (with 3 changes, see findings.md)
-- [ ] Use dispatching-parallel-agents skill, one subagent per approved layer, single message
-- [ ] Explore agents for read/map layers, general-purpose for DB/model/command layers
-- [ ] Self-contained brief per agent: system summary, exact file list, ACCURACY rule
+- [x] Use dispatching-parallel-agents skill, one subagent per approved layer, single message
+- [x] Explore agents for read/map layers, general-purpose for DB/model/command layers
+- [x] Self-contained brief per agent: system summary, exact file list, ACCURACY rule
       quoted in full, Pass 3 section structure, "report what you could not determine",
       explicit skip-list (js/main.js, js/dist/build.js, docs/)
-- [ ] Write each returned draft to disk as it arrives; commit each
-- [ ] Split layer into two agents if too large for one (UI already split into UI-A/UI-B)
-- **Status:** in_progress
+- [x] Write each returned draft to disk as it arrives; commit each
+- [x] Split layer into two agents if too large for one (UI split into UI-A/UI-B)
+- **Status:** complete
 
 ### Phase 3: Pass 3 - Assemble
-- [ ] Merge drafts into docs/system/, renumbered per approved list
-- [ ] Each layer doc: Owns, What it does, How it works (cited), Key decisions
+- [x] Merge drafts into docs/system/ (agents already used final names, no renumbering needed)
+- [x] Each layer doc: Owns, What it does, How it works (cited), Key decisions
       (or "reason not documented in code"), Constraints (Pi 4B), Touches
-- [ ] Write CLAUDE.md at repo root (router, <60 lines, hard rules, doc table)
-- [ ] Write docs/system/DEBT.md (ranked, dead code + oversized files as own sections)
-- [ ] Commit everything
-- **Status:** pending
+- [x] Write CLAUDE.md at repo root (router, 36 lines, hard rules, doc table)
+- [x] Write docs/system/DEBT.md (ranked, dead code + oversized files as own sections)
+- [x] Write docs/system/DEAD_CODE.md (deletion manifest, not permanent doc)
+- [x] Commit everything
+- **Status:** complete
 
 ### Phase 4: PDF
-- [ ] Markdown committed first
-- [ ] Check if pandoc or another PDF tool is installed
+- [x] Markdown committed first
+- [x] Check if pandoc or another PDF tool is installed - checked pandoc, wkhtmltopdf,
+      weasyprint via `which`/`where` - none found
 - [ ] If installed: generate one PDF, cover page + TOC + one chapter per doc
-- [ ] If not installed: say so, stop, do not install/work around
-- **Status:** pending
+- [x] If not installed: say so, stop, do not install/work around - STOPPED, reported to user
+- **Status:** complete (no PDF generated - no tool available, per instructions)
 
 ### Phase 5: Delivery
 - [ ] Final report to user
-- **Status:** pending
+- **Status:** in_progress
 
 ## Decisions Made
 | Decision | Rationale |
