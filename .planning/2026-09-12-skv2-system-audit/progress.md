@@ -27,6 +27,33 @@
 |-------|------------|
 | root sining_kamay_db.sql showed 0 CREATE TABLE matches via plain grep | File is UTF-16 encoded (MariaDB dump on Windows); decoded with `iconv -f UTF-16LE -t UTF-8` before grep, confirmed same 8 tables as the other two schema sources |
 
+### Pass 2 dispatch (2026-09-12)
+Launched 5 subagents in parallel via dispatching-parallel-agents skill, each with a
+fully self-contained brief (system summary, exact owned file list, ACCURACY rule
+quoted in full, Pass 3 section structure, explicit skip-list for js/main.js,
+js/dist/build.js, docs/, instruction to report what could not be determined,
+~1200-word cap):
+- UI-A (Explore, agentId aa6fc05bcc8f6b0e0): camera-translator.html, sign-to-text.html
+  + shared JS (db-api, db-local, gesture-data, camera-helper, speech-synthesis,
+  sign-to-text-ui, virtual-keyboard) + their CSS -> docs/system/UI.md part 1
+- UI-B (Explore, agentId a69b7fec3dbf7168f): index.html, script.js, vosk.js,
+  gesture-training.html + gesture-training-ui.js, style.css, gesture-training.css,
+  bulk-importer.html, reports.html, learn-signs.html + verify-only pass on
+  camera_test/diagnostic/gesture_test/speech_test/preload.html + animate.css
+  -> docs/system/UI.md part 2
+- Backend (general-purpose, agentId acfb932bc4c159e3a): php/*, db-schema/*,
+  sining_kamay_db.sql, scratch/trigger_sync.php -> docs/system/BACKEND.md
+- Hardware/Boot (general-purpose, agentId ac499bde69b1cd549): start_kiosk.sh,
+  SKR_Kiosk.desktop, models/, pi guides + citation-only cross-refs into vosk.js/
+  camera-helper.js -> docs/system/HARDWARE_BOOT.md
+- Vendored+ML (Explore, agentId aa21959f7c85b208e): js/lib/* + grep-only pass over
+  4 UI files for inference call sites -> docs/system/VENDORED.md + docs/system/ML.md
+
+Each agent returns a draft + problems list capped ~1200 words. Orchestrator writes
+each draft to disk verbatim as it arrives and commits individually (not batched).
+DEAD_CODE.md has no subagent - orchestrator writes it directly from
+INVENTORY.md Section 6 in Pass 3.
+
 ### Key findings for the Pass 1 report to user
 - Actual core code: ~20,560 lines (html+js-excl-lib+php+css), close to but above
   the "roughly 17,000" estimate in the brief.

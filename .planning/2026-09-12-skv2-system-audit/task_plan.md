@@ -6,9 +6,10 @@ sessions do not need to re-read the full 17,000-line codebase. Audit only — no
 changes, no improvement suggestions yet.
 
 ## Next Step
-Pass 1 complete and committed. Report layer boundaries, proposed doc list, and
-surprises to the user; WAIT for approval before starting Pass 2 (dispatching
-parallel subagents).
+User approved Pass 1 layer split with 3 changes (see findings.md). Dispatch the
+5 Pass 2 subagents (UI-A, UI-B, Backend, Hardware/Boot, Vendored+ML) in one
+message via the dispatching-parallel-agents skill. Write each returned draft to
+disk and commit as it arrives.
 
 ## Current Phase
 Phase 1
@@ -29,14 +30,15 @@ Phase 1
 - **Status:** complete
 
 ### Phase 2: Pass 2 - Deep dive (subagents, only after user approval)
-- [ ] Get user approval on layer boundaries + doc list from Pass 1
+- [x] Get user approval on layer boundaries + doc list from Pass 1 (with 3 changes, see findings.md)
 - [ ] Use dispatching-parallel-agents skill, one subagent per approved layer, single message
 - [ ] Explore agents for read/map layers, general-purpose for DB/model/command layers
 - [ ] Self-contained brief per agent: system summary, exact file list, ACCURACY rule
-      quoted in full, Pass 3 section structure, "report what you could not determine"
+      quoted in full, Pass 3 section structure, "report what you could not determine",
+      explicit skip-list (js/main.js, js/dist/build.js, docs/)
 - [ ] Write each returned draft to disk as it arrives; commit each
-- [ ] Split layer into two agents if too large for one
-- **Status:** pending
+- [ ] Split layer into two agents if too large for one (UI already split into UI-A/UI-B)
+- **Status:** in_progress
 
 ### Phase 3: Pass 3 - Assemble
 - [ ] Merge drafts into docs/system/, renumbered per approved list
