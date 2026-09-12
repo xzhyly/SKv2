@@ -72,11 +72,6 @@ Kung may binago kang code sa laptop at gusto mong kopyahin sa Pi:
   scp c:\xampp\htdocs\Sining_kamay\css\gesture-training.css crystelle@192.168.68.114:/var/www/html/Sining_kamay/css/
   ```
 
-* **Para sa updated preloader (`preload.html`):**
-  ```cmd
-  scp c:\xampp\htdocs\Sining_kamay\preload.html crystelle@192.168.68.114:/var/www/html/Sining_kamay/
-  ```
-
 * **Para sa updated JavaScript logic (`gesture-data.js`):**
   ```cmd
   scp c:\xampp\htdocs\Sining_kamay\js\gesture-data.js crystelle@192.168.68.114:/var/www/html/Sining_kamay/js/
