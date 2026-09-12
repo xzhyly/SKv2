@@ -17,7 +17,12 @@ see `docs/system/DEBT.md`.
 ## Hard rules
 
 - **Offline only.** No fetch to the internet, no CDN, no external API, ever.
-  (Known current violations are tracked in `docs/system/DEBT.md` — do not add more.)
+  Phase 2 removed the Google Fonts CDN calls and the MyMemory translation API
+  call (see `docs/system/DEBT.md` items 1 and 3). One known violation remains —
+  `learn-signs.html` embeds an entire external website in an `<iframe>`
+  (`docs/system/DEBT.md` item 29) — so this rule is not yet fully true in
+  practice. Do not add more violations, and do not assume this one is
+  someone else's problem to notice.
 - **No build step.** No npm, no webpack, no bundler. Files are served as-is.
 - **No framework.** No React, Vue, or jQuery. Vanilla JS/DOM only.
 - **Raspberry Pi 4B is the target, not a laptop.** CPU only, no GPU.

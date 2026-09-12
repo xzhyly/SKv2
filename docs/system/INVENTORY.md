@@ -6,13 +6,17 @@ classify a file as live/dead). All counts below were produced by `wc -l`, `du`,
 single commit, branch `revision`) on 2026-09-12. Anything not directly observed is
 marked "not specified in code" per the accuracy rule for this audit.
 
-Total git-tracked files: 551 (`git ls-files | wc -l`, current). Total tracked
-size: 227M as of the original Pass 1 count; not re-measured after Phase 1
-deletion. The 548 figure above described the tree as of Pass 1 (2026-09-12,
-before later audit commits added more `docs/system/` files); Phase 1
-(dead-code deletion) subsequently removed 11 tracked files and added
+Total git-tracked files: 552 (`git ls-files | wc -l`, current, after Phase 2).
+Total tracked size: 227M as of the original Pass 1 count; not re-measured
+after Phase 1 or Phase 2. The 548 figure above described the tree as of Pass 1
+(2026-09-12, before later audit commits added more `docs/system/` files);
+Phase 1 (dead-code deletion) subsequently removed 11 tracked files and added
 `archive/old-revision-docs/ORIGIN.md` — see `docs/system/DEAD_CODE.md` for the
-record.
+record. Phase 2 (offline-CDN removal) then removed 2 tracked files
+(`bulk-importer.html`, `php/api/bulk_importer_api.php`) and added 3
+(`assets/fonts/Inter-Variable-latin.woff2`, `css/fonts.css`,
+`docs/system/BULK_IMPORTER_NOTES.md`) — net +1, see `docs/system/DEBT.md`
+items 1, 3, 15, 26.
 
 ## 1. File tree with line/size, one line per file
 
@@ -28,8 +32,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3) |
 | [camera-translator.html](../../camera-translator.html) | 2160 | Live camera → sign recognition → text/speech translation screen |
 | [sign-to-text.html](../../sign-to-text.html) | 120 | Sign-to-text screen shell, loads `js/sign-to-text-ui.js` |
-| [bulk-importer.html](../../bulk-importer.html) | 895 | Admin tool: bulk video → landmark import UI, not linked from kiosk nav (see §6) |
-| [gesture-training.html](../../gesture-training.html) | 392 | Admin/trainer screen for recording new gesture samples |
+| [gesture-training.html](../../gesture-training.html) | 380 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26) |
 | [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
 | [learn-signs.html](../../learn-signs.html) | 93 | Learner reference screen, linked from index.html |
 | [diagnostic.html](../../diagnostic.html) | 193 | Standalone diagnostics page; no inbound/outbound links found (see §6) |
@@ -40,7 +43,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [raspberry_pi_startup_guide.md](../../raspberry_pi_startup_guide.md) | — | Pre-existing setup note (not authored this pass) |
 | [README.md](../../README.md) | — | Project readme |
 | [.gitignore](../../.gitignore) | — | Git ignore rules |
-| [ffmpeg.exe](../../ffmpeg.exe) | n/a (97.6 MB) | Vendored ffmpeg binary, referenced by `php/api/bulk_importer_api.php` and `php/api/save_gesture.php` (see §7) |
+| [ffmpeg.exe](../../ffmpeg.exe) | n/a (97.6 MB) | Vendored ffmpeg binary, referenced by `php/api/save_gesture.php` (see §7) |
 
 ### `js/` — core application logic
 
@@ -48,8 +51,8 @@ and listing all 300+ leaf files individually would not add ownership information
 |---|---|---|
 | [js/script.js](../../js/script.js) | 1094 | Loaded by `index.html`; index/dashboard screen logic, posts to `save_gesture.php` |
 | [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `sign-to-text.html`; sign-to-text screen logic |
-| [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1476 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` and `bulk_importer_api.php?action=convert_video` |
-| [js/gesture-data.js](../../js/gesture-data.js) | 865 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` |
+| [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1360 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26) |
+| [js/gesture-data.js](../../js/gesture-data.js) | 708 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed) |
 | [js/db-api.js](../../js/db-api.js) | 148 | Loaded by camera-translator.html/diagnostic.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
 | [js/db-local.js](../../js/db-local.js) | 65 | Loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wraps `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
 | [js/camera-helper.js](../../js/camera-helper.js) | 68 | Loaded by gesture-training.html/sign-to-text.html; camera device helper |
@@ -86,7 +89,6 @@ and listing all 300+ leaf files individually would not add ownership information
 | [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6) |
 | [php/api/get_history.php](../../php/api/get_history.php) | 14 | History fetch endpoint; **no frontend caller found in this repo** (see §6) |
 | [php/api/reports.php](../../php/api/reports.php) | 80 | Reports data endpoint; called from `reports.html` |
-| [php/api/bulk_importer_api.php](../../php/api/bulk_importer_api.php) | 562 | Bulk import endpoint (duplicate-check/convert-video/save-landmarks actions); called from `bulk-importer.html`, `js/gesture-training-ui.js`; uses `ffmpeg.exe` |
 
 ### `css/`
 
@@ -96,6 +98,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [css/virtual-keyboard.css](../../css/virtual-keyboard.css) | 101 | Loaded by index.html/camera-translator.html/gesture-training.html; keyboard widget styling |
 | [css/gesture-training.css](../../css/gesture-training.css) | 1012 | Loaded by gesture-training.html |
 | [css/sign-to-text.css](../../css/sign-to-text.css) | 338 | Loaded by sign-to-text.html |
+| [css/fonts.css](../../css/fonts.css) | 10 | Added Phase 2; loaded by index.html, camera-translator.html, gesture-training.html, sign-to-text.html, reports.html, learn-signs.html — self-hosted Inter `@font-face` |
 
 ### `db-schema/`
 
@@ -118,6 +121,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | `assets/signs/fil/` | 90 files, all `.webm` | 8.8 MB | Filipino/FSL reference sign videos |
 | `assets/app-icons/` | 5 files (`.ico`,`.svg`×3,`.gif`) | 183 KB | UI icons |
 | `assets/design-mockups/` | 15 files (14 `.ai`, 1 `.svg`) | 6.2 MB | Design source files, not runtime assets |
+| `assets/fonts/` | 1 file (`.woff2`) | 48,256 bytes | Added Phase 2: self-hosted Inter variable font, Latin subset |
 
 ### `saved_gestures/`, `saved_gestures_fsl/` — data, not code
 
@@ -163,7 +167,6 @@ Per-page script load order (in document order, from each HTML file's `<script sr
 - **camera-translator.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/db-local.js` → `js/virtual-keyboard.js`
 - **sign-to-text.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/sign-to-text-ui.js`
 - **gesture-training.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/gesture-training-ui.js` → `js/virtual-keyboard.js`
-- **bulk-importer.html**: `js/lib/mediapipe/hands.js`
 - **diagnostic.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js`
 - **reports.html**, **learn-signs.html**: no `<script src>` tags found
 
@@ -173,7 +176,7 @@ Per-page script load order (in document order, from each HTML file's `<script sr
 2. `start_kiosk.sh:17` launches: `chromium --kiosk --password-store=basic --use-fake-ui-for-media-stream --enable-speech-dispatcher --disable-accelerated-video-decode --enable-logging=stderr http://localhost/SKR/index.html`
 3. This means `index.html` is served over Apache/PHP at `http://localhost/SKR/...`, not opened as a `file://` path — Apache serves the static frontend files, not only the PHP API.
 4. `index.html` is the sole browser entry point started by the kiosk script. From it, `window.location.href` navigation reaches `gesture-training.html` (`index.html:603`) and `reports.html` (`index.html:614`); `<a href>` links reach `learn-signs.html` and `sign-to-text.html`.
-5. **Not specified in code / not resolvable by static inspection**: how `camera-translator.html` and `bulk-importer.html` are reached at runtime — no `href`, `window.location`, or `window.open` reference to either was found anywhere in the tracked HTML/JS. The system brief mentions two touchscreens and one USB camera, but `start_kiosk.sh` only launches a single Chromium instance against a single URL; nothing in the tracked files configures a second display, a second Chromium instance, or window placement. How the second screen (if any) is populated is not specified in code — flagged for Pass 2 / hardware-layer investigation.
+5. **Not specified in code / not resolvable by static inspection**: how `camera-translator.html` is reached at runtime — no `href`, `window.location`, or `window.open` reference to it was found anywhere in the tracked HTML/JS. (This item originally also named `bulk-importer.html` as a second example; that file was deleted in Phase 2, see `docs/system/DEBT.md` item 26.) The system brief mentions two touchscreens and one USB camera, but `start_kiosk.sh` only launches a single Chromium instance against a single URL; nothing in the tracked files configures a second display, a second Chromium instance, or window placement. How the second screen (if any) is populated is not specified in code — flagged for Pass 2 / hardware-layer investigation.
 6. `preload.html` (deleted in Phase 1, see `docs/system/DEAD_CODE.md`) was never part of the live boot path — its only reference was a commented-out `<iframe>` in `index.html:820`. `index.html:820` still carries that inert commented-out reference; it was left in place since it is not live code.
 
 ## 4. PHP endpoints
@@ -187,7 +190,6 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 | `php/api/get_translations.php` | `js/db-api.js` |
 | `php/api/core_api.php` | `js/db-local.js` (described as "unified api router" in `js/db-local.js:10`) |
 | `php/api/reports.php` | `reports.html` |
-| `php/api/bulk_importer_api.php` | `bulk-importer.html`, `js/gesture-training-ui.js` |
 | `php/api/save_history.php` | none found |
 | `php/api/get_history.php` | none found |
 | `php/admin_api.php` | none found |
@@ -233,15 +235,17 @@ Note: several items originally listed here (`js/dist/build.js`, `js/main.js`,
   (old project folder name), while `diagnostic.html:112` checks for **either**
   `/SKR` or `/Sining_kamay` in `window.location.pathname`. This is a half-migrated
   path assumption across files, not merely one leftover reference.
-- **External CDN font links**: 7 of 8 root HTML files remaining after Phase 1
-  (`bulk-importer.html`, `camera-translator.html`, `diagnostic.html`,
-  `gesture-training.html`, `index.html`, `learn-signs.html`, `reports.html`,
-  `sign-to-text.html`) contain a `<link href="https://fonts.googleapis.com/...">`
-  tag. (Originally 9 of 12, before Phase 1 deleted `camera_test.html` and
-  `gesture_test.html`, which also carried this link, along with
-  `speech_test.html` and `preload.html`, which did not.) This directly
-  contradicts the "fully offline, no CDN" system description; flagged as a
-  surprise in the report below, not fixed this pass.
+- **External CDN font links — RESOLVED (Phase 2).** 7 of 8 root HTML files
+  remaining after Phase 1 (`bulk-importer.html`, `camera-translator.html`,
+  `diagnostic.html`, `gesture-training.html`, `index.html`, `learn-signs.html`,
+  `reports.html`, `sign-to-text.html`) contained a
+  `<link href="https://fonts.googleapis.com/...">` tag. (Originally 9 of 12,
+  before Phase 1 deleted `camera_test.html` and `gesture_test.html`, which also
+  carried this link, along with `speech_test.html` and `preload.html`, which
+  did not.) Phase 2 self-hosted the Inter variable font in `css/fonts.css` and
+  swapped the `<link>` in the 6 files that use Inter (`bulk-importer.html`,
+  the 7th, was deleted outright — see item 3/26); `diagnostic.html` never used
+  this font at all. See `docs/system/DEBT.md` item 1.
 
 ## 7. Binary/vendored files over 5 MB
 

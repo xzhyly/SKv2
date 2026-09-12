@@ -90,10 +90,13 @@ it, then translate).
   duplicate `:1495,1505`), volume read from
   `localStorage['sining_kamay_speaker_volume']` default `1.0`
   (`js/speech-synthesis.js:34,49`).
-- Google Fonts CDN reference present in both HTML files: `camera-translator.html:7`
-  and `sign-to-text.html:7` —
-  `https://fonts.googleapis.com/css2?family=Inter:...&family=Nunito:...`. This
-  contradicts the "fully offline" brief; observed as-is.
+- Both HTML files load `css/fonts.css` (`camera-translator.html:7`,
+  `sign-to-text.html:7`), which self-hosts the Inter variable font from
+  `assets/fonts/Inter-Variable-latin.woff2` — replaces the Google Fonts CDN
+  `<link>` both files used to load (Phase 2, see `docs/system/DEBT.md` item 1).
+  `Nunito`, which that old CDN call also fetched, is still named as a fallback
+  in both files' `font-family` stacks but is never itself loaded now — dead
+  weight, see `docs/system/DEBT.md` item 27.
 - No cache-busting query string was found on any `<script src=...>` or
   `<link href=...>` tag in either owned HTML file.
 
@@ -198,8 +201,10 @@ it, then translate).
   `speakWord` implementations; camera-translator's copy ignores the
   `localStorage['sining_kamay_speaker_volume']` setting that `speech-synthesis.js`
   respects.
-- External network reference: `camera-translator.html:7` and `sign-to-text.html:7`
-  — `<link href="https://fonts.googleapis.com/css2?family=Inter:...&family=Nunito:...&display=swap" rel="stylesheet">`.
+- ~~External network reference: `camera-translator.html:7` and `sign-to-text.html:7`
+  — `<link href="https://fonts.googleapis.com/css2?family=Inter:...&family=Nunito:...&display=swap" rel="stylesheet">`.~~
+  **RESOLVED (Phase 2)** — both files now load `css/fonts.css` (self-hosted
+  Inter), see `docs/system/DEBT.md` item 1.
 - Observation on reachability: no `href`, `window.location`, or `window.open`
   reference to `camera-translator.html` was found in any `*.html` file in the
   repository; `sign-to-text.html` is linked from `index.html:582` and `:651`.
@@ -225,7 +230,6 @@ it, then translate).
 - `js/gesture-training-ui.js`
 - `css/style.css`
 - `css/gesture-training.css`
-- `bulk-importer.html`
 - `reports.html`
 - `learn-signs.html`
 
@@ -239,9 +243,6 @@ it, then translate).
   gesture samples, training a KNN classifier, live-testing predictions, and running
   a sign-to-text/speech translator built from custom gestures. 4-step wizard (Add
   Data → Train AI → Predict → Translate), lines 94-354.
-- **bulk-importer.html** — PIN-less admin tool for batch-uploading raw videos,
-  converting them server-side, extracting MediaPipe landmarks, and saving them to
-  the gesture dataset.
 - **reports.html** — PIN-gated admin analytics screen: 3 tabs (ESL Signs, FSL
   Signs, Translations) pulling from a PHP/MySQL-backed report endpoint, with
   print/PDF export.
@@ -286,9 +287,6 @@ it, then translate).
   code.
 - Countdown before gesture recording: 3-2-1 at **1000ms** per tick
   (gesture-training-ui.js:1219-1233).
-- Video-file import target frame count: `duration * 10` fps, clamped **min 10, max
-  60** frames — this logic is in `bulk-importer.html:720-723`, same clamp values.
-  Per-frame seek has a **250ms** safety timeout (bulk-importer.html:753-764).
 - Admin PIN for both gesture-training.html and reports.html is hardcoded
   client-side: `CORRECT_PIN = '2026'` (gesture-training-ui.js:23; reports.html:443,
   inline duplicate implementation).
@@ -300,9 +298,6 @@ it, then translate).
   `location.protocol === "file:"` it hardcodes `http://localhost` + (`/SKR` if the
   pathname contains `/SKR`, else `/Sining_kamay`) + `/php/api/save_gesture.php`
   (script.js:847-849); otherwise relative `php/api/save_gesture.php`.
-- MediaPipe Hands options in bulk-importer.html: `maxNumHands: 2`,
-  `modelComplexity: 1`, `minDetectionConfidence: 0.65`,
-  `minTrackingConfidence: 0.65` (bulk-importer.html:644-647).
 - `js/vosk.js` line 174 is a single ~5.6 million-character line containing a
   base64-encoded Web Worker bundle (`createBase64WorkerFactory`, decoded via
   `atob`/Blob at runtime) — this is the vendored `vosk-browser` library, not
@@ -322,11 +317,6 @@ it, then translate).
 - `startStepContent`/prediction loop explicitly replays `videoFeed.play()` when
   switching steps "to prevent Chromium freezes on hidden element"
   (gesture-training-ui.js:918-921) — documented.
-- bulk-importer.html actively patches `WebAssembly.validate` to force a non-SIMD
-  MediaPipe WASM path, with an inline comment saying this "MUST run before
-  hands.js loads" (bulk-importer.html:418-438) — documented as a stability
-  workaround, target hardware not named in the comment itself but consistent with
-  low-power ARM.
 - KNN (not a real neural net) chosen for gesture classification, allowing
   "instant, no epoch training needed" (gesture-training-ui.js:269 comment) —
   documented as a deliberate design tradeoff, though the UI still displays an
@@ -342,11 +332,7 @@ it, then translate).
 - Explicit Raspberry Pi mentions: index.html:819 comment — hidden preload iframe is
   "Commented out to prevent GPU/RAM resource crashes on Raspberry Pi during Voice
   to Text"; css/gesture-training.css:716 comment references "Chromium freezes on
-  Pi"; bulk-importer.html:676 comment "CONVERT FOR RASPBERRY PI FIRST";
-  gesture-training-ui.js:918 comment "Chromium freezes on hidden element."
-- bulk-importer.html forces non-SIMD WASM (§4) — a stability accommodation
-  consistent with constrained/older ARM hardware, though the code comment itself
-  does not name Raspberry Pi explicitly at that site (bulk-importer.html:418-438).
+  Pi"; gesture-training-ui.js:918 comment "Chromium freezes on hidden element."
 
 ### 6. Touches (dependencies / breakage risk)
 
@@ -383,17 +369,14 @@ it, then translate).
   but not others (e.g. `DB_API.saveTranslation` at :714 is called unguarded inside
   a try/catch) — if any of those five files is missing/renamed, training/
   translation features degrade or throw, caught only where try/catch exists.
-- **gesture-training-ui.js → php/api/save_gesture.php** (delete) and **→
-  php/api/bulk_importer_api.php** (`convert_video`) — both use a hardcoded
-  `/Sining_kamay/` fallback path (gesture-training-ui.js:244-246, :1064-1066) that
+- **gesture-training-ui.js → php/api/save_gesture.php** (delete) — uses a
+  hardcoded `/Sining_kamay/` fallback path (gesture-training-ui.js:244-246) that
   does **not** match the dynamic `/SKR`-or-`/Sining_kamay` detection used in
-  script.js:847-849 — an inconsistency (see Problems Found).
-- **bulk-importer.html → php/api/bulk_importer_api.php** (`check_duplicate`,
-  `convert_video`, `save_landmarks`) — always relative path `php/api/...`
-  (bulk-importer.html:662, :689, :821), no `file://` fallback at all, unlike
-  script.js/gesture-training-ui.js. If bulk-importer.html is ever opened via
-  `file://` (as its unreachability from nav suggests could happen during dev),
-  these fetches will fail outright.
+  script.js:847-849 — an inconsistency (see Problems Found). (This file also
+  called `php/api/bulk_importer_api.php`'s `convert_video` action, at what was
+  gesture-training-ui.js:1064-1066, for the "Upload & Process Video" button —
+  both the call and the button were removed in Phase 2 along with the endpoint
+  itself; see `docs/system/DEBT.md` item 26.)
 - **reports.html → php/api/reports.php**: path logic keys off `location.port`
   rather than protocol+path-name pattern used elsewhere (reports.html:613-615), and
   hardcodes `/Sining_kamay/` (not `/SKR/`) for the `file:`/non-standard-port
@@ -401,7 +384,10 @@ it, then translate).
 - **learn-signs.html** embeds an external Netlify URL via `<iframe>`
   (learn-signs.html:87) — a live network dependency; if that Netlify deployment is
   taken down or the URL query-string token expires, "Learn Signs" shows a
-  blank/broken iframe with no fallback UI in this file.
+  blank/broken iframe with no fallback UI in this file. Out of scope for Phase 2
+  (see Problems found, below); now also tracked in `docs/system/DEBT.md` item 29
+  — this document had it, but it was never carried into DEBT.md's consolidated
+  list until Phase 2 verification noticed the gap.
 - **css/style.css** is shared by index.html but also contains selectors matching
   an older dashboard/translator layout no longer present in current markup — see
   Problems Found.
@@ -447,17 +433,17 @@ it, then translate).
 - index.html:819-820 — a commented-out `<iframe src="preload.html">`, explicitly
   left in with a Pi-crash-avoidance comment; `preload.html` is otherwise fully
   orphaned dead code (see verify-only section above).
-- `learn-signs.html`:7 and most other owned HTML files load
+- ~~`learn-signs.html`:7 and most other owned HTML files load
   `https://fonts.googleapis.com/css2?...` (external network reference) — external-
   network dependency present despite the "fully offline" system description.
   Occurrences: index.html:13, gesture-training.html:7, bulk-importer.html:7,
-  reports.html:7, learn-signs.html:7.
+  reports.html:7, learn-signs.html:7.~~ **RESOLVED (Phase 2)** — self-hosted,
+  see `docs/system/DEBT.md` item 1. `bulk-importer.html` itself is deleted
+  (item 3/26).
 - `learn-signs.html`:87 embeds a third-party Netlify-hosted site via `<iframe>`
   with a Facebook click-id (`fbclid`) query string baked into the URL —
-  external-network reference, factually noted.
-- `bulk-importer.html` — confirmed unreachable from any in-app navigation link (no
-  `<a href>`/`onclick` pointing to it in index.html or elsewhere); observation
-  only, per project owner's framing this is planned work, not classified as a bug.
+  external-network reference, factually noted. **Not resolved** — out of scope
+  for Phase 2, tracked as `docs/system/DEBT.md` item 29.
 - `js/vosk.js`:174 — single-line, ~5.6MB minified/base64 blob; makes the file
   effectively unreadable/undiffable in normal review tools; this is vendored
   third-party code, not authored kiosk logic.

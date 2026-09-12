@@ -24,6 +24,21 @@ so a later session does not re-litigate them:
    Confirmed by the project owner as a real, high-severity defect — not a
    doc/code mismatch to shrug off.
 
+   **RESOLVED (Phase 2).** The Inter variable font (Latin subset, weight
+   range 100–900) is self-hosted at `assets/fonts/Inter-Variable-latin.woff2`
+   (48,256 bytes), declared in `css/fonts.css:3-10`, and linked from the 6
+   HTML files that use Inter (`index.html:13`, `camera-translator.html:7`,
+   `gesture-training.html:7`, `sign-to-text.html:7`, `reports.html:7`,
+   `learn-signs.html:7`). The variable font was chosen over static weight
+   instances specifically because `reports.html:44,46,333` and
+   `css/style.css:199,368` use non-standard weights (650/750/850) that a
+   fixed set of static weights can't render exactly. `bulk-importer.html`'s
+   Google Fonts call (a different family, Outfit — see item 26 below) is
+   resolved by that file's deletion, not by this migration. Verified in a
+   real browser: `document.fonts` reports the Inter face as `status:
+   "loaded"` covering `100 900`, and `document.fonts.check()` returns `true`
+   for every weight in use including 650/750/850.
+
 2. **Confirmed functional bug: `core_api.php` writes/reads columns that don't
    exist in the schema.** `php/api/core_api.php:101,110-111` reads/writes
    `translations.detected_word` and `translations.full_sentence` — no such
@@ -43,6 +58,12 @@ so a later session does not re-litigate them:
    when an FSL label isn't in a hardcoded local dictionary
    (`bulk_importer_api.php:207-371`). Contradicts "fully offline, no
    internet/CDN/external API."
+
+   **RESOLVED (Phase 2).** `php/api/bulk_importer_api.php` was deleted in its
+   entirety, along with `bulk-importer.html`. What it did (including the
+   `convert_video` action shared with `gesture-training.html`) is recorded in
+   `docs/system/BULK_IMPORTER_NOTES.md` before deletion. See item 26 below for
+   the consequence of also removing `convert_video`.
 
 4. **Hardcoded DB credentials + auto-seeded default admin account.**
    `php/connect.php:2-5` — `root`/empty password, marked "XAMPP default" in a
@@ -146,6 +167,9 @@ so a later session does not re-litigate them:
     responses, but also hides genuine bugs in that file, not just formatting
     noise.
 
+    **RESOLVED (Phase 2), by deletion.** The file this applied to,
+    `php/api/bulk_importer_api.php`, no longer exists — see item 3 above.
+
 16. **No shared error-response contract across PHP endpoints.** Three different
     JSON error shapes are in use: `{"success":false,"message":...}`
     (`auth.php`, `admin_api.php`, `core_api.php`), `{"error":...}`
@@ -207,11 +231,13 @@ so a later session does not re-litigate them:
     exactly one Chromium instance against exactly one URL
     (`http://localhost/SKR/index.html`); no second-display configuration exists
     anywhere in the tracked files. Consistent with this,
-    `camera-translator.html` and `bulk-importer.html` have no
+    `camera-translator.html` had no
     `href`/`window.location`/`window.open` reference anywhere in the repo, despite
-    both being fully wired, functioning screens. **Per the project owner: this is
+    being a fully wired, functioning screen. **Per the project owner: this is
     planned future work, not a bug.** Recorded here only so a later session
     doesn't go hunting for a "broken link" that was never supposed to exist yet.
+    (Originally also cited `bulk-importer.html` as a second example — that file
+    was deleted in Phase 2, see item 26 below, so it no longer applies.)
 
 24. **Low severity, open question: the build pipeline deleted in Phase 1
     originated from a separate project.** `js/main.js`, `js/dist/build.js`, and
@@ -228,6 +254,64 @@ so a later session does not re-litigate them:
     in Phase 1 (see `docs/system/DEAD_CODE.md`). Noticed during Phase 1's
     repo-wide reference grep; out of scope for that phase (not in the deletion
     manifest, not under `docs/system/`), so left unfixed and flagged here.
+
+    **RESOLVED (Phase 2).** The stale `scp preload.html ...` example
+    (`raspberry_pi_startup_guide.md:75-78`) was removed. Checked the rest of
+    the guide against every Phase 1/Phase 2 deletion — nothing else in it
+    references a since-deleted file.
+
+26. **Video upload for gesture training was removed in Phase 2 and has no
+    replacement.** Deleting `php/api/bulk_importer_api.php` (item 3 above) also
+    removed its `convert_video` action, which turned out to be shared with a
+    live feature: `gesture-training.html`'s "Upload & Process Video" button
+    (formerly `gesture-training.html:220-231`, handled by
+    `js/gesture-training-ui.js:1009-1123`, using
+    `GestureDataRecorder.processVideoFile()` in `js/gesture-data.js`, all
+    removed in the same commit rather than leaving a button with no working
+    endpoint behind it). **Per the project owner: this is planned work for the
+    upcoming gesture-training flow redesign, not a defect** — the same
+    footing as the dual-screen gap (item 23). What the removed feature did,
+    including the exact ffmpeg command it ran and its full request/response
+    shape, is recorded in `docs/system/BULK_IMPORTER_NOTES.md` as design input
+    for its eventual replacement. Camera-based gesture capture (the other,
+    still-present half of the training screen) is unaffected.
+
+27. **Low severity, cleanup during the UI revision: `Nunito` is now
+    unreachable dead weight in font stacks.** `camera-translator.html:19,40`,
+    `css/sign-to-text.css:9,30`, `css/gesture-training.css:19`, and
+    `reports.html:37` all list `'Inter','Nunito','Segoe UI',...` — Nunito was
+    never the primary family, only a fallback after Inter, but it used to be
+    loaded by the same Google Fonts `<link>` Phase 2 replaced (item 1). Since
+    Inter is now self-hosted and always available, the browser will never
+    reach past it to Nunito. Harmless (fonts.css never requested a Nunito face,
+    and it wasn't in scope to edit these font stacks for one weight/CDN swap),
+    but worth trimming from the stacks whenever these files are next touched.
+
+28. **No action needed, recorded for traceability: `bulk-importer.html`'s font
+    was Outfit, not Inter.** `bulk-importer.html:7` requested
+    `family=Outfit:wght@400;500;600;700;800` — a different Google Fonts family
+    from the Inter call every other screen made, used nowhere else in the
+    repo. Resolved by that file's deletion (item 3/26 above), not by the Inter
+    self-hosting work (item 1).
+
+29. **High severity, present in `docs/system/UI.md` since the original audit but
+    never carried into this file until Phase 2 verification caught the gap:
+    `learn-signs.html` embeds an entire externally-hosted website in an
+    iframe.** `learn-signs.html:85-90` —
+    `<iframe id="learn-iframe" src="https://6878790f1e3f65fc09b5c339--startling-zabaione-53aad1.netlify.app/?fbclid=...">`
+    with `sandbox="allow-same-origin allow-scripts allow-forms allow-popups"`.
+    This loads a complete third-party page (title observed: "Online Filipino
+    Sign Language Tutorials and Scholarship Assistance", branded for a
+    "Camarines Norte Persons with Disability Affairs Office") from the public
+    internet, runs its scripts, and does so carrying a Facebook click-identifier
+    (`fbclid=...`) query parameter — the whole "Learn Signs" screen is
+    currently dependent on an external Netlify deployment staying online. This
+    is a more severe offline-requirement violation than the Google Fonts CDN
+    calls (item 1) were: it is the page's entire content, not one asset, and it
+    executes third-party JavaScript. **Out of scope for Phase 2** (not one of
+    the three named pieces of work) — flagged here rather than fixed. Needs a
+    project-owner decision: replace with a locally-hosted version of this
+    content, or something else.
 
 ## Dead code
 
@@ -246,7 +330,7 @@ From `docs/system/INVENTORY.md` §7, sizes via `du -b`/`ls -la`:
 
 | File | Size | Note |
 |---|---|---|
-| `ffmpeg.exe` | 97.6 MB | Vendored binary, used by `save_gesture.php`/`bulk_importer_api.php` (see `docs/system/BACKEND.md`) |
+| `ffmpeg.exe` | 97.6 MB | Vendored binary, used by `save_gesture.php` (see `docs/system/BACKEND.md`) |
 | `models/vosk-model-small-en-us-0.15.tar.gz.zip` | 41,138,088 bytes | Vendored offline speech model, legitimately needed (see item 19 for its naming issue) |
 | `sining_kamay_db.sql` | 19,659,000 bytes | Full DB dump in git — see item 5 (security/hygiene) |
 | `js/lib/mediapipe/hands_solution_wasm_bin.wasm` | 5,917,209 bytes | Vendored, in active use (see `docs/system/VENDORED.md`) |
