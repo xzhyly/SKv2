@@ -217,18 +217,6 @@
               <button id="startGestureDataBtn" data-gesture-start class="tr-cap-btn" type="button">Start Capture</button>
               <button id="stopGestureDataBtn" data-gesture-stop class="tr-cap-btn" type="button" disabled>Finish Capture</button>
             </div>
-            <div class="tr-import-section" style="margin-top: 6px; border-top: 1px dashed var(--border); padding-top: 6px; width: 100%;">
-              <label class="tr-flbl">Or Import Pre-recorded Video</label>
-              <input type="file" id="importVideoInput" accept="video/mp4,video/webm" style="display: none;">
-              <button id="importVideoBtn" class="tr-ghost-btn" type="button" style="width: 100%; font-weight: 700; margin-top: 4px;">📁 Upload & Process Video</button>
-              <div id="importProgressWrap" style="display: none; margin-top: 8px;">
-                <div class="tr-lm-row" style="font-size: 11px; display: flex; justify-content: space-between; margin-bottom: 4px;">
-                  <span>Extracting landmarks...</span>
-                  <span id="importProgressPercent">0%</span>
-                </div>
-                <div class="tr-lm-bar"><div id="importProgressBar" class="tr-lm-fill" style="width: 0%; background: var(--orange);"></div></div>
-              </div>
-            </div>
             <div class="tr-lm-card" id="gestureDataStatus" role="status" aria-live="polite" style="margin-top:2px">
               <div class="tr-lm-row">
                 <span>Landmark frames</span>
