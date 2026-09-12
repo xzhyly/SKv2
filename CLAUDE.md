@@ -6,8 +6,13 @@ hand-landmark detection; TensorFlow.js and a hand-rolled cosine-similarity k-NN
 (depending on screen) do sign classification, both on-device. PHP 8 + MySQL/
 MariaDB on Apache handle admin functions and history/translation logging only —
 never live inference. Target hardware is a Raspberry Pi 4B 8GB, CPU-only,
-Chromium in kiosk mode. An earlier revision was abandoned mid-migration; expect
-dead code and half-migrated paths until `docs/system/DEAD_CODE.md` is acted on.
+Chromium in kiosk mode. Phase 1 of this revision (dead-code deletion, see
+`docs/system/DEAD_CODE.md`) is complete: a browserify/deeplearn.js build
+pipeline that turned out to belong to a separate open-source project this
+codebase was originally started from — not an earlier revision of this one,
+see `archive/old-revision-docs/ORIGIN.md` — has been removed, along with
+several orphaned dev/test pages. Expect some half-migrated paths to remain;
+see `docs/system/DEBT.md`.
 
 ## Hard rules
 
@@ -27,7 +32,7 @@ dead code and half-migrated paths until `docs/system/DEAD_CODE.md` is acted on.
 | Kiosk boot, Chromium flags, Vosk speech model, Pi-specific constraints | [docs/system/HARDWARE_BOOT.md](docs/system/HARDWARE_BOOT.md) |
 | MediaPipe/TF.js vendored libraries themselves | [docs/system/VENDORED.md](docs/system/VENDORED.md) |
 | Where inference is actually called from (pointer only) | [docs/system/ML.md](docs/system/ML.md) |
-| What's safe to delete outright | [docs/system/DEAD_CODE.md](docs/system/DEAD_CODE.md) |
+| What Phase 1 deleted/archived, and why | [docs/system/DEAD_CODE.md](docs/system/DEAD_CODE.md) |
 | Known bugs, security issues, inconsistencies, ranked | [docs/system/DEBT.md](docs/system/DEBT.md) |
 | Full file-by-file inventory, load order, entry points | [docs/system/INVENTORY.md](docs/system/INVENTORY.md) |
 

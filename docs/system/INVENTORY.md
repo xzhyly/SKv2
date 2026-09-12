@@ -6,7 +6,13 @@ classify a file as live/dead). All counts below were produced by `wc -l`, `du`,
 single commit, branch `revision`) on 2026-09-12. Anything not directly observed is
 marked "not specified in code" per the accuracy rule for this audit.
 
-Total git-tracked files: 548 (`git ls-files | wc -l`). Total tracked size: 227M.
+Total git-tracked files: 551 (`git ls-files | wc -l`, current). Total tracked
+size: 227M as of the original Pass 1 count; not re-measured after Phase 1
+deletion. The 548 figure above described the tree as of Pass 1 (2026-09-12,
+before later audit commits added more `docs/system/` files); Phase 1
+(dead-code deletion) subsequently removed 11 tracked files and added
+`archive/old-revision-docs/ORIGIN.md` — see `docs/system/DEAD_CODE.md` for the
+record.
 
 ## 1. File tree with line/size, one line per file
 
@@ -27,19 +33,12 @@ and listing all 300+ leaf files individually would not add ownership information
 | [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
 | [learn-signs.html](../../learn-signs.html) | 93 | Learner reference screen, linked from index.html |
 | [diagnostic.html](../../diagnostic.html) | 193 | Standalone diagnostics page; no inbound/outbound links found (see §6) |
-| [camera_test.html](../../camera_test.html) | 722 | Standalone camera dev/test page; no inbound/outbound links found (see §6) |
-| [gesture_test.html](../../gesture_test.html) | 408 | Standalone gesture dev/test page; no inbound/outbound links found (see §6) |
-| [speech_test.html](../../speech_test.html) | 223 | Standalone speech dev/test page; no inbound/outbound links found (see §6) |
-| [preload.html](../../preload.html) | 69 | Preload/warm-cache page; only referenced from a commented-out `<iframe>` in index.html (see §6) |
-| [package.json](../../package.json) | 32 | Node/browserify/babel build config for an old `deeplearn`-based toolchain; not used by any current HTML (see §6) |
 | [start_kiosk.sh](../../start_kiosk.sh) | 17 | Kiosk boot script: kills existing Chromium, launches `chromium --kiosk ... http://localhost/SKR/index.html` |
 | [SKR_Kiosk.desktop](../../SKR_Kiosk.desktop) | 9 | Linux desktop entry invoking `start_kiosk.sh` |
 | [sining_kamay_db.sql](../../sining_kamay_db.sql) | n/a (19,659,000 bytes) | Full MariaDB dump (`-- MariaDB dump 10.19 Distrib 10.4.32-MariaDB`, per file header), UTF-16 encoded, database `sining_kamay_db` |
 | [raspberry_pi_connection_guide.md](../../raspberry_pi_connection_guide.md) | — | Pre-existing setup note (not authored this pass) |
 | [raspberry_pi_startup_guide.md](../../raspberry_pi_startup_guide.md) | — | Pre-existing setup note (not authored this pass) |
 | [README.md](../../README.md) | — | Project readme |
-| `README (1).md` | — | Duplicate of README.md (Windows "keep both" artifact) — junk (see §6) |
-| `(1).gitignore.txt` | — | Stray duplicate of `.gitignore` — junk (see §6) |
 | [.gitignore](../../.gitignore) | — | Git ignore rules |
 | [ffmpeg.exe](../../ffmpeg.exe) | n/a (97.6 MB) | Vendored ffmpeg binary, referenced by `php/api/bulk_importer_api.php` and `php/api/save_gesture.php` (see §7) |
 
@@ -47,7 +46,6 @@ and listing all 300+ leaf files individually would not add ownership information
 
 | File | Lines | Owns |
 |---|---|---|
-| [js/main.js](../../js/main.js) | 1031 | Uses `import`/`export` (ES module syntax); **not loaded by any current `<script>` tag** — only reachable through the dead `js/dist/build.js` browserify bundle (see §6) |
 | [js/script.js](../../js/script.js) | 1094 | Loaded by `index.html`; index/dashboard screen logic, posts to `save_gesture.php` |
 | [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `sign-to-text.html`; sign-to-text screen logic |
 | [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1476 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` and `bulk_importer_api.php?action=convert_video` |
@@ -57,8 +55,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [js/camera-helper.js](../../js/camera-helper.js) | 68 | Loaded by gesture-training.html/sign-to-text.html; camera device helper |
 | [js/speech-synthesis.js](../../js/speech-synthesis.js) | 66 | Loaded by gesture-training.html/sign-to-text.html; TTS output helper |
 | [js/virtual-keyboard.js](../../js/virtual-keyboard.js) | 186 | Loaded by index.html/camera-translator.html/gesture-training.html; on-screen keyboard widget |
-| [js/vosk.js](../../js/vosk.js) | 369 | Loaded by index.html/speech_test.html; Vosk offline speech-recognition JS bundle (5.4 MB file, `js/vosk.js`, per `du`) |
-| [js/dist/build.js](../../js/dist/build.js) | 21,943 | Browserify output bundling `js/main.js` + old `deeplearn`-based deps + a `utf8` polyfill; **not referenced by any HTML file** — dead build artifact from the abandoned earlier revision (see §6) |
+| [js/vosk.js](../../js/vosk.js) | 369 | Loaded by index.html; Vosk offline speech-recognition JS bundle (5.4 MB file, `js/vosk.js`, per `du`) |
 
 ### `js/lib/` — vendored, unmodified
 
@@ -99,7 +96,6 @@ and listing all 300+ leaf files individually would not add ownership information
 | [css/virtual-keyboard.css](../../css/virtual-keyboard.css) | 101 | Loaded by index.html/camera-translator.html/gesture-training.html; keyboard widget styling |
 | [css/gesture-training.css](../../css/gesture-training.css) | 1012 | Loaded by gesture-training.html |
 | [css/sign-to-text.css](../../css/sign-to-text.css) | 338 | Loaded by sign-to-text.html |
-| [css/animate.css](../../css/animate.css) | 3199 | Vendored animation library (not confirmed loaded by any HTML — no `<link>` reference found; see §6) |
 
 ### `db-schema/`
 
@@ -130,21 +126,21 @@ and listing all 300+ leaf files individually would not add ownership information
 | `saved_gestures/` | 120 subdirectories, 121 `.json` files | 6.6 MB | Recorded ESL gesture landmark samples, one folder per word |
 | `saved_gestures_fsl/` | 89 subdirectories, 90 `.json` files | 4.9 MB | Recorded FSL gesture landmark samples, one folder per word |
 
-### `docs/` — pre-existing documentation (37 files)
+### `docs/`
 
-Not authored this pass. File names indicate this is documentation left over from the
-prior, abandoned revision effort described in the system brief (e.g. `docs/rev/`,
-`docs/revisions/`, `docs/REVS/`, `docs/superpowers/plans/`, dated entries from
-2026-06-09 and 2026-07-09/10/11). Full listing captured but not reproduced here —
-see `find docs -type f` output; contents were not read this pass. Flagged for Pass 2
-review since it may describe UI/flows that no longer match the current code (see §6).
+Now holds only `docs/system/` (this audit's own output). The 37 pre-existing
+files formerly here (`docs/rev/`, `docs/revisions/`, `docs/REVS/`,
+`docs/superpowers/`, and 7 standalone `.md` files, dated 2026-06-09 and
+2026-07-09/10/11) were identified as belonging to a separate open-source
+project this codebase was originally started from, not an earlier revision of
+it — see `archive/old-revision-docs/ORIGIN.md`. Archived, not deleted, via
+`git mv` in Phase 1 (dead-code deletion).
 
 ### `scratch/`
 
 | File | Owns |
 |---|---|
 | [scratch/trigger_sync.php](../../scratch/trigger_sync.php) | One-off DB migration script (adds `sign_language` column to `gestures`, creates `esl_signs`/`fsl_signs` if missing); requires `php/connect.php`; not called from any HTML/JS found |
-| `scratch/unpkg_dist.html` | 0 bytes — empty file |
 
 ### `.superpowers/` (4 files)
 
@@ -156,9 +152,10 @@ the application. Contents not read this pass.
 
 No ES module `import`/`export` graph exists at runtime — no HTML file uses
 `<script type="module">` (`grep -c 'type="module"' *.html` = 0 in every file). Pages
-load classic `<script src="...">` tags in sequence instead. `js/main.js` is the only
-file using `import`/`export` syntax, and it is not loaded by any `<script>` tag — it
-only exists inside the dead `js/dist/build.js` bundle.
+load classic `<script src="...">` tags in sequence instead. (`js/main.js` was
+the only file using `import`/`export` syntax; it and the `js/dist/build.js`
+bundle that contained it were deleted in Phase 1 as dead code — see
+`docs/system/DEAD_CODE.md`.)
 
 Per-page script load order (in document order, from each HTML file's `<script src>` tags):
 
@@ -168,9 +165,6 @@ Per-page script load order (in document order, from each HTML file's `<script sr
 - **gesture-training.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/gesture-training-ui.js` → `js/virtual-keyboard.js`
 - **bulk-importer.html**: `js/lib/mediapipe/hands.js`
 - **diagnostic.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js`
-- **preload.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js`
-- **camera_test.html**, **gesture_test.html**: only `js/lib/mediapipe/hands.js` (gesture_test.html) or none (camera_test.html has no `<script src>`)
-- **speech_test.html**: `js/vosk.js`
 - **reports.html**, **learn-signs.html**: no `<script src>` tags found
 
 ## 3. Entry points and boot order
@@ -180,7 +174,7 @@ Per-page script load order (in document order, from each HTML file's `<script sr
 3. This means `index.html` is served over Apache/PHP at `http://localhost/SKR/...`, not opened as a `file://` path — Apache serves the static frontend files, not only the PHP API.
 4. `index.html` is the sole browser entry point started by the kiosk script. From it, `window.location.href` navigation reaches `gesture-training.html` (`index.html:603`) and `reports.html` (`index.html:614`); `<a href>` links reach `learn-signs.html` and `sign-to-text.html`.
 5. **Not specified in code / not resolvable by static inspection**: how `camera-translator.html` and `bulk-importer.html` are reached at runtime — no `href`, `window.location`, or `window.open` reference to either was found anywhere in the tracked HTML/JS. The system brief mentions two touchscreens and one USB camera, but `start_kiosk.sh` only launches a single Chromium instance against a single URL; nothing in the tracked files configures a second display, a second Chromium instance, or window placement. How the second screen (if any) is populated is not specified in code — flagged for Pass 2 / hardware-layer investigation.
-6. `preload.html` is not part of the live boot path — its only reference is a commented-out `<iframe>` in `index.html:820`.
+6. `preload.html` (deleted in Phase 1, see `docs/system/DEAD_CODE.md`) was never part of the live boot path — its only reference was a commented-out `<iframe>` in `index.html:820`. `index.html:820` still carries that inert commented-out reference; it was left in place since it is not live code.
 
 ## 4. PHP endpoints
 
@@ -220,25 +214,18 @@ backend/database document, using the `mysql` skill).
 
 ## 6. Files that look dead, orphaned, half-finished, or out of place
 
-- **`js/dist/build.js`** (21,943 lines) + **`js/main.js`** (1,031 lines, ES-module
-  syntax) + **`package.json`** (browserify/babel/`deeplearn` toolchain) — a complete
-  build pipeline from what the system brief calls the abandoned earlier revision.
-  `js/main.js` uses `deeplearn`-era APIs per `package.json` dependencies, not
-  TensorFlow.js/MediaPipe. Not loaded by any current HTML file.
+Note: several items originally listed here (`js/dist/build.js`, `js/main.js`,
+`package.json`, `camera_test.html`, `gesture_test.html`, `speech_test.html`,
+`preload.html`, `css/animate.css`, `scratch/unpkg_dist.html`, `README (1).md`,
+`(1).gitignore.txt`, and the pre-existing `docs/` tree) were resolved in Phase
+1 — deleted or archived, see `docs/system/DEAD_CODE.md`. Remaining open items:
+
 - **`php/admin_api.php`, `php/auth.php`, `php/api/save_history.php`,
   `php/api/get_history.php`** — no caller found anywhere in the tracked frontend.
-- **`camera_test.html`, `diagnostic.html`, `gesture_test.html`, `speech_test.html`**
-  — no inbound or outbound HTML links found; look like standalone developer test
-  pages rather than kiosk screens.
-- **`preload.html`** — only reference is a commented-out `<iframe>` in
-  `index.html:820`; currently disabled.
-- **`css/animate.css`** — no `<link>` reference found in any tracked HTML file.
-- **`scratch/trigger_sync.php`** — ad-hoc migration script, not wired to the app;
-  `scratch/unpkg_dist.html` is a 0-byte empty file.
-- **`README (1).md`** and **`(1).gitignore.txt`** — stray duplicate files (Windows
-  "keep both" naming pattern), not referenced by anything.
-- **`docs/`** (37 pre-existing files) — appears to document the prior/abandoned
-  revision's UI and process; not verified against current code this pass.
+- **`diagnostic.html`** — no inbound or outbound HTML links found; looks like a
+  standalone developer test page rather than a kiosk screen, but still calls
+  `php/api/save_gesture.php` live, so it is not dead code.
+- **`scratch/trigger_sync.php`** — ad-hoc migration script, not wired to the app.
 - **Deployment path inconsistency**: `start_kiosk.sh:17` serves the app at
   `http://localhost/SKR/index.html`, but `js/db-api.js:11`, `js/db-local.js:9`,
   `js/gesture-data.js:6`, `js/gesture-training-ui.js:245,1065`, and `js/script.js:848`
@@ -246,13 +233,15 @@ backend/database document, using the `mysql` skill).
   (old project folder name), while `diagnostic.html:112` checks for **either**
   `/SKR` or `/Sining_kamay` in `window.location.pathname`. This is a half-migrated
   path assumption across files, not merely one leftover reference.
-- **External CDN font links**: 9 of 12 root HTML files (`bulk-importer.html`,
-  `camera-translator.html`, `camera_test.html`, `diagnostic.html`,
-  `gesture-training.html`, `gesture_test.html`, `index.html`, `learn-signs.html`,
-  `reports.html`, `sign-to-text.html`) contain a
-  `<link href="https://fonts.googleapis.com/...">` tag. This directly contradicts
-  the "fully offline, no CDN" system description; flagged as a surprise in the
-  report below, not fixed this pass.
+- **External CDN font links**: 7 of 8 root HTML files remaining after Phase 1
+  (`bulk-importer.html`, `camera-translator.html`, `diagnostic.html`,
+  `gesture-training.html`, `index.html`, `learn-signs.html`, `reports.html`,
+  `sign-to-text.html`) contain a `<link href="https://fonts.googleapis.com/...">`
+  tag. (Originally 9 of 12, before Phase 1 deleted `camera_test.html` and
+  `gesture_test.html`, which also carried this link, along with
+  `speech_test.html` and `preload.html`, which did not.) This directly
+  contradicts the "fully offline, no CDN" system description; flagged as a
+  surprise in the report below, not fixed this pass.
 
 ## 7. Binary/vendored files over 5 MB
 

@@ -15,11 +15,12 @@ so a later session does not re-litigate them:
 ## High severity
 
 1. **Google Fonts CDN calls fail on every page load.** The kiosk has no internet
-   access, so these requests fail every time. 9 of 12 root HTML files load
+   access, so these requests fail every time. 7 of 8 root HTML files load
    `https://fonts.googleapis.com/...`: `index.html:13`, `camera-translator.html:7`,
    `sign-to-text.html:7`, `gesture-training.html:7`, `bulk-importer.html:7`,
-   `reports.html:7`, `learn-signs.html:7`, plus `camera_test.html:7` and
-   `gesture_test.html:7` (both otherwise dead, see `docs/system/DEAD_CODE.md`).
+   `reports.html:7`, `learn-signs.html:7`. (Originally 9 of 12 files, including
+   `camera_test.html:7` and `gesture_test.html:7` — both deleted in Phase 1 as
+   dead code, see `docs/system/DEAD_CODE.md`.)
    Confirmed by the project owner as a real, high-severity defect — not a
    doc/code mismatch to shrug off.
 
@@ -200,7 +201,7 @@ so a later session does not re-litigate them:
     instead of the desktop entry would get camera/mic permission prompts on an
     unattended kiosk.
 
-## Planned work (not defects — do not re-file as bugs)
+## Planned work / open questions (not defects — do not re-file as bugs)
 
 23. **Dual-screen wiring is not yet implemented.** `start_kiosk.sh:17` launches
     exactly one Chromium instance against exactly one URL
@@ -212,15 +213,32 @@ so a later session does not re-litigate them:
     planned future work, not a bug.** Recorded here only so a later session
     doesn't go hunting for a "broken link" that was never supposed to exist yet.
 
+24. **Low severity, open question: the build pipeline deleted in Phase 1
+    originated from a separate project.** `js/main.js`, `js/dist/build.js`, and
+    `package.json` (deleted, see `docs/system/DEAD_CODE.md`) belonged to
+    "Sign-Language-Translator", a separate open-source project this codebase
+    was originally started from, not an earlier revision of it — identified
+    from `README (1).md` (also deleted) before removal, recorded verbatim in
+    `archive/old-revision-docs/ORIGIN.md`. Project owner to determine whether
+    attribution is required in the thesis.
+
+25. **Stale operator-doc reference to a file deleted in Phase 1.**
+    `raspberry_pi_startup_guide.md:75-77` still gives an `scp preload.html ...`
+    deployment example for the "updated preloader"; `preload.html` was deleted
+    in Phase 1 (see `docs/system/DEAD_CODE.md`). Noticed during Phase 1's
+    repo-wide reference grep; out of scope for that phase (not in the deletion
+    manifest, not under `docs/system/`), so left unfixed and flagged here.
+
 ## Dead code
 
-See `docs/system/DEAD_CODE.md` for the full deletion manifest (the abandoned
-`js/main.js`/`js/dist/build.js`/`package.json` build pipeline, the abandoned
-`docs/` folder, four standalone test/preload pages, `css/animate.css`, and a
-handful of empty/duplicate junk files). Not repeated here. Items judged too
-consequential for a mechanical deletion (the four unused PHP endpoints, unused
-`js/db-local.js`, `scratch/trigger_sync.php`) are tracked as debt items 6 and 8
-above instead.
+Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build
+pipeline, three standalone test pages, `preload.html`, `css/animate.css`, and
+a handful of empty/duplicate junk files, and archived (not deleted) the
+pre-existing `docs/` tree to `archive/old-revision-docs/`. See
+`docs/system/DEAD_CODE.md` for the record of what was deleted, in which
+commits. Items judged too consequential for a mechanical deletion (the four
+unused PHP endpoints, unused `js/db-local.js`, `scratch/trigger_sync.php`) were
+kept and are tracked as debt items 6 and 8 above instead.
 
 ## Oversized files
 
