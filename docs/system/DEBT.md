@@ -216,6 +216,20 @@ so a later session does not re-litigate them:
     confirmed live path uses it either — a 5.6 MB file that may be dead weight on
     every kiosk boot/prefetch.
 
+    **RESOLVED (Phase 3a), for the prefetch half of this finding.**
+    `index.html`'s `<link rel="prefetch">` block named the SIMD binary,
+    guaranteeing it was wasted bandwidth even if nothing else ever proved
+    it dead — confirmed directly this phase: `js/gesture-data.js:230-238`'s
+    `locateFile` override rewrites every `*simd_wasm_bin*` request to the
+    non-SIMD filename before MediaPipe ever asks for it, and `hands.js`'s
+    own manifest (`{simd:!1,url:"hands_solution_wasm_bin.js"}` /
+    `{simd:!0,url:"hands_solution_simd_wasm_bin.js"}`) confirms the two are
+    mutually exclusive alternatives. The prefetch now targets
+    `hands_solution_wasm_bin.wasm` (the one actually requested) plus
+    `hand_landmark_full.tflite`. The vendored SIMD `.wasm`/`.js` pair itself
+    is untouched and still on disk — deleting vendored files was out of
+    scope for this phase.
+
 21. **Latent risk: `hand_landmark_lite.tflite` is referenced by vendored code but
     not vendored.** `js/lib/mediapipe/hands.js:89` can request
     `hand_landmark_lite.tflite` when `modelComplexity` is anything other than
@@ -318,6 +332,68 @@ so a later session does not re-litigate them:
     the three named pieces of work) — flagged here rather than fixed. Needs a
     project-owner decision: replace with a locally-hosted version of this
     content, or something else.
+
+30. **High severity: `camera-translator.html`'s entire inline `<script>` block
+    has a syntax error and never executes, in any browser.** Found during
+    Phase 3a while checking for console errors after deferring script tags —
+    confirmed via `git show HEAD` that this predates Phase 3a entirely, so it
+    is not something that phase introduced. The bottom-of-body inline script
+    (camera-translator.html's whole application logic — the training wizard,
+    the `?screen=translate` view, camera handling, everything) ends with:
+    ```js
+    if(TRANSLATE_ONLY){
+      document.getElementById('tl-page').classList.add('active');
+      tlInitCamera();
+    }else{
+      document.getElementById('training-ui').classList.add('active');
+      showStepInstruction(1);
+      updateUI();
+    </script>
+    ```
+    The `else{` never closes. This throws `SyntaxError: Unexpected end of
+    input` in every browser and prevents the *entire* script block from
+    executing — not just the `if`/`else`, all ~1300 lines including the
+    `enableCamBtn` click listener, `tlInitCamera`, `trainModel`, everything.
+    Confirmed live: `camera-translator.html`'s HTML renders (buttons exist in
+    the DOM) but no listener is ever attached to any of them. Not fixed in
+    Phase 3a — that phase's scope was load order, not application logic, and
+    a project-owner decision on priority/scope (a one-character brace fix vs.
+    something bigger given this file's other known problems, items 11-12
+    above) seemed warranted before touching it.
+
+31. **Open question, not a defect: should `camera-translator.html?screen=translate`
+    keep auto-starting the camera at script-parse time?** Raised during
+    Phase 3a (see `docs/system/UI.md`) — `tlInitCamera()` fires unconditionally
+    when `TRANSLATE_ONLY` is true, with no click gate, unlike every other
+    camera-start path in the codebase (`gesture-training.html`'s
+    `enableCamBtn`, `sign-to-text.html`'s "Start Translating →"). Per the
+    project owner: since this view exists specifically to translate, starting
+    the camera immediately is arguably correct behavior, not a bug — recorded
+    here as a question for a later phase rather than changed. Also currently
+    unreachable in practice regardless, since item 30 above means none of this
+    file's JS executes at all.
+
+32. **High severity, found and resolved in Phase 3a: the Vosk offline speech
+    model loaded unconditionally on every `index.html` visit, whether or not
+    the user ever opened voice input.** `js/script.js:533` called
+    `recognition.initModel()` at top level with no guard, which pulls the
+    41 MB `models/vosk-model-small-en-us-0.15.tar.gz.zip`, decodes
+    `js/vosk.js`'s base64 worker blob, and compiles the Kaldi decoding graph —
+    confirmed live via console output (`VoskAPI:CompileLooped... Spent
+    0.1-0.5 seconds in looped compilation`, plus i-vector/HCL/G graph loads)
+    appearing on a plain dashboard load with no interaction. This was the
+    single largest resource-loading defect found across the whole audit —
+    larger than the camera-library loading this phase originally set out to
+    fix.
+
+    **RESOLVED (Phase 3a).** Gated the call on `isVoiceScreen`
+    (`js/script.js:341`), which is true only for the `?screen=voice`
+    navigation reached via the dashboard's voice card. `initModel()` already
+    no-ops if the model is loaded, and `start()` already lazy-loads it too as
+    a second line of defense, so no new guard was needed. Verified live:
+    repeated `index.html` loads now produce zero VoskAPI console output; a
+    `?screen=voice` load still loads and compiles the model exactly as
+    before.
 
 ## Dead code
 

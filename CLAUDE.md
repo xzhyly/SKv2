@@ -6,7 +6,8 @@ hand-landmark detection; TensorFlow.js and a hand-rolled cosine-similarity k-NN
 (depending on screen) do sign classification, both on-device. PHP 8 + MySQL/
 MariaDB on Apache handle admin functions and history/translation logging only —
 never live inference. Target hardware is a Raspberry Pi 4B 8GB, CPU-only,
-Chromium in kiosk mode. Phase 1 of this revision (dead-code deletion, see
+Chromium in kiosk mode, with a **1024×600** touchscreen — this is the screen
+size to test against, not a laptop viewport. Phase 1 of this revision (dead-code deletion, see
 `docs/system/DEAD_CODE.md`) is complete: a browserify/deeplearn.js build
 pipeline that turned out to belong to a separate open-source project this
 codebase was originally started from — not an earlier revision of this one,

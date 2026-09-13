@@ -7,6 +7,54 @@ Values not found in code are marked "not specified in code" rather than estimate
 
 ---
 
+## Phase 3a: loading behavior (read this before the per-file sections below)
+
+Phase 3a changed *when* scripts load and run, not what they do. The per-file
+detail below (written pre-Phase 3a) is still accurate for behavior; this
+section is the current state of load order.
+
+- **Every vendored/helper `<script src>` tag on `camera-translator.html`,
+  `gesture-training.html`, `sign-to-text.html`, and `index.html` now carries
+  `defer`.** Previously all were plain synchronous tags — `tf.min.js`,
+  `hands.js`, and their helpers sat in `<head>` and blocked the parser from
+  building the rest of the document (PIN screen included) until they
+  finished downloading and executing. `defer` preserves the same relative
+  execution order among them, but lets the parser build the DOM immediately
+  and download scripts in parallel with parsing instead of blocking on them.
+  One consequence: `index.html`'s bottom-of-body inline script patched
+  `window.handleRecognizedText` (defined in `js/script.js`) at parse time;
+  since inline scripts ignore `defer` and still run at their document
+  position, that check is now wrapped in a `DOMContentLoaded` listener so it
+  runs after `js/script.js` has actually executed. `diagnostic.html` also
+  loads `tf.min.js`/`hands.js` in `<head>` but was left un-deferred — it's an
+  unlinked dev tool outside the kiosk's navigation, out of this phase's scope.
+- **`js/script.js:533`'s `recognition.initModel()` — which pulls the 41 MB
+  Vosk model, decodes `js/vosk.js`'s worker, and compiles the Kaldi decoding
+  graph — now only runs when `isVoiceScreen` is true** (i.e. on the
+  `?screen=voice` navigation), not on every `index.html` load. This was the
+  single largest resource-loading defect found in the whole audit; see
+  `docs/system/DEBT.md` item 32.
+- **`index.html`'s `<link rel="prefetch">` block** now targets
+  `hands_solution_wasm_bin.wasm` (the non-SIMD binary MediaPipe actually
+  requests — `js/gesture-data.js:230-238` rewrites every SIMD request to this
+  filename) and `hand_landmark_full.tflite` (the hand-landmark model, always
+  requested since every call site pins `modelComplexity:1`), instead of the
+  never-used `hands_solution_simd_wasm_bin.wasm`. See `docs/system/DEBT.md`
+  item 20.
+- **Not changed:** `camera-translator.html?screen=translate`'s
+  `tlInitCamera()` still fires at script-parse time with no click gate —
+  recorded as an open question in `docs/system/DEBT.md` item 31, not fixed.
+  Camera-start on `gesture-training.html` (`enableCamBtn` click) and
+  `sign-to-text.html` ("Start Translating →" click) were already lazy before
+  this phase and are unchanged.
+- **Found, not fixed:** `camera-translator.html`'s entire inline `<script>`
+  block has a pre-existing (not Phase-3a-introduced) syntax error — an
+  unclosed `else{` — that throws `SyntaxError: Unexpected end of input` and
+  prevents that whole block, and therefore all of this file's application
+  logic, from executing in any browser. See `docs/system/DEBT.md` item 30.
+
+---
+
 ## Part 1: Camera Translator & Sign-to-Text Screens
 
 ### 1. Owns these files
