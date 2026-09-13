@@ -1,18 +1,97 @@
 # UI Layer
 
-This document covers the kiosk's screens: the two live translation screens (this
+This document covers the kiosk's screens: the live translation screen (this
 section) and the dashboard/training/admin screens (next section). Produced by two
 parallel Pass 2 subagents from static reading of the code, cited by file and line.
 Values not found in code are marked "not specified in code" rather than estimated.
 
+**`camera-translator.html` is not a live screen** — see the note at the start of
+Part 1 before reading further.
+
 ---
 
-## Part 1: Camera Translator & Sign-to-Text Screens
+## Phase 3a: loading behavior (read this before the per-file sections below)
+
+Phase 3a changed *when* scripts load and run, not what they do. The per-file
+detail below (written pre-Phase 3a) is still accurate for behavior; this
+section is the current state of load order.
+
+- **Every vendored/helper `<script src>` tag on `camera-translator.html`,
+  `gesture-training.html`, `sign-to-text.html`, and `index.html` now carries
+  `defer`.** Previously all were plain synchronous tags — `tf.min.js`,
+  `hands.js`, and their helpers sat in `<head>` and blocked the parser from
+  building the rest of the document (PIN screen included) until they
+  finished downloading and executing. `defer` preserves the same relative
+  execution order among them, but lets the parser build the DOM immediately
+  and download scripts in parallel with parsing instead of blocking on them.
+  One consequence: `index.html`'s bottom-of-body inline script patched
+  `window.handleRecognizedText` (defined in `js/script.js`) at parse time;
+  since inline scripts ignore `defer` and still run at their document
+  position, that check is now wrapped in a `DOMContentLoaded` listener so it
+  runs after `js/script.js` has actually executed. `diagnostic.html` also
+  loads `tf.min.js`/`hands.js` in `<head>` but was left un-deferred — it's an
+  unlinked dev tool outside the kiosk's navigation, out of this phase's scope.
+- **`js/script.js:533`'s `recognition.initModel()` — which pulls the 41 MB
+  Vosk model, decodes `js/vosk.js`'s worker, and compiles the Kaldi decoding
+  graph — now only runs when `isVoiceScreen` is true** (i.e. on the
+  `?screen=voice` navigation), not on every `index.html` load. This was the
+  single largest resource-loading defect found in the whole audit; see
+  `docs/system/DEBT.md` item 32.
+- **`index.html`'s `<link rel="prefetch">` block** now targets
+  `hands_solution_wasm_bin.wasm` (the non-SIMD binary MediaPipe actually
+  requests — `js/gesture-data.js:230-238` rewrites every SIMD request to this
+  filename) and `hand_landmark_full.tflite` (the hand-landmark model, always
+  requested since every call site pins `modelComplexity:1`), instead of the
+  never-used `hands_solution_simd_wasm_bin.wasm`. See `docs/system/DEBT.md`
+  item 20.
+- **Not changed:** `camera-translator.html?screen=translate`'s
+  `tlInitCamera()` still fires at script-parse time with no click gate —
+  recorded as an open question in `docs/system/DEBT.md` item 31, not fixed.
+  Camera-start on `gesture-training.html` (`enableCamBtn` click) and
+  `sign-to-text.html` ("Start Translating →" click) were already lazy before
+  this phase and are unchanged.
+- **Found, not fixed:** `camera-translator.html`'s entire inline `<script>`
+  block has a pre-existing (not Phase-3a-introduced) syntax error — an
+  unclosed `else{` — that throws `SyntaxError: Unexpected end of input` and
+  prevents that whole block, and therefore all of this file's application
+  logic, from executing in any browser. See `docs/system/DEBT.md` item 30.
+
+### Measured result
+
+`index.html`'s `domInteractive` — real Chrome, 1024×600, median of three hard
+reloads (cache disabled), measured by the project owner:
+
+| | Before | After |
+|---|---|---|
+| `domInteractive` | 3,005 ms | 156 ms |
+
+Not an estimate. This is almost entirely the Vosk defer fix (the eager
+`recognition.initModel()` call removed above) — `index.html` never loaded
+`tf.min.js`/`hands.js` as blocking `<script>` tags to begin with (only
+`<link rel="prefetch">`), so the script-defer change above had little further
+`domInteractive` impact on this specific page; its effect is on the PIN
+screens and camera screens, which loaded those libraries synchronously.
+
+---
+
+## Part 1: Sign-to-Text Screen (and the archived Camera Translator)
+
+> **`camera-translator.html` was archived in Phase 3a — it is not a live
+> screen.** Its inline `<script>` has an unclosed brace that throws
+> `SyntaxError: Unexpected end of input` in every browser, present identically
+> at baseline, after Phase 1, after Phase 2, and at HEAD before archival —
+> confirmed via `node --check`. None of its application logic has ever
+> executed. It now lives at `archive/camera-translator.html`; see
+> `archive/CAMERA-TRANSLATOR.md` and `docs/system/ML.md` for the full finding.
+> Everything below that describes `camera-translator.html` describes what its
+> *code says*, written before this was discovered — not behavior that has ever
+> run. `sign-to-text.html` is unaffected and is the only live screen in this
+> section.
 
 ### 1. Owns these files
 
-- `camera-translator.html`
-- `sign-to-text.html`
+- `sign-to-text.html` (live)
+- `archive/camera-translator.html` (archived, never executed — see above)
 - `js/db-api.js`
 - `js/db-local.js`
 - `js/gesture-data.js`
@@ -25,15 +104,17 @@ Values not found in code are marked "not specified in code" rather than estimate
 
 ### 2. What it does
 
-Both screens turn hand gestures seen by the USB camera into spoken/written words.
-`sign-to-text.html` is the polished kiosk-facing translator: an onboarding guide,
-then a live camera view with a skeleton overlay, a start/stop gesture workflow that
-accumulates a sentence, and a result screen with speak/copy/clear/save actions and a
-volume slider. `camera-translator.html` is a dual-purpose page: with
-`?screen=translate` in the URL it renders a near-identical translate-only screen;
-without that parameter it renders a 4-step "Add Data → Train AI → Predict →
-Translate" gesture-training wizard (capture samples, train a model in-browser, test
-it, then translate).
+`sign-to-text.html` turns hand gestures seen by the USB camera into
+spoken/written words: an onboarding guide, then a live camera view with a
+skeleton overlay, a start/stop gesture workflow that accumulates a sentence,
+and a result screen with speak/copy/clear/save actions and a volume slider.
+
+`camera-translator.html` (archived, never executed — see above) was written as
+a dual-purpose page: with `?screen=translate` in the URL it would have
+rendered a near-identical translate-only screen; without that parameter it
+would have rendered a 4-step "Add Data → Train AI → Predict → Translate"
+gesture-training wizard using a TensorFlow.js classifier instead of the k-NN
+below. None of that ran.
 
 ### 3. How it works
 

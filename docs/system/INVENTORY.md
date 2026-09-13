@@ -6,17 +6,21 @@ classify a file as live/dead). All counts below were produced by `wc -l`, `du`,
 single commit, branch `revision`) on 2026-09-12. Anything not directly observed is
 marked "not specified in code" per the accuracy rule for this audit.
 
-Total git-tracked files: 552 (`git ls-files | wc -l`, current, after Phase 2).
+Total git-tracked files: 554 (`git ls-files | wc -l`, current, after Phase 3a).
 Total tracked size: 227M as of the original Pass 1 count; not re-measured
-after Phase 1 or Phase 2. The 548 figure above described the tree as of Pass 1
-(2026-09-12, before later audit commits added more `docs/system/` files);
-Phase 1 (dead-code deletion) subsequently removed 11 tracked files and added
-`archive/old-revision-docs/ORIGIN.md` — see `docs/system/DEAD_CODE.md` for the
-record. Phase 2 (offline-CDN removal) then removed 2 tracked files
-(`bulk-importer.html`, `php/api/bulk_importer_api.php`) and added 3
-(`assets/fonts/Inter-Variable-latin.woff2`, `css/fonts.css`,
+after Phase 1, Phase 2, or Phase 3a. The 548 figure above described the tree
+as of Pass 1 (2026-09-12, before later audit commits added more
+`docs/system/` files); Phase 1 (dead-code deletion) subsequently removed 11
+tracked files and added `archive/old-revision-docs/ORIGIN.md` — see
+`docs/system/DEAD_CODE.md` for the record. Phase 2 (offline-CDN removal) then
+removed 2 tracked files (`bulk-importer.html`, `php/api/bulk_importer_api.php`)
+and added 3 (`assets/fonts/Inter-Variable-latin.woff2`, `css/fonts.css`,
 `docs/system/BULK_IMPORTER_NOTES.md`) — net +1, see `docs/system/DEBT.md`
-items 1, 3, 15, 26.
+items 1, 3, 15, 26. Phase 3a (UI load-order revision) archived
+`camera-translator.html` to `archive/camera-translator.html` (`git mv`, net 0)
+after confirming its inline script has never executed — see
+`docs/system/DEBT.md` items 11, 12, 30 — and added `archive/CAMERA-TRANSLATOR.md`
+and `docs/system/MANUAL-CHECKS.md` — net +2.
 
 ## 1. File tree with line/size, one line per file
 
@@ -30,7 +34,6 @@ and listing all 300+ leaf files individually would not add ownership information
 | File | Lines | Owns |
 |---|---|---|
 | [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3) |
-| [camera-translator.html](../../camera-translator.html) | 2160 | Live camera → sign recognition → text/speech translation screen |
 | [sign-to-text.html](../../sign-to-text.html) | 120 | Sign-to-text screen shell, loads `js/sign-to-text-ui.js` |
 | [gesture-training.html](../../gesture-training.html) | 380 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26) |
 | [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
@@ -140,6 +143,15 @@ project this codebase was originally started from, not an earlier revision of
 it — see `archive/old-revision-docs/ORIGIN.md`. Archived, not deleted, via
 `git mv` in Phase 1 (dead-code deletion).
 
+### `archive/`
+
+| File | Lines | Owns |
+|---|---|---|
+| [archive/camera-translator.html](../../archive/camera-translator.html) | 2160 | Was at repo root; `git mv`'d here in Phase 3a after confirming its inline `<script>` has never executed in any browser (unclosed `else{`, `SyntaxError: Unexpected end of input`, identical at baseline/Phase 1/Phase 2/HEAD). Moved as-is, syntax error included. See next row. |
+| [archive/CAMERA-TRANSLATOR.md](../../archive/CAMERA-TRANSLATOR.md) | 39 | Phase 3a's archival record for the file above: exact cause, `node --check` proof, reachability search, what TF.js code it held, why it's kept. |
+
+Also holds `archive/old-revision-docs/` (see `### docs/` below).
+
 ### `scratch/`
 
 | File | Owns |
@@ -176,7 +188,7 @@ Per-page script load order (in document order, from each HTML file's `<script sr
 2. `start_kiosk.sh:17` launches: `chromium --kiosk --password-store=basic --use-fake-ui-for-media-stream --enable-speech-dispatcher --disable-accelerated-video-decode --enable-logging=stderr http://localhost/SKR/index.html`
 3. This means `index.html` is served over Apache/PHP at `http://localhost/SKR/...`, not opened as a `file://` path — Apache serves the static frontend files, not only the PHP API.
 4. `index.html` is the sole browser entry point started by the kiosk script. From it, `window.location.href` navigation reaches `gesture-training.html` (`index.html:603`) and `reports.html` (`index.html:614`); `<a href>` links reach `learn-signs.html` and `sign-to-text.html`.
-5. **Not specified in code / not resolvable by static inspection**: how `camera-translator.html` is reached at runtime — no `href`, `window.location`, or `window.open` reference to it was found anywhere in the tracked HTML/JS. (This item originally also named `bulk-importer.html` as a second example; that file was deleted in Phase 2, see `docs/system/DEBT.md` item 26.) The system brief mentions two touchscreens and one USB camera, but `start_kiosk.sh` only launches a single Chromium instance against a single URL; nothing in the tracked files configures a second display, a second Chromium instance, or window placement. How the second screen (if any) is populated is not specified in code — flagged for Pass 2 / hardware-layer investigation.
+5. **RESOLVED (Phase 3a).** How `camera-translator.html` was reached at runtime — this originally read "not specified in code / not resolvable by static inspection": no `href`, `window.location`, or `window.open` reference to it was found anywhere in the tracked HTML/JS. Phase 3a confirmed why: its inline `<script>` has never executed at all (`SyntaxError: Unexpected end of input`, present at baseline/Phase 1/Phase 2/HEAD), so there was never a working screen to link to. Archived to `archive/camera-translator.html`; see `docs/system/DEBT.md` items 11, 12, 30. (This item originally also named `bulk-importer.html` as a second example; that file was deleted in Phase 2, see `docs/system/DEBT.md` item 26.) The system brief mentions two touchscreens and one USB camera, but `start_kiosk.sh` only launches a single Chromium instance against a single URL; nothing in the tracked files configures a second display, a second Chromium instance, or window placement. How the second screen (if any) is populated is not specified in code — flagged for Pass 2 / hardware-layer investigation.
 6. `preload.html` (deleted in Phase 1, see `docs/system/DEAD_CODE.md`) was never part of the live boot path — its only reference was a commented-out `<iframe>` in `index.html:820`. `index.html:820` still carries that inert commented-out reference; it was left in place since it is not live code.
 
 ## 4. PHP endpoints

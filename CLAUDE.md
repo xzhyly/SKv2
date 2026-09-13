@@ -2,11 +2,15 @@
 
 Offline Filipino Sign Language translation kiosk. Client-side vanilla
 JavaScript/HTML5/CSS3, no framework, no build step. MediaPipe Hands (WASM) does
-hand-landmark detection; TensorFlow.js and a hand-rolled cosine-similarity k-NN
-(depending on screen) do sign classification, both on-device. PHP 8 + MySQL/
+hand-landmark detection; a hand-rolled cosine-similarity k-NN does sign
+classification, on-device — the only classification approach that has ever
+run in this system. A second, TensorFlow.js-based approach exists in code
+(`archive/camera-translator.html`) but has never executed in any browser; see
+`docs/system/ML.md`. PHP 8 + MySQL/
 MariaDB on Apache handle admin functions and history/translation logging only —
 never live inference. Target hardware is a Raspberry Pi 4B 8GB, CPU-only,
-Chromium in kiosk mode. Phase 1 of this revision (dead-code deletion, see
+Chromium in kiosk mode, with a **1024×600** touchscreen — this is the screen
+size to test against, not a laptop viewport. Phase 1 of this revision (dead-code deletion, see
 `docs/system/DEAD_CODE.md`) is complete: a browserify/deeplearn.js build
 pipeline that turned out to belong to a separate open-source project this
 codebase was originally started from — not an earlier revision of this one,
@@ -27,6 +31,28 @@ see `docs/system/DEBT.md`.
 - **No framework.** No React, Vue, or jQuery. Vanilla JS/DOM only.
 - **Raspberry Pi 4B is the target, not a laptop.** CPU only, no GPU.
 - **PHP touches admin/history only, never the live translation path.**
+
+## Run
+
+Phase 2.5 (local development environment) is complete — the system runs
+locally via XAMPP:
+
+- **Stack:** XAMPP (Apache + MySQL/MariaDB).
+- **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at this
+  repo, so there is one copy of the files on disk — editing the repo edits
+  what Apache serves, and vice versa. No file copying/syncing step.
+- **Database:** import `sining_kamay_db` into the local MySQL/MariaDB instance
+  (see `docs/system/BACKEND.md` for which `.sql` file to use — one of the
+  tracked dumps needs encoding conversion first).
+- **URL:** http://localhost/SKR/
+- The local path (`/SKR/`) deliberately matches the path the Pi serves the
+  kiosk from (`start_kiosk.sh` targets `http://localhost/SKR/index.html`, see
+  `docs/system/HARDWARE_BOOT.md`), so hardcoded `/SKR/`-relative references
+  behave the same in local dev as on the Pi.
+
+Confirmed working locally: camera capture and sign-to-text translation on
+`sign-to-text.html`, with the k-NN classifier loading all 120 ESL gestures and
+no console errors.
 
 ## Where to read for what
 

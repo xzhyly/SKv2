@@ -141,12 +141,22 @@ so a later session does not re-litigate them:
     `.tl-output-box` font-size is 18px inline vs 26px in `css/sign-to-text.css`).
     Editing the shared files will silently not affect this screen.
 
+    **RESOLVED (Phase 3a), by archiving — not by fixing.** The file this
+    applied to never executed in any browser (item 30) and has been moved to
+    `archive/camera-translator.html`, syntax error and all. The drift
+    described above was never live behavior a user could hit; it's preserved
+    unfixed in the archived copy as historical record.
+
 12. **A whole block of `camera-translator.html` is duplicated verbatim.**
     `camera-translator.html:1380-1433` and `:1438-1491` — `getWordBank`,
     `tlSetLang`, `addCustomWord` (including its `keydown` listener),
     `removeCustomWord`, `renderWordChips`, `renderTranslation` all appear twice,
     including a repeated `// STEP 4 — TRANSLATE (training UI)` header comment; the
     `wordInput` keydown listener is attached twice as a result.
+
+    **RESOLVED (Phase 3a), by archiving — not by fixing**, same as item 11
+    above: the file never ran, so this duplication was never live, and it's
+    preserved as-is in `archive/camera-translator.html`.
 
 13. **Half-migrated dual-view design in `sign-to-text-ui.js`.**
     `js/sign-to-text-ui.js:380-382,410-413,420-422,792-797` reference DOM elements
@@ -161,6 +171,12 @@ so a later session does not re-litigate them:
     10-or-20-step progress animation, not a 50-epoch neural-net training run. The
     `EPOCHS` constant is otherwise unused in the file. Confusing to an operator
     watching the number, not a functional bug.
+
+    **No longer deferred to the Pi (Phase 2.5).** Checking this in a running
+    browser used to mean deploying to the Raspberry Pi. Now that the app runs
+    locally under XAMPP (see the Run section in `CLAUDE.md` and the Local
+    development section in `docs/system/HARDWARE_BOOT.md`), this can be
+    verified directly on a development machine instead.
 
 15. **`error_reporting(0)` / `display_errors=0` disabled repo-wide for one file.**
     `php/api/bulk_importer_api.php:3-4` — intended to keep warnings out of JSON
@@ -209,6 +225,20 @@ so a later session does not re-litigate them:
     (`hands_solution_simd_wasm_bin.wasm`, 5.6 MB) is never reached, but no
     confirmed live path uses it either — a 5.6 MB file that may be dead weight on
     every kiosk boot/prefetch.
+
+    **RESOLVED (Phase 3a), for the prefetch half of this finding.**
+    `index.html`'s `<link rel="prefetch">` block named the SIMD binary,
+    guaranteeing it was wasted bandwidth even if nothing else ever proved
+    it dead — confirmed directly this phase: `js/gesture-data.js:230-238`'s
+    `locateFile` override rewrites every `*simd_wasm_bin*` request to the
+    non-SIMD filename before MediaPipe ever asks for it, and `hands.js`'s
+    own manifest (`{simd:!1,url:"hands_solution_wasm_bin.js"}` /
+    `{simd:!0,url:"hands_solution_simd_wasm_bin.js"}`) confirms the two are
+    mutually exclusive alternatives. The prefetch now targets
+    `hands_solution_wasm_bin.wasm` (the one actually requested) plus
+    `hand_landmark_full.tflite`. The vendored SIMD `.wasm`/`.js` pair itself
+    is untouched and still on disk — deleting vendored files was out of
+    scope for this phase.
 
 21. **Latent risk: `hand_landmark_lite.tflite` is referenced by vendored code but
     not vendored.** `js/lib/mediapipe/hands.js:89` can request
@@ -312,6 +342,88 @@ so a later session does not re-litigate them:
     the three named pieces of work) — flagged here rather than fixed. Needs a
     project-owner decision: replace with a locally-hosted version of this
     content, or something else.
+
+30. **High severity: `camera-translator.html`'s entire inline `<script>` block
+    has a syntax error and never executes, in any browser.** Found during
+    Phase 3a while checking for console errors after deferring script tags —
+    confirmed via `git show HEAD` that this predates Phase 3a entirely, so it
+    is not something that phase introduced. The bottom-of-body inline script
+    (camera-translator.html's whole application logic — the training wizard,
+    the `?screen=translate` view, camera handling, everything) ends with:
+    ```js
+    if(TRANSLATE_ONLY){
+      document.getElementById('tl-page').classList.add('active');
+      tlInitCamera();
+    }else{
+      document.getElementById('training-ui').classList.add('active');
+      showStepInstruction(1);
+      updateUI();
+    </script>
+    ```
+    The `else{` never closes. This throws `SyntaxError: Unexpected end of
+    input` in every browser and prevents the *entire* script block from
+    executing — not just the `if`/`else`, all ~1300 lines including the
+    `enableCamBtn` click listener, `tlInitCamera`, `trainModel`, everything.
+    Confirmed live: `camera-translator.html`'s HTML renders (buttons exist in
+    the DOM) but no listener is ever attached to any of them.
+
+    **RESOLVED (Phase 3a), by archiving — not by fixing.** The project owner
+    verified this finding independently (identical brace missing at baseline,
+    Phase 1, Phase 2, and HEAD) and confirmed a one-character `}` fix does
+    make it parse cleanly (`node --check`), but chose to archive the file
+    rather than fix it: nothing in the repo references it (no `href`,
+    `location.href`, or `window.open` anywhere), and it held the project's
+    only TensorFlow.js classification code (`tf.tensor2d`, `tf.sequential`,
+    `tf.loadLayersModel`, `.predict()`, lines 1220-1686) as an alternative to
+    the k-NN approach actually running in production. Moved to
+    `archive/camera-translator.html` with the syntax error intact — see
+    `archive/CAMERA-TRANSLATOR.md` and `docs/system/ML.md` for the full
+    record.
+
+31. **Open question, not a defect: should `camera-translator.html?screen=translate`
+    keep auto-starting the camera at script-parse time?** Raised during
+    Phase 3a (see `docs/system/UI.md`) — `tlInitCamera()` fires unconditionally
+    when `TRANSLATE_ONLY` is true, with no click gate, unlike every other
+    camera-start path in the codebase (`gesture-training.html`'s
+    `enableCamBtn`, `sign-to-text.html`'s "Start Translating →"). Per the
+    project owner: since this view exists specifically to translate, starting
+    the camera immediately is arguably correct behavior, not a bug — recorded
+    here as a question for a later phase rather than changed. Also currently
+    unreachable in practice regardless, since item 30 above means none of this
+    file's JS executes at all.
+
+32. **High severity, found and resolved in Phase 3a: the Vosk offline speech
+    model loaded unconditionally on every `index.html` visit, whether or not
+    the user ever opened voice input.** `js/script.js:533` called
+    `recognition.initModel()` at top level with no guard, which pulls the
+    41 MB `models/vosk-model-small-en-us-0.15.tar.gz.zip`, decodes
+    `js/vosk.js`'s base64 worker blob, and compiles the Kaldi decoding graph —
+    confirmed live via console output (`VoskAPI:CompileLooped... Spent
+    0.1-0.5 seconds in looped compilation`, plus i-vector/HCL/G graph loads)
+    appearing on a plain dashboard load with no interaction. This was the
+    single largest resource-loading defect found across the whole audit —
+    larger than the camera-library loading this phase originally set out to
+    fix.
+
+    **RESOLVED (Phase 3a).** Gated the call on `isVoiceScreen`
+    (`js/script.js:341`), which is true only for the `?screen=voice`
+    navigation reached via the dashboard's voice card. `initModel()` already
+    no-ops if the model is loaded, and `start()` already lazy-loads it too as
+    a second line of defense, so no new guard was needed. Verified live:
+    repeated `index.html` loads now produce zero VoskAPI console output; a
+    `?screen=voice` load still loads and compiles the model exactly as
+    before.
+
+33. **Low severity: `ScriptProcessorNode` deprecation warning on the voice
+    screen.** `js/script.js:288` uses the Web Audio API's `ScriptProcessorNode`
+    (buffer size 4096, per `docs/system/UI.md` Part 2 §3) to feed audio into
+    Vosk. Chrome logs a deprecation warning for this API (superseded by
+    `AudioWorkletNode`) every time voice input actually runs. Confirmed via
+    manual verification (Phase 3a, `docs/system/MANUAL-CHECKS.md`) — not a red
+    console error, and pre-existing: this line predates Phase 3a and was not
+    touched or introduced by it. Not fixed here — a replacement would need to
+    port the Vosk audio pipeline to `AudioWorkletNode`, out of this phase's
+    scope (load order only).
 
 ## Dead code
 

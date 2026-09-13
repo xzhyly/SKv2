@@ -16,7 +16,27 @@ Offline speech recognition is provisioned by shipping a pre-downloaded Vosk acou
 
 The two connection/startup guide docs are operator runbooks (in Taglish) for SSH'ing into the Pi from a Windows laptop and for manually installing/testing audio (`speech-dispatcher`, `espeak-ng`) and manually launching Chromium from an SSH terminal — they are not executed by any script; they document a human procedure.
 
-## 3. How it works (cited)
+## 3. Local development
+
+Phase 2.5 added a local development setup, run side-by-side with the Pi
+deployment described above rather than replacing it:
+
+- **Stack:** XAMPP (Apache + MySQL/MariaDB) on a Windows development machine.
+- **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at the
+  repo checkout, so Apache serves the same files tracked in git directly —
+  one copy, no build/copy/sync step.
+- **Database:** `sining_kamay_db` imported into the local MySQL/MariaDB
+  instance (see `docs/system/BACKEND.md` for an encoding gotcha in one of the
+  two tracked `.sql` dumps).
+- **URL:** http://localhost/SKR/ — deliberately the same `/SKR/` path
+  segment `start_kiosk.sh:17` uses on the Pi (see Section 6).
+- Confirmed working: camera capture and sign-to-text translation on
+  `sign-to-text.html`, k-NN classifier loading all 120 ESL gestures, no
+  console errors.
+- Nothing in this section touches `start_kiosk.sh`, `SKR_Kiosk.desktop`, or
+  the Vosk model — those remain Pi-only, unexercised by local development.
+
+## 4. How it works (cited)
 
 - Chromium launch, exact flags and URL — `start_kiosk.sh:17`:
   `chromium --kiosk --password-store=basic --use-fake-ui-for-media-stream --enable-speech-dispatcher --disable-accelerated-video-decode --enable-logging=stderr http://localhost/SKR/index.html >> "$LOG_FILE" 2>&1`
@@ -31,7 +51,7 @@ The two connection/startup guide docs are operator runbooks (in Taglish) for SSH
 - `js/vosk.js` constants (cross-reference only): sample rate is not a hardcoded constant — it is passed in as a `sampleRate` parameter to the `KaldiRecognizer` constructor (`js/vosk.js:291`, `js/vosk.js:300`) and forwarded per audio chunk (`js/vosk.js:325`, `js/vosk.js:338`); the caller (`speech_test.html:86`) supplies `this.audioContext.sampleRate` (the browser's `AudioContext` default), so no fixed sample-rate number is specified in `js/vosk.js` itself. No frame-rate, timeout, retry-count, or buffer-size constants were found in `js/vosk.js`.
 - `js/camera-helper.js` constants (cross-reference only): `FEAT_W = 16`, `FEAT_H = 12` (`js/camera-helper.js:2-3`), a fixed 16x12 pixel sampling grid used only for a fallback landmark-feature extraction path (`js/camera-helper.js:54-68`), not a camera capture resolution. `initCameraWithFallback(idealWidth, idealHeight, ...)` (`js/camera-helper.js:6`) takes camera resolution as caller-supplied parameters — no default width/height is hardcoded in this file. No frame rate, timeout, or retry-count constants were found in `js/camera-helper.js`. (Note: callers of the same-named function in `camera-translator.html` — which defines its own local copy rather than loading `js/camera-helper.js` — pass `320, 240` as ideal width/height, e.g. `camera-translator.html:1128-1129` and `camera-translator.html:1592-1593`; this is a separate, out-of-scope file, cited here only because it shows the values this helper is actually called with elsewhere in the app.)
 
-## 4. Key decisions and why
+## 5. Key decisions and why
 
 - `--kiosk`: full-screen, chrome-less browser window — standard for a public kiosk terminal. Reason not documented in code beyond the flag's standard Chromium purpose.
 - `--use-fake-ui-for-media-stream`: auto-approves camera/microphone permission prompts instead of showing the browser's consent dialog — necessary because this is an unattended kiosk with no way for an operator to click "Allow" each boot.
@@ -41,16 +61,22 @@ The two connection/startup guide docs are operator runbooks (in Taglish) for SSH
 - `--enable-logging=stderr`: routes Chromium's internal logging to stderr, which the script then redirects into `kiosk_logs.log` (`start_kiosk.sh:17`) — supports post-hoc debugging without a terminal attached (`Terminal=false`, `SKR_Kiosk.desktop:7`).
 - `pkill -9 chromium` + `Singleton*` lock removal (`start_kiosk.sh:3,7`): forces a clean single-instance relaunch, working around Chromium's own single-instance lock that would otherwise block a fresh launch after a crash or unclean shutdown. Reason not documented in code beyond this evident mechanism.
 
-## 5. Constraints
+## 6. Constraints
 
 - `--disable-accelerated-video-decode` (`start_kiosk.sh:17`) turns off GPU video decode. The system brief states the target device is a Raspberry Pi 4B, CPU-only for inference; the code does not state why video decode accel is disabled, so the link to the Pi's GPU/driver limitations is plausible but "reason not documented in code."
 - The Vosk model chosen is explicitly the "small" variant — filename `vosk-model-small-en-us-0.15.tar.gz.zip`. No comment in the repo states this choice was made because of the Pi's resource limits; per the accuracy rule this connection is not asserted as fact — "reason not documented in code." The only hard number available is the file's on-disk size, 41,138,088 bytes.
 - No GPU-related TensorFlow.js constants, WebGL/WASM backend selection flags, or CPU-only inference settings appear anywhere in the files owned by this document (`start_kiosk.sh`, `SKR_Kiosk.desktop`, the guide docs); TensorFlow.js backend configuration is out of this document's scope (owned elsewhere per the audit's file assignment) and was not inspected here.
-- No frame-rate, resolution, sample-rate, timeout, retry, or buffer-size constant tied explicitly to Pi hardware limits was found in `js/vosk.js` or `js/camera-helper.js` (see Section 3) — where the system brief's Pi specs might explain a design choice, the code itself is silent, so no such link is asserted here.
+- No frame-rate, resolution, sample-rate, timeout, retry, or buffer-size constant tied explicitly to Pi hardware limits was found in `js/vosk.js` or `js/camera-helper.js` (see Section 4) — where the system brief's Pi specs might explain a design choice, the code itself is silent, so no such link is asserted here.
 - `raspberry_pi_startup_guide.md:47,52` shows manually-run Chromium commands that omit `--use-fake-ui-for-media-stream`, `--password-store=basic`'s pairing, and `--disable-accelerated-video-decode` compared to `start_kiosk.sh:17` — i.e., the guide's manual fallback command is a reduced-flag version of the production script; this is a documentation/behavior gap between the guide and the actual boot script, not a Pi hardware constraint.
 
-## 6. Touches
+## 7. Touches
 
+- Local development and the Pi now serve the app from the same `/SKR/` path
+  (`http://localhost/SKR/` locally via the XAMPP junction described in
+  Section 3, `http://localhost/SKR/index.html` on the Pi via
+  `start_kiosk.sh:17`). Hardcoded `/SKR/`-relative paths in front-end JS (see
+  `docs/system/DEBT.md` item 7) resolve the same way in both environments as
+  a result.
 - Boot depends on `index.html` existing at exactly the path baked into `start_kiosk.sh:17`: `http://localhost/SKR/index.html`. If `index.html` moves, is renamed, or the web server's document root changes, the kiosk boots to a browser error page with no fallback — this is a single point of failure with no retry or alternate-URL logic in the script.
 - `index.html:749` loads `js/vosk.js`, so removing or relocating `js/vosk.js` (or the `models/vosk-model-small-en-us-0.15.tar.gz.zip` file it/`speech_test.html` reference) breaks speech features but not the boot itself, since `start_kiosk.sh` has no dependency check — Chromium will still launch and load whatever HTML is at the URL.
 - The desktop entry (`SKR_Kiosk.desktop:5`) hardcodes `Exec=/home/crystelle/start_kiosk.sh`; if the script is moved or the account is renamed, the desktop entry silently fails to launch anything.

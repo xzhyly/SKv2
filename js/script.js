@@ -528,8 +528,9 @@ if (SpeechRecognition) {
     recognition.continuous = true; 
     recognition.interimResults = false;
 
-    // Pre-initialize offline model if Vosk adapter is active
-    if (typeof recognition.initModel === 'function') {
+    // Pre-initialize offline model if Vosk adapter is active — but only once the user
+    // has actually opened the voice screen, not on every dashboard load.
+    if (isVoiceScreen && typeof recognition.initModel === 'function') {
         recognition.initModel();
     }
 
