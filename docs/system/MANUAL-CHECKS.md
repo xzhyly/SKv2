@@ -18,9 +18,10 @@ here.
       reachable, nothing permanently hidden.
 - [ ] `sign-to-text.html` — just load it — onboarding guide text and the
       "Start Translating →" button both visible without scrolling.
-- [ ] `camera-translator.html` — just load it — Step 1 wizard (progress
-      pills, instructions, Next button) renders fully, nothing cut off.
-      (Buttons likely won't do anything when clicked — see next section.)
+
+`camera-translator.html` removed from this list — archived to
+`archive/camera-translator.html` (see `docs/system/DEBT.md` item 30). Its old
+URL now 404s; nothing to check there.
 
 ## Camera path
 
@@ -29,14 +30,6 @@ here.
       seconds.
 - [ ] Same screen — show a trained gesture (e.g. "start") to the camera — a
       prediction label appears and updates.
-- [ ] `camera-translator.html` — click "Enable Camera" on Step 1 — **expected:
-      nothing happens** (matches a bug already found and logged in
-      `docs/system/DEBT.md` item 30 — a missing `}` breaks the file's entire
-      script). If the camera actually turns on, that contradicts the finding —
-      tell me.
-- [ ] `camera-translator.html?screen=translate` — just load it — **expected:
-      no camera permission prompt appears** (same bug). If a prompt does
-      appear, tell me — it would mean this code path isn't affected.
 
 ## Voice screen
 
