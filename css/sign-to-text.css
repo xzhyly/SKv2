@@ -250,6 +250,13 @@ a{text-decoration:none}
   text-align: center;
   gap: 20px;
   border: 1px solid rgba(26, 37, 64, 0.05);
+  /* Never taller than the screen: on short screens the step list scrolls
+     inside the card, so the Start button stays in view with fixed headroom
+     no matter how much text sits above it. */
+  min-height: 0;
+}
+.tl-instr-card > * {
+  flex-shrink: 0;
 }
 .tl-step-badge {
   background: rgba(249,115,22,.1);
@@ -283,6 +290,18 @@ a{text-decoration:none}
   gap: 16px;
   text-align: left;
   margin: 8px 0;
+  /* The one part of the card that gives up height when the screen is short */
+  flex-shrink: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Room inside the scroll box for the step numbers' shadows (10px left,
+     6px above), cancelled by the margins so nothing moves; the extra 4px of
+     width is the scrollbar gutter, so the text column keeps its width. */
+  width: calc(100% + 14px);
+  align-self: flex-start;
+  padding: 6px 0 0 10px;
+  margin: 2px 0 8px -10px;
 }
 .tl-instr-item {
   display: flex;
