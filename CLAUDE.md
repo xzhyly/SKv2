@@ -2,8 +2,11 @@
 
 Offline Filipino Sign Language translation kiosk. Client-side vanilla
 JavaScript/HTML5/CSS3, no framework, no build step. MediaPipe Hands (WASM) does
-hand-landmark detection; TensorFlow.js and a hand-rolled cosine-similarity k-NN
-(depending on screen) do sign classification, both on-device. PHP 8 + MySQL/
+hand-landmark detection; a hand-rolled cosine-similarity k-NN does sign
+classification, on-device — the only classification approach that has ever
+run in this system. A second, TensorFlow.js-based approach exists in code
+(`archive/camera-translator.html`) but has never executed in any browser; see
+`docs/system/ML.md`. PHP 8 + MySQL/
 MariaDB on Apache handle admin functions and history/translation logging only —
 never live inference. Target hardware is a Raspberry Pi 4B 8GB, CPU-only,
 Chromium in kiosk mode, with a **1024×600** touchscreen — this is the screen

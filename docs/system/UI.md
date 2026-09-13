@@ -1,9 +1,12 @@
 # UI Layer
 
-This document covers the kiosk's screens: the two live translation screens (this
+This document covers the kiosk's screens: the live translation screen (this
 section) and the dashboard/training/admin screens (next section). Produced by two
 parallel Pass 2 subagents from static reading of the code, cited by file and line.
 Values not found in code are marked "not specified in code" rather than estimated.
+
+**`camera-translator.html` is not a live screen** — see the note at the start of
+Part 1 before reading further.
 
 ---
 
@@ -55,12 +58,24 @@ section is the current state of load order.
 
 ---
 
-## Part 1: Camera Translator & Sign-to-Text Screens
+## Part 1: Sign-to-Text Screen (and the archived Camera Translator)
+
+> **`camera-translator.html` was archived in Phase 3a — it is not a live
+> screen.** Its inline `<script>` has an unclosed brace that throws
+> `SyntaxError: Unexpected end of input` in every browser, present identically
+> at baseline, after Phase 1, after Phase 2, and at HEAD before archival —
+> confirmed via `node --check`. None of its application logic has ever
+> executed. It now lives at `archive/camera-translator.html`; see
+> `archive/CAMERA-TRANSLATOR.md` and `docs/system/ML.md` for the full finding.
+> Everything below that describes `camera-translator.html` describes what its
+> *code says*, written before this was discovered — not behavior that has ever
+> run. `sign-to-text.html` is unaffected and is the only live screen in this
+> section.
 
 ### 1. Owns these files
 
-- `camera-translator.html`
-- `sign-to-text.html`
+- `sign-to-text.html` (live)
+- `archive/camera-translator.html` (archived, never executed — see above)
 - `js/db-api.js`
 - `js/db-local.js`
 - `js/gesture-data.js`
@@ -73,15 +88,17 @@ section is the current state of load order.
 
 ### 2. What it does
 
-Both screens turn hand gestures seen by the USB camera into spoken/written words.
-`sign-to-text.html` is the polished kiosk-facing translator: an onboarding guide,
-then a live camera view with a skeleton overlay, a start/stop gesture workflow that
-accumulates a sentence, and a result screen with speak/copy/clear/save actions and a
-volume slider. `camera-translator.html` is a dual-purpose page: with
-`?screen=translate` in the URL it renders a near-identical translate-only screen;
-without that parameter it renders a 4-step "Add Data → Train AI → Predict →
-Translate" gesture-training wizard (capture samples, train a model in-browser, test
-it, then translate).
+`sign-to-text.html` turns hand gestures seen by the USB camera into
+spoken/written words: an onboarding guide, then a live camera view with a
+skeleton overlay, a start/stop gesture workflow that accumulates a sentence,
+and a result screen with speak/copy/clear/save actions and a volume slider.
+
+`camera-translator.html` (archived, never executed — see above) was written as
+a dual-purpose page: with `?screen=translate` in the URL it would have
+rendered a near-identical translate-only screen; without that parameter it
+would have rendered a 4-step "Add Data → Train AI → Predict → Translate"
+gesture-training wizard using a TensorFlow.js classifier instead of the k-NN
+below. None of that ran.
 
 ### 3. How it works
 

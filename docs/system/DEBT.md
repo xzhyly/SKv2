@@ -141,12 +141,22 @@ so a later session does not re-litigate them:
     `.tl-output-box` font-size is 18px inline vs 26px in `css/sign-to-text.css`).
     Editing the shared files will silently not affect this screen.
 
+    **RESOLVED (Phase 3a), by archiving — not by fixing.** The file this
+    applied to never executed in any browser (item 30) and has been moved to
+    `archive/camera-translator.html`, syntax error and all. The drift
+    described above was never live behavior a user could hit; it's preserved
+    unfixed in the archived copy as historical record.
+
 12. **A whole block of `camera-translator.html` is duplicated verbatim.**
     `camera-translator.html:1380-1433` and `:1438-1491` — `getWordBank`,
     `tlSetLang`, `addCustomWord` (including its `keydown` listener),
     `removeCustomWord`, `renderWordChips`, `renderTranslation` all appear twice,
     including a repeated `// STEP 4 — TRANSLATE (training UI)` header comment; the
     `wordInput` keydown listener is attached twice as a result.
+
+    **RESOLVED (Phase 3a), by archiving — not by fixing**, same as item 11
+    above: the file never ran, so this duplication was never live, and it's
+    preserved as-is in `archive/camera-translator.html`.
 
 13. **Half-migrated dual-view design in `sign-to-text-ui.js`.**
     `js/sign-to-text-ui.js:380-382,410-413,420-422,792-797` reference DOM elements
@@ -355,11 +365,20 @@ so a later session does not re-litigate them:
     executing — not just the `if`/`else`, all ~1300 lines including the
     `enableCamBtn` click listener, `tlInitCamera`, `trainModel`, everything.
     Confirmed live: `camera-translator.html`'s HTML renders (buttons exist in
-    the DOM) but no listener is ever attached to any of them. Not fixed in
-    Phase 3a — that phase's scope was load order, not application logic, and
-    a project-owner decision on priority/scope (a one-character brace fix vs.
-    something bigger given this file's other known problems, items 11-12
-    above) seemed warranted before touching it.
+    the DOM) but no listener is ever attached to any of them.
+
+    **RESOLVED (Phase 3a), by archiving — not by fixing.** The project owner
+    verified this finding independently (identical brace missing at baseline,
+    Phase 1, Phase 2, and HEAD) and confirmed a one-character `}` fix does
+    make it parse cleanly (`node --check`), but chose to archive the file
+    rather than fix it: nothing in the repo references it (no `href`,
+    `location.href`, or `window.open` anywhere), and it held the project's
+    only TensorFlow.js classification code (`tf.tensor2d`, `tf.sequential`,
+    `tf.loadLayersModel`, `.predict()`, lines 1220-1686) as an alternative to
+    the k-NN approach actually running in production. Moved to
+    `archive/camera-translator.html` with the syntax error intact — see
+    `archive/CAMERA-TRANSLATOR.md` and `docs/system/ML.md` for the full
+    record.
 
 31. **Open question, not a defect: should `camera-translator.html?screen=translate`
     keep auto-starting the camera at script-parse time?** Raised during
