@@ -746,9 +746,9 @@
     </section>
 
 
-    <script src="js/vosk.js"></script>
-    <script src="js/script.js?v=5"></script>
-    <script src="js/virtual-keyboard.js"></script>
+    <script src="js/vosk.js" defer></script>
+    <script src="js/script.js?v=5" defer></script>
+    <script src="js/virtual-keyboard.js" defer></script>
     <script>
     // ═══════════════════════════════════════════════
     //  TEXT TO SIGN — State management & enhancements
@@ -774,16 +774,20 @@
         }
 
         // ── Intercept handleRecognizedText to trigger state switch on voice ──
-        if (typeof window.handleRecognizedText === 'function') {
-            const _orig = window.handleRecognizedText;
-            window.handleRecognizedText = function (text, onDone) {
-                if (text && text.trim()) {
-                    transcriptEl.textContent = text;
-                    switchToResult();
-                }
-                return _orig(text, onDone);
-            };
-        }
+        // js/script.js is now deferred (runs after parsing, before DOMContentLoaded),
+        // so wait for DOMContentLoaded before patching a function it defines.
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof window.handleRecognizedText === 'function') {
+                const _orig = window.handleRecognizedText;
+                window.handleRecognizedText = function (text, onDone) {
+                    if (text && text.trim()) {
+                        transcriptEl.textContent = text;
+                        switchToResult();
+                    }
+                    return _orig(text, onDone);
+                };
+            }
+        });
 
         // ── Capture-phase listener on translate button ──
         //    Runs before script.js click handler so state switches first
