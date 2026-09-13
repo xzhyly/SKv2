@@ -68,8 +68,15 @@
     .pill{display:inline-flex;align-items:center;max-width:100%;border-radius:var(--radius);padding:3px 8px;background:rgba(0,119,182,.08);border:1px solid rgba(0,119,182,.2);color:var(--primary);font-weight:900;font-size:11px;overflow:hidden;text-overflow:ellipsis}
     #tab-esl th:nth-child(1),#tab-fsl th:nth-child(1),#tab-translations th:nth-child(1){width:48px}
     #tab-esl th:nth-child(2),#tab-fsl th:nth-child(2),#tab-translations th:nth-child(2){width:112px}
-    #tab-esl th:nth-child(6),#tab-fsl th:nth-child(6),#tab-translations th:nth-child(7){width:136px}
+    /* A touchscreen has no hover, so no cell may hide text behind an ellipsis.
+       Created: fixed-length timestamps get a column that fits the widest one
+       (worst case, every digit a "4": 129.9px of text at 12px Inter + 20px padding).
+       Free text (Label/Sign, Text) and Key pills have no fixed length, so they wrap;
+       only rows holding long text get taller. */
+    #tab-esl th:nth-child(6),#tab-fsl th:nth-child(6),#tab-translations th:nth-child(7){width:150px}
     #tab-translations th:nth-child(5),#tab-translations th:nth-child(6){width:92px}
+    #tab-esl td:nth-child(3),#tab-esl td:nth-child(4),#tab-fsl td:nth-child(3),#tab-fsl td:nth-child(4),#tab-translations td:nth-child(3),#tab-translations td:nth-child(4){white-space:normal;overflow-wrap:anywhere}
+    td .pill{white-space:normal;overflow-wrap:anywhere}
     @media(max-width:760px){body{padding:10px}.page{height:calc(100vh - 20px)}header{padding:12px;gap:10px}.summary{padding:10px 12px;gap:8px}.metric{padding:10px;min-height:74px}.metric strong{font-size:28px}.tabs{padding:0 12px 10px}.tab{font-size:12px}section{padding:0 12px 12px}th,td{padding:7px 8px;font-size:11px}}
     @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}}
     body.printing section{display:block!important}
