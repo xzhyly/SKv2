@@ -460,17 +460,38 @@
         background: rgba(239, 68, 68, 0.25);
       }
 
-      /* Keyboard Active State Layout Overrides */
-      #ttsBody.keyboard-active #start-btn,
-      #ttsBody.keyboard-active .tts-mic-label,
-      #ttsBody.keyboard-active #transcript,
-      #ttsBody.keyboard-active .tts-or {
-        display: none !important;
-      }
-      #ttsBody.keyboard-active .tts-controls-panel {
-        justify-content: flex-start !important;
-        padding-top: 30px !important;
-        gap: 16px !important;
+      /* Keyboard Active State Layout Overrides
+         js/virtual-keyboard.js puts .keyboard-active on <body> and <html>, never
+         on #ttsBody. Below 1147px tall the open keyboard covers the text input or
+         the Translate button, so while typing the speech controls are hidden and
+         the rest moves to the top. The transcript is not listed: the
+         .tts-live-text:empty rule already hides it while empty, and when it holds
+         recognised speech it is what the user is retyping from.
+
+         1146px is measured, not chosen: 1147px is the smallest viewport height
+         at which the text input and the Translate button both clear the open
+         keyboard without intervention (Translate bottom 867 = keyboard top 867;
+         at 1146px it overlaps by 0.5px). Width does not affect it. Re-measure if
+         the controls panel or keyboard height changes. See
+         docs/system/UI-SURVEY-1024x600.md, finding 1. */
+      @media screen and (max-height: 1146px) {
+        body.keyboard-active #ttsBody #start-btn,
+        body.keyboard-active #ttsBody .tts-mic-label,
+        body.keyboard-active #ttsBody .tts-lang-toggle,
+        body.keyboard-active #ttsBody .tts-or {
+          display: none !important;
+        }
+        /* css/virtual-keyboard.css gives .tts-body min-height:100vh while the
+           keyboard is open, which pushes this screen down; restore its resting size */
+        body.keyboard-active #ttsBody {
+          min-height: 0 !important;
+          overflow-y: hidden !important;
+        }
+        body.keyboard-active #ttsBody .tts-controls-panel {
+          justify-content: flex-start !important;
+          padding-top: 30px !important;
+          gap: 16px !important;
+        }
       }
 
       /* At max-height 620px (kiosk 1024x600), scale keys slightly */
@@ -492,7 +513,7 @@
         .sk-key.ctrl, .sk-key.space, .sk-key.action, .sk-key.close {
           font-size: 13px;
         }
-        #ttsBody.keyboard-active .tts-controls-panel {
+        body.keyboard-active #ttsBody .tts-controls-panel {
           padding-top: 15px !important;
           gap: 10px !important;
         }

@@ -70,7 +70,10 @@
 
         // Bind event listeners to existing and future inputs
         document.addEventListener('focusin', handleFocusIn);
-        document.addEventListener('pointerdown', handleDocClick);
+        // Dismiss on click, not pointerdown: closing the keyboard can restore a
+        // layout (index.html voice screen), and doing that mid-tap moves the
+        // tapped control out from under the finger before the click lands.
+        document.addEventListener('click', handleDocClick);
     }
 
     function handleFocusIn(e) {
