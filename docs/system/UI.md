@@ -56,6 +56,22 @@ section is the current state of load order.
   prevents that whole block, and therefore all of this file's application
   logic, from executing in any browser. See `docs/system/DEBT.md` item 30.
 
+### Measured result
+
+`index.html`'s `domInteractive` — real Chrome, 1024×600, median of three hard
+reloads (cache disabled), measured by the project owner:
+
+| | Before | After |
+|---|---|---|
+| `domInteractive` | 3,005 ms | 156 ms |
+
+Not an estimate. This is almost entirely the Vosk defer fix (the eager
+`recognition.initModel()` call removed above) — `index.html` never loaded
+`tf.min.js`/`hands.js` as blocking `<script>` tags to begin with (only
+`<link rel="prefetch">`), so the script-defer change above had little further
+`domInteractive` impact on this specific page; its effect is on the PIN
+screens and camera screens, which loaded those libraries synchronously.
+
 ---
 
 ## Part 1: Sign-to-Text Screen (and the archived Camera Translator)

@@ -414,6 +414,17 @@ so a later session does not re-litigate them:
     `?screen=voice` load still loads and compiles the model exactly as
     before.
 
+33. **Low severity: `ScriptProcessorNode` deprecation warning on the voice
+    screen.** `js/script.js:288` uses the Web Audio API's `ScriptProcessorNode`
+    (buffer size 4096, per `docs/system/UI.md` Part 2 §3) to feed audio into
+    Vosk. Chrome logs a deprecation warning for this API (superseded by
+    `AudioWorkletNode`) every time voice input actually runs. Confirmed via
+    manual verification (Phase 3a, `docs/system/MANUAL-CHECKS.md`) — not a red
+    console error, and pre-existing: this line predates Phase 3a and was not
+    touched or introduced by it. Not fixed here — a replacement would need to
+    port the Vosk audio pipeline to `AudioWorkletNode`, out of this phase's
+    scope (load order only).
+
 ## Dead code
 
 Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build
