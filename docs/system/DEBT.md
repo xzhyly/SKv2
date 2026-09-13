@@ -425,6 +425,125 @@ so a later session does not re-litigate them:
     port the Vosk audio pipeline to `AudioWorkletNode`, out of this phase's
     scope (load order only).
 
+34. **High severity, found by the 1024×600 UI survey and resolved: the
+    on-screen keyboard covered the text input on the voice screen.** On
+    `index.html?screen=voice` the keyboard (240 px tall at ≤620 px viewport
+    height, 280 px above) opened over the text input and the Translate button,
+    so a user typing could not see what they typed. At 1024×600 the keyboard's
+    top was at 360 and the input at 452–490 once it opened. It was not
+    confined to the kiosk: the controls panel centres vertically, so the
+    input or the Translate button was covered at every height up to 1146 px,
+    1080p monitors included (table in `docs/system/UI-SURVEY-1024x600.md`,
+    finding 1).
+
+    A second defect sat behind it. `js/virtual-keyboard.js` closed the
+    keyboard on `pointerdown` outside the input. Once closing it restores a
+    layout, that happens mid-tap: a tap on Translate (512, 213) ended over
+    `#start-btn`, the microphone.
+
+    **RESOLVED** (`0f077ce`). `index.html:463-493` (plus `:516` in the
+    ≤620 px block): under `@media (max-height: 1146px)`, while
+    `body.keyboard-active` is set, hide `#start-btn`, `.tts-mic-label`,
+    `.tts-lang-toggle` and `.tts-or`, move the controls to the top, and undo
+    the `min-height: 100vh` that `css/virtual-keyboard.css:94` gives
+    `.tts-body`. 1146 px is measured, not chosen (comment at
+    `index.html:471-476`). `js/virtual-keyboard.js:76` now dismisses on
+    `click`. After, at 1024×600: input 146–184, Translate 194–232, keyboard
+    top 360. With the keyboard closed, all 51 voice-screen elements are at
+    their pre-fix positions. The real touch path could not be tested from
+    automation; see `docs/system/MANUAL-CHECKS.md`.
+
+35. **Closed finding, recorded so it is not rediscovered: someone had already
+    attempted item 34's exact fix, and it silently never ran.** `index.html`
+    carried `#ttsBody.keyboard-active #start-btn, … .tts-mic-label,
+    #transcript, .tts-or { display: none !important }` plus a panel
+    re-alignment rule, in both the base and ≤620 px blocks, unchanged since
+    the `baseline` commit. `js/virtual-keyboard.js` only ever puts
+    `.keyboard-active` on `<body>` and `<html>` (`showKeyboard()`,
+    `js/virtual-keyboard.js:99-105`), never on `#ttsBody`, so the selectors
+    could never match; confirmed live (`#ttsBody` had only `tts-body` with the
+    keyboard open). No error, no warning, and nothing on screen showed it was
+    inert. **RESOLVED** by replacing those rules in place with the working
+    `body.keyboard-active #ttsBody` rules of item 34, not by adding a second
+    set beside them. `#transcript` was deliberately dropped from the list: the
+    existing `.tts-live-text:empty { display:none !important }`
+    (`index.html:178`) already hides it while empty, and when it is not empty
+    it holds the recognised speech the user is retyping from (item 36).
+
+36. **Medium severity, open: recognised speech never reaches the text input,
+    so correcting a misrecognition means retyping it.** A user who speaks,
+    sees a wrong word in the transcript, and taps the text box to fix it gets
+    an empty box. `js/script.js` only reads `#text-sign-input`
+    (`js/script.js:442` on Translate click, `:447` on Enter) and never writes
+    to it. All speech output goes to `#transcript` instead: live results at
+    `js/script.js:799`, the final result at `:427`, both as
+    `You said: "…"`. `js/vosk.js` touches no DOM. Not fixed: this is a
+    behaviour change, not layout, and it needs a decision about what happens
+    to the transcript once the user starts editing. Found while deciding
+    whether item 34 could hide the transcript (it now stays visible while it
+    has content, for this reason).
+
+37. **Medium severity, found by the 1024×600 UI survey and resolved:
+    `sign-to-text.html`'s guide hid part of itself, and "Start Translating"
+    had no headroom.** At 1024×600 the guide card was 607.5 px tall in
+    `.tl-instr-container`'s 520 px box and vertically centred, so it
+    overflowed both ends. 68 px at the bottom could only be reached by
+    swiping, with no cue. 43.7 px at the top, including 6.7 px of the Guide
+    badge, could not be reached at all. The Start button (534.7–594.7) was
+    clipped 6.7 px by the container, whose bottom is at 588, and any text
+    added above it would have pushed it further off.
+
+    **RESOLVED** (`ff38d10`, `bc21a9f`). The card is bounded to the space
+    available (`css/sign-to-text.css:256-260`) and the step list is the one
+    part that scrolls (`:293-305`), with padding and a stable scrollbar
+    gutter so no text reflows. While part of the list is below its visible
+    area, its bottom 40 px fades out (`.has-more`, `:306-312`). The class is
+    set by a layout-only inline script (`sign-to-text.html:118-134`). After,
+    at 1024×600: container scrollHeight/clientHeight 520/520; list 262/127
+    with the fade; card 92–564; Start button 467–527, 73 px from the screen
+    edge. Where the card fits (768 px tall and up) every element inside it is
+    unchanged.
+
+38. **Low severity, found by the 1024×600 UI survey and resolved:
+    `reports.html` cut cell text with ellipses a touchscreen cannot reveal.**
+    With no hover, the hidden part was unreachable. On the current data at
+    1024×600: 128 truncated cells (ESL 68, FSL 53, Translations 7; the survey
+    counted 57 on older data) plus 32 truncated Key pills. **RESOLVED**
+    (`e382a5c`, `reports.html:71-79`). Created is widened from 136 to 150 px,
+    enough for the widest possible timestamp. Label/Sign, Text and the Key
+    pills wrap. After: 0 truncated cells, 0 truncated pills. Only the 35 rows
+    holding long text got taller.
+
+39. **Low severity, open: opening the keyboard on `gesture-training.html`
+    shifts the page 8 px narrower.** `css/virtual-keyboard.css:80-101`
+    (`body.keyboard-active` rules: 300 px bottom padding, `overflow-y: auto`,
+    `min-height: 100vh` on `#trContentWrap` and `.tr-left-panel`) makes the
+    content area 652 px tall in a 600 px viewport, so a vertical scrollbar
+    appears. The layout width goes from 1024 to 1016 and content
+    reflows to fit; Step 4's Add button moves from x=356.3 to 352.9. Nothing
+    the user types into is covered: at 1024×600 the keyboard top is 320,
+    `#gestureLabelInput` is at 99–139 and `#wordInput` at 178–212. Not fixed;
+    it lives in the shared stylesheet and was out of scope for item 34.
+
+40. **Low severity, open: a very long transcript can still push Translate
+    under the keyboard on the voice screen.** Item 34 keeps a non-empty
+    `#transcript` visible while typing (for item 36's reason). Measured at
+    1024×600 in the result state: with a 6-line transcript Translate's bottom
+    is at 337, against the keyboard's top at 360. By arithmetic (one line is
+    about 17.4 px at 12 px × 1.45), 8 or more lines would overlap. That is
+    roughly 400+ characters of continuous speech in the 380 px result panel.
+    Not measured at that length, not fixed. It needs the same decision as
+    item 36 about what the transcript is for once the user types.
+
+41. **Low severity, open: no cache-busting on the files the 1024×600 fixes
+    changed.** `js/virtual-keyboard.js` (`index.html:752`,
+    `gesture-training.html:377`) and `css/sign-to-text.css`
+    (`sign-to-text.html:8`) are linked without a version query string, unlike
+    `js/script.js?v=5`. A Chromium profile that cached the old files may keep
+    serving them after deployment until its cache is cleared. Not fixed:
+    adding version strings is outside a layout phase. Noted in
+    `docs/system/MANUAL-CHECKS.md` so checks are run against fresh files.
+
 ## Dead code
 
 Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build
