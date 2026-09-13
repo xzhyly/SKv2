@@ -28,6 +28,28 @@ see `docs/system/DEBT.md`.
 - **Raspberry Pi 4B is the target, not a laptop.** CPU only, no GPU.
 - **PHP touches admin/history only, never the live translation path.**
 
+## Run
+
+Phase 2.5 (local development environment) is complete — the system runs
+locally via XAMPP:
+
+- **Stack:** XAMPP (Apache + MySQL/MariaDB).
+- **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at this
+  repo, so there is one copy of the files on disk — editing the repo edits
+  what Apache serves, and vice versa. No file copying/syncing step.
+- **Database:** import `sining_kamay_db` into the local MySQL/MariaDB instance
+  (see `docs/system/BACKEND.md` for which `.sql` file to use — one of the
+  tracked dumps needs encoding conversion first).
+- **URL:** http://localhost/SKR/
+- The local path (`/SKR/`) deliberately matches the path the Pi serves the
+  kiosk from (`start_kiosk.sh` targets `http://localhost/SKR/index.html`, see
+  `docs/system/HARDWARE_BOOT.md`), so hardcoded `/SKR/`-relative references
+  behave the same in local dev as on the Pi.
+
+Confirmed working locally: camera capture and sign-to-text translation on
+`sign-to-text.html`, with the k-NN classifier loading all 120 ESL gestures and
+no console errors.
+
 ## Where to read for what
 
 | Working on... | Read |

@@ -162,6 +162,12 @@ so a later session does not re-litigate them:
     `EPOCHS` constant is otherwise unused in the file. Confusing to an operator
     watching the number, not a functional bug.
 
+    **No longer deferred to the Pi (Phase 2.5).** Checking this in a running
+    browser used to mean deploying to the Raspberry Pi. Now that the app runs
+    locally under XAMPP (see the Run section in `CLAUDE.md` and the Local
+    development section in `docs/system/HARDWARE_BOOT.md`), this can be
+    verified directly on a development machine instead.
+
 15. **`error_reporting(0)` / `display_errors=0` disabled repo-wide for one file.**
     `php/api/bulk_importer_api.php:3-4` — intended to keep warnings out of JSON
     responses, but also hides genuine bugs in that file, not just formatting
