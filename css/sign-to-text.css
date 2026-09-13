@@ -303,6 +303,13 @@ a{text-decoration:none}
   padding: 6px 0 0 10px;
   margin: 2px 0 8px -10px;
 }
+/* Scroll cue: while more steps are below, the list's bottom edge fades out
+   so the cut-off text visibly continues. The class is set by the script at
+   the end of sign-to-text.html; the mask is alpha only, no colour. */
+.tl-instr-list.has-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
 .tl-instr-item {
   display: flex;
   align-items: flex-start;
