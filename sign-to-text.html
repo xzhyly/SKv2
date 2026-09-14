@@ -115,6 +115,23 @@
 
 <div id="sk-toast" role="status" aria-live="polite"></div>
 
+<script>
+// Guide scroll cue: mark the step list while part of it is below its visible
+// area (see .tl-instr-list.has-more in css/sign-to-text.css). Layout only.
+(function () {
+  const list = document.querySelector('.tl-instr-list');
+  function update() {
+    list.classList.toggle('has-more', list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+  }
+  list.addEventListener('scroll', update, { passive: true });
+  // The list's box and its items' boxes change size on screen resizes and
+  // when web fonts finish loading; either can start or end the overflow.
+  const ro = new ResizeObserver(update);
+  ro.observe(list);
+  list.querySelectorAll('.tl-instr-item').forEach(function (item) { ro.observe(item); });
+  update();
+})();
+</script>
 <script src="js/sign-to-text-ui.js" defer></script>
 </body>
 </html>

@@ -74,6 +74,68 @@ screens and camera screens, which loaded those libraries synchronously.
 
 ---
 
+## 1024×600 layout fixes (read this before the per-file sections below)
+
+This phase fixed the four problems in `docs/system/UI-SURVEY-1024x600.md`, measured
+from the live DOM at 1024×600. It is layout plus the keyboard's dismissal event;
+no application logic changed. The per-file sections below were written before it.
+Where they describe the files touched here, this section is current. Before/after
+numbers for each fix are in the survey document.
+
+- **Voice screen, keyboard open** (`index.html:463-493`, `:516`;
+  `docs/system/DEBT.md` items 34–35). `js/virtual-keyboard.js` signals open/close
+  only by toggling `.show` on `#sk-global-keyboard` and `.keyboard-active` on
+  `<body>` and `<html>` (`showKeyboard()`/`hideKeyboard()`,
+  `js/virtual-keyboard.js:99-117`). There are no events or inline styles. While
+  `body.keyboard-active` is set and the viewport is at most 1146 px tall, the mic
+  button, "Tap to Speak", the English/Filipino toggle and "— OR —" are
+  `display:none`. The controls move to the top of the panel, and `#ttsBody` gets
+  back the resting size that `css/virtual-keyboard.css:94` overrides. The
+  MICROPHONE INPUT dropdown stays. The transcript follows its existing
+  `.tts-live-text:empty` rule (`index.html:178`): hidden while empty, visible while
+  it holds recognised speech. 1146 px is the measured largest height at which the
+  keyboard still overlaps (comment at `index.html:471-476`). These rules replace,
+  in place, an earlier `#ttsBody.keyboard-active` attempt whose selectors could
+  never match. With the keyboard closed nothing changes, at any height. Hiding is
+  instant (no transition).
+- **Keyboard dismissal** (`js/virtual-keyboard.js:73-76`). An outside tap now
+  closes the keyboard on `click`, not `pointerdown`. On `pointerdown` the voice
+  screen's layout was restored mid-tap, so a tap on Translate landed on the
+  microphone button. Consequences, all in the shared component:
+  - the keyboard closes after the tapped control has received its click;
+  - a drag or scroll that starts outside the keyboard no longer closes it;
+  - a tap on a disabled control (e.g. Translate with an empty input) fires no
+    `click`, so the keyboard stays open.
+  On `gesture-training.html` nothing moves when the keyboard closes except the
+  scrollbar (`DEBT.md` item 39), so the earlier behaviour there was harmless and
+  the new one is equivalent.
+- **Sign-to-text guide** (`css/sign-to-text.css:256-260`, `:293-312`;
+  `sign-to-text.html:118-134`; `DEBT.md` item 37). The guide card can no longer
+  grow past its container. The step list is the only part that gives up height
+  and scrolls inside the card, so the badge, title, description and "Start
+  Translating →" stay in view. The button's distance from the screen edge is
+  fixed (73 px at 1024×600). While part of the list is below its visible area,
+  its bottom 40 px fades out via a CSS mask on `.tl-instr-list.has-more`. A
+  layout-only inline script sets that class at parse time, on scroll, and from a
+  `ResizeObserver` on the list and its items. Where the card already fits
+  (768 px tall and up) every element in it is where it was.
+- **Reports tables** (`reports.html:71-79`; `DEBT.md` item 38). The Created column
+  is 150 px (was 136), wide enough for any `YYYY-MM-DD HH:MM:SS` in 12 px Inter.
+  Label/Sign and Text cells and the Key pills wrap (`white-space: normal;
+  overflow-wrap: anywhere`) instead of ending in an ellipsis. Rows with short text
+  keep their height.
+- **Found, not fixed:** recognised speech never reaches the text input (`DEBT.md`
+  item 36, medium). Opening the keyboard on `gesture-training.html` adds a
+  scrollbar and narrows the page from 1024 to 1016 px (item 39). A transcript of
+  about 8+ lines could still push Translate under the keyboard (item 40). The
+  changed files carry no cache-busting query string (item 41).
+- **Could not verify here:** real touch and mouse input, since the automation
+  browser dispatches events but draws no frames. That covers the tap-on-Translate
+  path, the dropdown opening while the keyboard is up, and `ResizeObserver`
+  delivery. Listed for a person in `docs/system/MANUAL-CHECKS.md`.
+
+---
+
 ## Part 1: Sign-to-Text Screen (and the archived Camera Translator)
 
 > **`camera-translator.html` was archived in Phase 3a — it is not a live
@@ -237,9 +299,30 @@ below. None of that ran.
   `speakWord` (`camera-translator.html:918,997-1011,1043-1124,1493-1500`). Editing
   `camera-helper.js` or `speech-synthesis.js` will not affect
   `camera-translator.html` at all — the two implementations have already diverged.
-- `js/virtual-keyboard.js` + `css/virtual-keyboard.css` are loaded only by
-  `camera-translator.html` (used for on-screen typing during the training wizard);
-  `sign-to-text.html` does not load them.
+- `js/virtual-keyboard.js` + `css/virtual-keyboard.css` are loaded by `index.html`
+  and `gesture-training.html` (and by the archived `camera-translator.html`);
+  `sign-to-text.html` does not load them. *(Corrected in the 1024×600 layout
+  fixes. This line previously said "only by `camera-translator.html`".)* The
+  keyboard's contract with the pages that load it is the `.keyboard-active` class
+  on `<body>`/`<html>` and the `.show` class on `#sk-global-keyboard`:
+  - `index.html:463-493` keys its typing layout on `body.keyboard-active`.
+    Renaming or moving that class silently brings back the covered-input bug
+    (`docs/system/DEBT.md` item 34). Putting it on another element, as the old
+    `#ttsBody.keyboard-active` rules assumed, does the same (item 35).
+  - Changing the outside-tap dismissal back to `pointerdown`
+    (`js/virtual-keyboard.js:76`) makes a tap on the voice screen's Translate
+    button land on the microphone button.
+  - `css/virtual-keyboard.css:80-101`'s `body.keyboard-active` rules are
+    overridden for `#ttsBody` by `index.html:486-489`; editing them changes
+    `gesture-training.html`'s open-keyboard layout (item 39).
+- `sign-to-text.html:118-134` (inline scroll-cue script) depends on
+  `.tl-instr-list` and `.tl-instr-item` existing when it runs, and on
+  `css/sign-to-text.css:306-312` defining `.has-more`. Renaming the list class
+  throws on page load; removing the CSS rule leaves the class with no effect. The
+  guide's fixed Start-button headroom depends on `.tl-instr-card` keeping
+  `min-height: 0` and on `.tl-instr-list` being its only child that may shrink
+  (`css/sign-to-text.css:256-260`, `:293-305`). A new child element added to the
+  card will not shrink, which is intended: it takes height from the list.
 - `css/sign-to-text.css` is used only by `sign-to-text.html`;
   `camera-translator.html` keeps its own inline `<style>` block that duplicates
   most of the same class names/rules (compare `camera-translator.html:14-198` to
@@ -409,7 +492,11 @@ below. None of that ran.
 - Kiosk viewport breakpoints explicitly targeted for a **1024×600** HDMI panel in
   both css/style.css (`@media screen and (max-height: 600px)`, line 507) and
   index.html's inline styles (`@media screen and (max-height: 620px)`,
-  index.html:314, :476).
+  index.html:315, :498 as of the 1024×600 layout fixes). Since those fixes, index.html also has
+  `@media screen and (max-height: 1146px)` (index.html:477) for the
+  keyboard-open layout. That is not a device breakpoint: it is the measured
+  height below which the keyboard overlaps the text input or Translate button
+  (see the 1024×600 section at the top of this document).
 - Explicit Raspberry Pi mentions: index.html:819 comment — hidden preload iframe is
   "Commented out to prevent GPU/RAM resource crashes on Raspberry Pi during Voice
   to Text"; css/gesture-training.css:716 comment references "Chromium freezes on
@@ -458,6 +545,22 @@ below. None of that ran.
   gesture-training-ui.js:1064-1066, for the "Upload & Process Video" button —
   both the call and the button were removed in Phase 2 along with the endpoint
   itself; see `docs/system/DEBT.md` item 26.)
+- **index.html voice screen ↔ js/virtual-keyboard.js**: see Part 1 §6. The
+  typing layout (`index.html:463-493`) is scoped to `@media (max-height: 1146px)`,
+  a measured value. Changing the controls panel's contents or spacing, or the
+  keyboard's height, moves the height at which the input and Translate button
+  clear the keyboard, so re-measure it (method in
+  `docs/system/UI-SURVEY-1024x600.md`, finding 1). The hidden elements are
+  selected by `#start-btn`, `.tts-mic-label`, `.tts-lang-toggle` and `.tts-or`;
+  renaming any of them leaves that element visible while typing, which at short
+  heights pushes the input back under the keyboard.
+- **reports.html table columns**: `reports.html:71-79` targets columns by position
+  (`th:nth-child(6|7)` for Created, `td:nth-child(3|4)` for the wrapping text
+  columns) in all three tabs. Adding, removing or reordering a column in the
+  `<thead>` markup (`reports.html:411-417`) or in `renderSigns`/`renderTranslations`
+  moves those widths and wrapping rules onto the wrong column, and truncation
+  returns. The 150 px Created width assumes 12 px Inter (`css/fonts.css`) and the
+  `YYYY-MM-DD HH:MM:SS` format `php/api/reports.php` returns.
 - **reports.html → php/api/reports.php**: path logic keys off `location.port`
   rather than protocol+path-name pattern used elsewhere (reports.html:613-615), and
   hardcodes `/Sining_kamay/` (not `/SKR/`) for the `file:`/non-standard-port
