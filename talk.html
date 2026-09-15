@@ -62,14 +62,15 @@
      clearing both before adding one. Dot colour and label text are both
      driven purely by the class (no textContent writes), matching the
      attribute/class-only pattern showScreen() already established.
-     Height: README specifies 40px; bumped to 44px here because the pill is
-     in .status-pill, which this task's own touch-target done-criterion (4)
-     requires to be >=44x44 — see the same note on .back-btn above and
-     docs/system/DECISIONS.md for this deviation. */
+     Height: README's exact 40px. The project's >=44x44 touch-target floor
+     does not apply here — this pill has no click handler, it's a purely
+     informational state indicator, not a tappable control. See
+     docs/system/DECISIONS.md for the corrected note (an earlier revision of
+     this file bumped it to 44px by over-applying the tap-target rule). */
   .status-pill{
     position:absolute;right:16px;top:50%;transform:translateY(-50%);
     display:none;align-items:center;gap:8px;
-    height:44px;padding:0 16px;
+    height:40px;padding:0 16px;
     border-radius:99px;
     background:rgba(255,255,255,0.12);
   }

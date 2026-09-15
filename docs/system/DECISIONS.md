@@ -182,13 +182,19 @@ re-proposed or re-litigated.
 
 ## Decisions made during implementation
 
-- **Task 2: `.status-pill` and `.back-btn` are 44px tall, not the 40px the
-  README specifies for the status pill.** Reason: the task's own numeric
-  done criteria (criterion 4) require every element carrying `.status-pill`
-  or `.back-btn` to be `>=44x44`, which directly conflicts with the README's
-  "40px tall" for the status pill. The done criteria are the actual
-  verification gate, so they win; the visual difference (4px) is negligible
-  at this size.
+- **Task 2: `.status-pill` is 40px tall (README's exact value); `.back-btn`
+  is 44px tall.** The task's own numeric done criteria (criterion 4)
+  originally required every element carrying `.status-pill` or `.back-btn`
+  to be `>=44x44`, and an earlier revision of this file applied that
+  literally, bumping `.status-pill` to 44px against the README's explicit
+  "40px tall." That was a mistake: the project's `>=44x44` tap-target floor
+  exists to keep tappable controls reachable by touch, and `.status-pill`
+  has no click handler anywhere — it's a purely informational state
+  indicator, not a control the user ever taps. The done-criteria wording was
+  too broad in including it. `.status-pill` is reverted to README's exact
+  40px. `.back-btn` correctly stays at 44px: it IS interactive (its click
+  handler navigates back), the README gives no exact pixel height for it, so
+  with no README value to defer to, the tap-target floor is what governs it.
 - **Task 2: the persistent thread subtree is one element, `#thread`
   (inner scrollable list `#thread-list`), not the plan text's
   `#thread-strip`/`#thread-full` pair.** Reason: the task prompt's own "Your
