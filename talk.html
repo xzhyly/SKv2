@@ -191,10 +191,10 @@
   .bubble-icon{font-size:16px;flex:0 0 auto}
 
   /* ── Modal shell ──
-     Fixed overlay + centred card, hidden unless body.modal-open. Content
-     for each data-modal-kind (confirm/idle/error) is Task 5/6's job; this
-     task only builds the empty shell and the show/hide mechanism
-     (openModal/closeModal below). */
+     Fixed overlay + centred card, hidden unless body.modal-open. Task 5
+     built real content for data-modal-kind="confirm" (renderConfirmModal(),
+     in <script> below) into this same shell; idle/error still render via
+     renderPlaceholderModal() until Task 6. */
   #modal{
     position:fixed;top:0;left:0;width:1024px;height:600px;
     display:none;
@@ -213,6 +213,42 @@
   }
   .modal-card h2{font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px}
   .modal-card p{font-size:16px;color:var(--muted);line-height:1.5}
+
+  /* ── Confirm modal content (Task 5) ──
+     docs/ui-target/README.md "Confirm — no image, build from this": small
+     muted label, recognised text 32px bold navy centred, orange "Add to
+     Conversation" full card width, plain muted "Try again" beneath. Built by
+     renderConfirmModal() below into the same .modal-card shell Task 2
+     already sized (~640 wide, radius 16, shadow) — no new card, just its
+     kind==="confirm" content. The Add-to-Conversation button here is this
+     overlay's OWN one-orange-element (README's rule is scoped per visual
+     layer; the modal sits above whichever screen is showing and does not
+     add a second orange element to that screen's own audit — see
+     docs/system/DECISIONS.md and this task's report for the reasoning). */
+  .confirm-label{
+    font-size:16px;color:var(--muted);margin-bottom:12px;
+  }
+  .confirm-text{
+    font-size:32px;font-weight:700;color:var(--navy);line-height:1.3;
+    margin-bottom:24px;
+    /* Long typed/spoken text should wrap, not blow out the fixed-width card. */
+    word-break:break-word;
+  }
+  .confirm-add-btn{
+    display:block;width:100%;height:60px;
+    border:none;border-radius:12px;
+    background:var(--orange);color:var(--surface);
+    font-family:inherit;font-size:18px;font-weight:700;
+    cursor:pointer;
+    margin-bottom:12px;
+  }
+  .confirm-try-again-btn{
+    display:block;width:100%;height:44px;
+    border:none;background:transparent;
+    color:var(--muted);
+    font-family:inherit;font-size:16px;font-weight:600;
+    cursor:pointer;
+  }
 
   /* ── Icon tile ──
      Filled rounded square, ~96x96, radius 16, one centred white icon glyph.
@@ -376,6 +412,34 @@
      area on purpose, leaving the ~240px a future keyboard needs free at the
      bottom of the screen so dropping it in later does not require
      relayouting this row. */
+  /* Fake mic button (Task 5) — README "04": "Draw it with the keyboard
+     raised and the microphone hidden," implying a microphone button exists
+     in the non-keyboard state that the (not-yet-built) keyboard hides when
+     raised. No real mic exists this phase (docs/system/DECISIONS.md "two
+     fake buttons"); this stands in for it, sitting above the text field —
+     the same general area the mic occupies before the keyboard covers it,
+     per README's "the microphone button and its label return to their
+     exact previous positions" note. Deliberately NOT orange: #speaking-send
+     is this screen's one orange element (see the Task 3 orange-audit
+     comment above) and this is a secondary/fake affordance, not the screen's
+     main action. */
+  .speaking-mic-row{
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    margin-bottom:24px;
+  }
+  .speaking-mic-btn{
+    width:72px;height:72px;border-radius:50%;
+    border:none;
+    background:var(--navy);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+  }
+  .speaking-mic-glyph{
+    font-size:32px;line-height:1;
+  }
+  .speaking-mic-label{
+    font-size:16px;color:var(--muted);
+  }
   .speaking-input-row{
     display:flex;align-items:center;gap:20px;
     margin-top:32px;
@@ -456,14 +520,17 @@
   }
 
   /* ── Dev-only manual-test scaffolding for the modal shell (Task 2) —
-     still needed since openModal()/closeModal() have no real call sites
-     yet. Task 3 removed the sibling #dev-screen-switcher row that used to
-     sit below this one (real navigation — screen 02's cards, the thread's
-     Sign/Speak/End buttons — replaces it); this row is left at its original
-     bottom:60px offset rather than dropped to bottom:0, since moving it is
-     out of this task's scope. Not part of the real UI — Task 5/6 build the
-     real openModal() call sites (Confirm appearing after signing/speech,
-     idle countdown, error states); delete this block once those land. ── */
+     still needed for "idle"/"error", which have no real trigger yet
+     (Task 6's job). Task 5 added the real confirm trigger points (signing's
+     Stop button, speaking's fake mic button, Send), so this row's own
+     "modal: confirm" button is now redundant with real UI but still
+     harmless — calling openModal('confirm') with no opts renders the
+     confirm layout with blank label/text via renderConfirmModal()'s
+     defensive `opts = opts || {}`. Task 3 removed the sibling
+     #dev-screen-switcher row that used to sit below this one (real
+     navigation replaces it); this row is left at its original bottom:60px
+     offset rather than dropped to bottom:0, since moving it is out of
+     scope. Delete this block once Task 6 lands real idle/error triggers. ── */
   #dev-modal-switcher{
     position:fixed;left:0;bottom:60px;width:1024px;
     display:flex;gap:8px;align-items:center;padding:8px;
@@ -561,9 +628,11 @@
            word for this fake-data phase; Task 5 wires the real value. -->
       <div class="signing-caption-pill"><span id="signing-caption">HELLO</span></div>
     </div>
-    <!-- Stands in for the classifier's confirm step (Task 5's job). Inert in
-         this task per docs/system/DECISIONS.md's "two fake buttons" note —
-         no click handler wired here. -->
+    <!-- Stands in for the classifier's confirm step, per
+         docs/system/DECISIONS.md's "two fake buttons" note — wired (Task 5)
+         to openModal('confirm', ...) with a canned result, never straight to
+         appendBubble(). See the click handler near the bottom of this
+         file's <script>. -->
     <button type="button" class="stop-signing-btn" id="stop-signing-btn">Stop &amp; Add to Conversation</button>
   </div>
 
@@ -572,6 +641,16 @@
        .speaking-input-row CSS comment above for how the layout leaves room
        for it. -->
   <div class="screen" id="screen-speaking">
+    <!-- Fake mic button (Task 5) — stands in for real speech capture, which
+         doesn't exist this phase (docs/system/DECISIONS.md's "two fake
+         buttons" note). Wired below to openModal('confirm', ...) with a
+         canned result, same as the signing screen's Stop button. -->
+    <div class="speaking-mic-row">
+      <button type="button" id="speaking-mic-btn" class="speaking-mic-btn" aria-label="Tap to speak">
+        <span class="speaking-mic-glyph" aria-hidden="true">&#127908;</span>
+      </button>
+      <div class="speaking-mic-label">Tap to speak</div>
+    </div>
     <div class="speaking-input-row">
       <input type="text" id="speaking-input" class="speaking-input" placeholder="Type your message" autocomplete="off">
       <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
@@ -601,10 +680,14 @@
        body.modal-open. data-modal-kind is set by openModal() below so
        Task 5/6 can key real confirm/idle/error content off it; this task's
        content is a placeholder only. -->
+  <!-- Static fallback markup only — never visible as-is. openModal() always
+       rebuilds .modal-card's content (renderConfirmModal() for "confirm",
+       renderPlaceholderModal() for "idle"/"error") before showing the
+       overlay, the first time it is opened. -->
   <div id="modal">
     <div class="modal-card">
       <h2>Modal placeholder</h2>
-      <p>No real content yet (Task 5/6 build confirm/idle/error). Kind: <span id="modalKindLabel">&mdash;</span></p>
+      <p>No real content yet (Task 6 builds idle/error). Kind: <span id="modalKindLabel">&mdash;</span></p>
     </div>
   </div>
 
@@ -704,17 +787,102 @@
     }
 
     /**
-     * Open the modal shell with a given kind ("confirm"/"idle"/"error").
-     * Sets data-modal-kind on #modal so later tasks can key real content off
-     * it, then reveals it via body.modal-open (pure class change).
+     * Build the confirm modal's real content (Task 5) into .modal-card:
+     * a small muted label, the recognised text large/bold/centred, an
+     * orange full-width "Add to Conversation" button, and a plain "Try
+     * again" button beneath it. Built via createElement/textContent (never
+     * innerHTML with interpolated data) so opts.text — real typed user
+     * input on the Send path — is never parsed as markup.
+     *
+     * "Add to Conversation" is the ONLY real call site of appendBubble() in
+     * this file (grepped and confirmed — see the comment at appendBubble's
+     * declaration above and this task's report).
+     *
+     * @param {{label: string, text: string, from: 'deaf'|'hearing'}} opts
      */
-    function openModal(kind) {
+    function renderConfirmModal(opts) {
+      opts = opts || {};
+      var card = document.querySelector('.modal-card');
+      card.innerHTML = '';
+
+      var label = document.createElement('p');
+      label.className = 'confirm-label';
+      label.textContent = opts.label || '';
+      card.appendChild(label);
+
+      var text = document.createElement('div');
+      text.className = 'confirm-text';
+      text.textContent = opts.text || '';
+      card.appendChild(text);
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'confirm-add-btn';
+      addBtn.textContent = 'Add to Conversation';
+      addBtn.addEventListener('click', function () {
+        appendBubble({ from: opts.from, text: opts.text, timestamp: new Date() });
+        closeModal();
+        showScreen('thread');
+      });
+      card.appendChild(addBtn);
+
+      var tryAgainBtn = document.createElement('button');
+      tryAgainBtn.type = 'button';
+      tryAgainBtn.className = 'confirm-try-again-btn';
+      tryAgainBtn.textContent = 'Try again';
+      tryAgainBtn.addEventListener('click', function () {
+        // Returns to whichever screen opened it — no showScreen() call
+        // needed, that screen is already showing underneath the overlay.
+        closeModal();
+      });
+      card.appendChild(tryAgainBtn);
+    }
+
+    /**
+     * Rebuild .modal-card with generic placeholder content for any
+     * non-confirm kind ("idle"/"error" — Task 6's job to give these real
+     * content). Kept so Task 6 can add its own branch in openModal() below
+     * without redesigning this function's signature, and so the
+     * #dev-modal-switcher scaffold's idle/error buttons stay non-broken.
+     */
+    function renderPlaceholderModal(kind) {
+      var card = document.querySelector('.modal-card');
+      card.innerHTML = '';
+
+      var h2 = document.createElement('h2');
+      h2.textContent = 'Modal placeholder';
+      card.appendChild(h2);
+
+      var p = document.createElement('p');
+      p.textContent = 'No real content yet (Task 6 builds idle/error). Kind: ';
+      var kindSpan = document.createElement('span');
+      kindSpan.id = 'modalKindLabel';
+      kindSpan.textContent = kind;
+      p.appendChild(kindSpan);
+      card.appendChild(p);
+    }
+
+    /**
+     * Open the modal shell with a given kind ("confirm"/"idle"/"error") and
+     * (for "confirm") the data it needs to render. Sets data-modal-kind on
+     * #modal, dispatches to the matching content-render step, then reveals
+     * the overlay via body.modal-open (pure class change).
+     *
+     * @param {string} kind
+     * @param {{label: string, text: string, from: 'deaf'|'hearing'}} [opts]
+     *   Required for kind === "confirm"; ignored otherwise.
+     */
+    function openModal(kind, opts) {
       document.getElementById('modal').setAttribute('data-modal-kind', kind);
-      document.getElementById('modalKindLabel').textContent = kind;
+      if (kind === 'confirm') {
+        renderConfirmModal(opts);
+      } else {
+        renderPlaceholderModal(kind);
+      }
       document.body.classList.add('modal-open');
     }
 
-    /** Hide the modal shell. Leaves data-modal-kind as-is (harmless while hidden). */
+    /** Hide the modal shell. Leaves data-modal-kind/.modal-card content as-is (harmless while hidden). */
     function closeModal() {
       document.body.classList.remove('modal-open');
     }
@@ -766,6 +934,15 @@
      * the DOM" — older messages still live in the database, just not here).
      *
      * @param {{from: 'deaf'|'hearing', text: string, timestamp: (Date|*)}} msg
+     *
+     * Task 5 note: grepped the finished file for `appendBubble(` — 2 matches
+     * total: this declaration, and the one real call site inside
+     * renderConfirmModal()'s "Add to Conversation" button handler above.
+     * Nothing else in this file calls appendBubble() directly; the signing
+     * Stop button, the speaking screen's fake mic button, and Send all route
+     * through openModal('confirm', ...) first, per
+     * docs/system/DECISIONS.md's "nothing enters the thread without passing
+     * through Confirm."
      */
     function appendBubble(msg) {
       var from = msg.from;
@@ -867,11 +1044,45 @@
       }
     });
 
+    // ── Task 5: canned-data pools for the two fake buttons ──
+    // docs/system/DECISIONS.md: the only two canned/fake inputs in this
+    // phase are the Signing screen's Stop button (stands in for the
+    // classifier) and the Speaking screen's fake mic button (stands in for
+    // real speech capture). Typed-and-Sent text is real data and never
+    // drawn from either pool. Choice is uniform-random (any deterministic
+    // or random choice was acceptable per the task brief); recorded here,
+    // not re-litigated in docs/system/DECISIONS.md since the brief already
+    // covers it as a non-decision.
+    var SIGNED_CANNED_POOL = [
+      'Hello, how are you?',
+      'Thank you very much',
+      'Nice to meet you',
+      'I need help, please',
+      'Yes, I understand'
+    ];
+    var SPOKEN_CANNED_POOL = [
+      'Hi, how can I help you today?',
+      'Sure, one moment please',
+      'Thank you for waiting',
+      'Yes, that sounds good',
+      'Could you repeat that, please?'
+    ];
+    function pickCanned(pool) {
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
     // ── Screen 03 — Signing ──
     // "Stop & Add to Conversation" stands in for the classifier's confirm
-    // step (docs/system/DECISIONS.md's "two fake buttons" note) — Task 5's
-    // job to wire to openModal('confirm'). Left inert here on purpose: no
-    // click handler.
+    // step (docs/system/DECISIONS.md's "two fake buttons" note). Canned
+    // result, never appendBubble() directly — routes through the confirm
+    // modal like every other path into the thread.
+    document.getElementById('stop-signing-btn').addEventListener('click', function () {
+      openModal('confirm', {
+        label: 'You signed',
+        text: pickCanned(SIGNED_CANNED_POOL),
+        from: 'deaf'
+      });
+    });
 
     // ── Screen 04 — Speak or type ──
     // Real logic (not fake data, per this task's own scope note): Send stays
@@ -882,9 +1093,38 @@
       speakingInput.addEventListener('input', function () {
         speakingSend.disabled = speakingInput.value.trim() === '';
       });
+
+      // Fake mic button (Task 5) — stands in for real speech capture, which
+      // doesn't exist this phase. Canned result, same pattern as the
+      // signing screen's Stop button.
+      document.getElementById('speaking-mic-btn').addEventListener('click', function () {
+        openModal('confirm', {
+          label: 'You said',
+          text: pickCanned(SPOKEN_CANNED_POOL),
+          from: 'hearing'
+        });
+      });
+
+      // Send: REAL typed text (docs/system/DECISIONS.md — "typed-and-sent
+      // messages are real data, not one of the two fake buttons"), never
+      // drawn from SPOKEN_CANNED_POOL. Routes through the confirm modal like
+      // every other path into the thread — Send itself never calls
+      // appendBubble() directly. Field is cleared and Send re-disabled right
+      // after handing the text off to the modal, so no stale text is left
+      // in the field once the message has been (or is being) added; if the
+      // person instead taps "Try again", they simply retype.
+      speakingSend.addEventListener('click', function () {
+        if (speakingSend.disabled) return;
+        var typedText = speakingInput.value;
+        openModal('confirm', {
+          label: 'You said',
+          text: typedText,
+          from: 'hearing'
+        });
+        speakingInput.value = '';
+        speakingSend.disabled = true;
+      });
     })();
-    // Send's own click (actually posting the typed message into the thread)
-    // is Task 4's job — left inert here.
 
     // ── Screen 05 — The conversation ──
     // Turn buttons hand control to the next screen; per
