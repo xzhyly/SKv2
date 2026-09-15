@@ -130,6 +130,33 @@
     padding:12px 16px;
     display:flex;flex-direction:column;gap:16px;
   }
+  /* Visible scrollbar (README "05": "a visible scrollbar on the right edge
+     ... on a touchscreen the bar is the only thing that proves more exists
+     above") — Chromium's default overlay scrollbar can be invisible until
+     hovered, which a touchscreen kiosk with no cursor never triggers, so it
+     is styled explicitly rather than left to the platform default. Colours
+     from tokens.css only. */
+  #thread-list::-webkit-scrollbar{width:8px}
+  #thread-list::-webkit-scrollbar-track{background:var(--bg)}
+  #thread-list::-webkit-scrollbar-thumb{
+    background:var(--muted-light);border-radius:99px;
+  }
+  /* Top-fade mask (README "03"/"05": "a white-to-transparent fade across the
+     top 26px says more exists above"). A fixed (non-scrolling) sibling of
+     #thread-list rather than a ::before on it, so the fade stays pinned to
+     the top of #thread's visible area regardless of scroll position — a
+     ::before painted inside the scrolling list would scroll away with the
+     content instead of staying put. #thread is already position:fixed, so
+     it is this element's containing block. `transparent` is a CSS keyword,
+     not a new hex literal; the opaque end uses --surface, matching the
+     bubble/card background it is fading from. pointer-events:none so it
+     never intercepts scroll/tap input meant for the thread beneath it. */
+  .thread-fade{
+    position:absolute;top:0;left:0;right:0;height:26px;
+    background:linear-gradient(to bottom, var(--surface) 0%, transparent 100%);
+    pointer-events:none;
+    z-index:1;
+  }
 
   /* ── Bubble shape ──
      Convention per docs/ui-target/README.md "05 — The conversation" /
@@ -470,26 +497,13 @@
        two nodes toggled by JS. See the CSS block above for the ids Task 4/
        Task 3 should target: #thread (persistent container) and #thread-list
        (inner scrollable list Task 4's appendBubble() appends into).
-       The two bubble-rows below are placeholders for this task's own visual
-       verification of collapsed (96px) vs full height — Task 4 replaces
-       them with real appended bubbles. -->
+       Task 2/3's placeholder bubble-rows (used to measure the 96px/320px
+       thread heights by hand) are gone now that Task 4's appendBubble()
+       below is the real way bubbles get into this list — #thread-list
+       starts empty; nothing populates it until a caller appends. -->
   <div id="thread">
-    <div id="thread-list">
-      <div class="bubble-row deaf">
-        <div class="bubble-label">Signed &middot; 10:41</div>
-        <div class="bubble deaf">
-          <span class="bubble-icon">&#128264;</span>
-          <span class="bubble-text">Placeholder signed message.</span>
-        </div>
-      </div>
-      <div class="bubble-row hearing">
-        <div class="bubble-label">Spoken &middot; 10:42</div>
-        <div class="bubble hearing">
-          <span class="bubble-text">Placeholder spoken reply.</span>
-          <span class="bubble-icon">&#9995;</span>
-        </div>
-      </div>
-    </div>
+    <div id="thread-list"></div>
+    <div class="thread-fade" aria-hidden="true"></div>
   </div>
 
   <!-- Screen 02 — docs/ui-target/README.md "02 — Who speaks first". Shown
@@ -703,6 +717,108 @@
     /** Hide the modal shell. Leaves data-modal-kind as-is (harmless while hidden). */
     function closeModal() {
       document.body.classList.remove('modal-open');
+    }
+
+    // ── Task 4: The persistent thread — appendBubble() ──
+    // #thread-list starts empty (Task 2/3's placeholder bubble-rows are
+    // gone); appendBubble() below is the only way bubbles get into it, from
+    // this task onward.
+
+    var THREAD_BUBBLE_CAP = 30;
+
+    // Icon-per-side convention, per docs/ui-target/README.md "05": a
+    // speaker icon on every white/.bubble.deaf bubble (signed messages are
+    // also spoken aloud automatically), a hand icon on every navy/
+    // .bubble.hearing bubble (tapping replays it as signs — wiring that tap
+    // handler is a later task's job, not this one's).
+    var BUBBLE_ICON = {
+      deaf: '\u{1F50A}',
+      hearing: '✋'
+    };
+    var BUBBLE_LABEL_VERB = { deaf: 'Signed', hearing: 'Spoken' };
+
+    /**
+     * Format a Date (or anything `new Date()` accepts) as "h:mm AM/PM" — no
+     * leading zero on the hour, per the existing `Signed · 10:41` bubble-
+     * label convention this codebase already used (Task 2's now-removed
+     * placeholder), with AM/PM appended per the task brief's "10:02 AM"
+     * example.
+     */
+    function formatBubbleTime(timestamp) {
+      var d = (timestamp instanceof Date) ? timestamp : new Date(timestamp);
+      var hours = d.getHours();
+      var minutes = d.getMinutes();
+      var period = hours >= 12 ? 'PM' : 'AM';
+      var h12 = hours % 12;
+      if (h12 === 0) h12 = 12;
+      var mm = minutes < 10 ? '0' + minutes : String(minutes);
+      return h12 + ':' + mm + ' ' + period;
+    }
+
+    /**
+     * Append one message bubble to the persistent thread. Builds the exact
+     * .bubble-row > (.bubble-label + .bubble.<from> > (.bubble-icon +
+     * .bubble-text)) DOM shape Task 2/3 established, via appendChild only —
+     * never innerHTML — since the thread is persistent across screen
+     * changes, not rebuilt. Scrolls #thread-list to the newest bubble, then
+     * trims the list to the last 30 .bubble-row children via real DOM
+     * removal (README: "cap the thread at roughly the last 30 bubbles in
+     * the DOM" — older messages still live in the database, just not here).
+     *
+     * @param {{from: 'deaf'|'hearing', text: string, timestamp: (Date|*)}} msg
+     */
+    function appendBubble(msg) {
+      var from = msg.from;
+      if (from !== 'deaf' && from !== 'hearing') {
+        throw new Error('appendBubble: invalid from "' + from + '"');
+      }
+
+      var row = document.createElement('div');
+      row.className = 'bubble-row ' + from;
+
+      var label = document.createElement('div');
+      label.className = 'bubble-label';
+      label.textContent = BUBBLE_LABEL_VERB[from] + ' · ' + formatBubbleTime(msg.timestamp);
+      row.appendChild(label);
+
+      var bubble = document.createElement('div');
+      bubble.className = 'bubble ' + from;
+
+      var icon = document.createElement('span');
+      icon.className = 'bubble-icon';
+      icon.textContent = BUBBLE_ICON[from];
+
+      var text = document.createElement('span');
+      text.className = 'bubble-text';
+      text.textContent = msg.text;
+
+      // Icon-before-text on .bubble.deaf, text-before-icon on
+      // .bubble.hearing — matches the DOM order of the placeholder markup
+      // this replaced (speaker icon led the white bubble; hand icon
+      // trailed the navy one).
+      if (from === 'deaf') {
+        bubble.appendChild(icon);
+        bubble.appendChild(text);
+      } else {
+        bubble.appendChild(text);
+        bubble.appendChild(icon);
+      }
+      row.appendChild(bubble);
+
+      var list = document.getElementById('thread-list');
+      list.appendChild(row);
+
+      // Cap enforcement runs before the scroll-to-newest assignment below:
+      // pruning changes list.scrollHeight (removing rows from the top
+      // shortens it), so scrollTop must be computed against the
+      // already-pruned list, not the pre-prune one — otherwise the final
+      // scrollTop would be stale relative to the list's actual (post-cap)
+      // scrollHeight/clientHeight.
+      while (list.querySelectorAll('.bubble-row').length > THREAD_BUBBLE_CAP) {
+        list.removeChild(list.firstElementChild);
+      }
+
+      list.scrollTop = list.scrollHeight;
     }
 
     // Wire the dev-only modal/status-pill/icon-tile verification row (see
