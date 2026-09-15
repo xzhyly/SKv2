@@ -94,11 +94,11 @@
      entirely off body[data-screen], matching Task 1's one-pattern rule
      (attribute selectors, no second toggling mechanism). Hidden on
      who-first (no conversation exists yet); 96px collapsed strip on
-     signing/speaking per docs/system/DECISIONS.md; full height
-     (y=90 to the bottom of the 600px screen — this task builds no control
-     panel yet, Task 3 does) on thread. Positioned fixed so the same element
-     can overlay whichever .screen container is currently showing without
-     living inside any one of them. */
+     signing/speaking per docs/system/DECISIONS.md; 320px on thread (see the
+     comment on the height:320px rule below for why it is not the full
+     90-to-600 span). Positioned fixed so the same element can overlay
+     whichever .screen container is currently showing without living inside
+     any one of them. */
   #thread{
     position:fixed;left:0;top:90px;width:1024px;
     background:var(--surface);
@@ -111,7 +111,19 @@
     display:block;height:96px;
   }
   body[data-screen="thread"] #thread{
-    display:block;height:510px;
+    /* Task 3: shrunk from Task 2's placeholder 510px (600-90, "no control
+       panel yet") to 320px = 600 - 90 (header) - 190 (bottom control panel),
+       per docs/ui-target/README.md "05 — The conversation": "Thread fills
+       from y=90 down to the control panel", panel is "~190px". This is the
+       chosen resolution to the #thread/control-panel overlap Task 3's brief
+       flagged: shrink #thread's height (rather than leaving it full-height
+       and relying on stacking order) so the two regions are geometrically
+       disjoint — #thread now spans y=90..410, .control-panel spans
+       y=410..600 — instead of merely relying on z-index to hide the seam.
+       .control-panel below is still position:fixed with z-index higher than
+       #thread's 60, matching the header's fixed pattern, as a second line of
+       defense. */
+    display:block;height:320px;
   }
   #thread-list{
     height:100%;overflow-y:auto;
@@ -209,37 +221,222 @@
   body[data-screen="speaking"] #screen-speaking{display:flex}
   body[data-screen="thread"] #screen-thread{display:flex}
 
-  .screen-placeholder{
-    flex:1;
-    display:flex;align-items:center;justify-content:center;
-    font-size:24px;font-weight:700;color:var(--muted);
+  /* Task 3: #thread sits collapsed (96px) over y=90..186 on signing/speaking
+     (see the body[data-screen="signing"]/"speaking" #thread rule above) —
+     `.screen`'s flat padding-top:90px isn't enough on those two screens, or
+     their own content would render underneath the collapsed strip. Override
+     just these two ids to clear y=186 instead. who-first (no #thread yet)
+     and thread (#thread starts at y=90 same as the header-clearing value)
+     both keep the base 90px from `.screen` above. */
+  #screen-signing,
+  #screen-speaking{
+    padding-top:186px;
+    align-items:center;
   }
 
-  /* ── Dev-only manual-test scaffolding for this task's own verification.
-     Task 3 replaces this row with the real navigation UI (Who-first cards,
-     thread's Sign/Speak buttons, etc.) — delete this block once that lands.
-     (The header back button is now real, built by Task 2 above.) ── */
-  #dev-screen-switcher{
-    position:fixed;left:0;bottom:0;width:1024px;
-    display:flex;gap:8px;padding:8px;
-    background:var(--surface);border-top:1px solid var(--border);
-    z-index:9999;
+  /* ── Task 3 orange audit ──
+     "One orange element per screen, no exceptions" (README "Visual
+     language" / docs/system/DECISIONS.md). Each screen's single element
+     whose computed background-color resolves to var(--orange) (or its
+     pressed variant, unused here):
+       - #screen-who-first : .icon-tile.orange (the "Speak or Type" tile)
+       - #screen-signing   : #stop-signing-btn ("Stop & Add to Conversation")
+       - #screen-speaking  : #speaking-send ("Send" — stays orange even
+         disabled, see its :disabled rule below; opacity, not a colour swap,
+         is what "pale" means here, so the background-color audit still
+         finds exactly one orange element in either state)
+       - #screen-thread    : #turn-speak-btn ("Speak or Type")
+     Nothing else in this file sets a background to var(--orange)/
+     var(--orange-dark). (.speaking-input's focus ring is an orange
+     *border*, not a background — irrelevant to this audit and explicitly
+     called for by README "04 — Speak or type".) */
+
+  /* ── Screen 02 — Who speaks first (docs/ui-target/README.md "02") ── */
+  #screen-who-first{
+    align-items:center;
+    justify-content:center;
   }
-  #dev-screen-switcher button{
-    flex:1;min-height:44px;
-    border-radius:12px;border:1px solid var(--border);
-    background:var(--bg);color:var(--navy);
-    font-family:inherit;font-size:16px;font-weight:600;
+  .who-first-heading{
+    font-size:34px;font-weight:700;color:var(--navy);
+    text-align:center;
+    margin-bottom:32px;
+  }
+  .who-first-cards{
+    display:flex;gap:40px;
+  }
+  .who-first-card{
+    width:380px;height:280px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:16px;
+    background:var(--surface);
+    border:1px solid var(--border);border-radius:12px;
+    font-family:inherit;
+    cursor:pointer;
+  }
+  .who-first-card-label{
+    font-size:20px;font-weight:700;color:var(--navy);
+  }
+  .who-first-card-caption{
+    font-size:16px;color:var(--muted);
+  }
+  /* Orange modifier for the "Speak or Type" tile — the ONE orange element
+     on this screen (see the audit comment above). A modifier class, not a
+     new hex: swaps .icon-tile's navy fill for the shared --orange token. */
+  .icon-tile.orange{
+    background:var(--orange);
+  }
+  .lang-toggle{
+    display:flex;
+    margin-top:32px;
+    border:1px solid var(--border);border-radius:99px;
+    overflow:hidden;
+    background:var(--surface);
+  }
+  .lang-toggle-btn{
+    min-width:120px;height:44px;
+    padding:0 20px;
+    border:none;background:transparent;
+    font-family:inherit;font-size:16px;font-weight:600;color:var(--muted);
+    cursor:pointer;
+  }
+  .lang-toggle-btn.active{
+    background:var(--navy);color:var(--surface);
+  }
+
+  /* ── Screen 03 — Signing (docs/ui-target/README.md "03") ── */
+  .camera-box{
+    width:560px;height:300px;
+    margin-top:16px;
+    border-radius:12px;
+    /* #16192a is README's own literal spec for the camera view's dark
+       backdrop ("03 — Signing": "dark #16192a background") — an explicit,
+       called-out exception to the tokens.css-only rule, not an accidental
+       new hex. It belongs to the camera display itself, not the shared UI
+       palette, so it is not added to tokens.css. */
+    background:#16192a;
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  .hand-skeleton{
+    width:180px;height:180px;
+  }
+  .signing-caption-pill{
+    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+    padding:8px 22px;
+    border-radius:99px;
+    /* Solid black at partial opacity, matching this file's existing
+       rgba(0,0,0,…)/rgba(255,255,255,…) convention for translucent overlays
+       (see #modal and .back-btn/.status-pill above) rather than a new hex. */
+    background:rgba(0,0,0,0.7);
+  }
+  .signing-caption-pill span{
+    color:var(--surface);font-size:20px;font-weight:700;
+  }
+  .stop-signing-btn{
+    width:560px;height:68px;
+    margin-top:14px;
+    border:none;border-radius:12px;
+    background:var(--orange);
+    color:var(--surface);
+    font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
   }
 
-  /* ── Dev-only manual-test scaffolding for this task's (Task 2) own
-     verification of the modal shell and the .icon-tile shape. Sits directly
-     above #dev-screen-switcher so neither row overlaps. Not part of the
-     real UI — Task 5/6 build the real openModal() call sites (Confirm
-     appearing after signing/speech, idle countdown, error states) and
-     Task 3 places the real .icon-tile instances on screen 02; delete this
-     block once those land. ── */
+  /* ── Screen 04 — Speak or type (docs/ui-target/README.md "04") ──
+     Keyboard is out of scope for this task (js/virtual-keyboard.js is not
+     included here) — this row is positioned near the top of the content
+     area on purpose, leaving the ~240px a future keyboard needs free at the
+     bottom of the screen so dropping it in later does not require
+     relayouting this row. */
+  .speaking-input-row{
+    display:flex;align-items:center;gap:20px;
+    margin-top:32px;
+  }
+  .speaking-input{
+    width:700px;height:64px;
+    padding:0 20px;
+    border:1px solid var(--border);border-radius:12px;
+    background:var(--surface);
+    font-family:inherit;font-size:18px;color:var(--navy);
+    outline:none;
+  }
+  .speaking-input:focus{
+    border:2px solid var(--orange);
+  }
+  .speaking-input::placeholder{
+    color:var(--muted-light);
+  }
+  .speaking-send{
+    width:180px;height:64px;
+    border:none;border-radius:12px;
+    background:var(--orange);
+    color:var(--surface);
+    font-family:inherit;font-size:18px;font-weight:700;
+    cursor:pointer;
+  }
+  /* README "04": "Pale / disabled while the field is empty." Faded via
+     opacity, not a colour swap, so background-color stays var(--orange) in
+     both states — the orange-audit comment above counts this button once
+     regardless of enabled/disabled state. */
+  .speaking-send:disabled{
+    opacity:0.5;
+    cursor:not-allowed;
+  }
+
+  /* ── Screen 05 — The conversation (docs/ui-target/README.md "05") ──
+     Bottom control panel. position:fixed + its own z-index (higher than
+     #thread's 60), matching the header's fixed pattern — see the comment on
+     body[data-screen="thread"] #thread{height:320px} above for why this and
+     #thread no longer overlap. Being a normal child of #screen-thread, it
+     still shows/hides purely via that ancestor's body[data-screen] display
+     toggle — no separate visibility rule needed here. */
+  .control-panel{
+    position:fixed;left:0;bottom:0;width:1024px;height:190px;
+    z-index:70;
+    background:var(--surface);
+    border-top:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;
+    padding:12px 24px;
+    gap:10px;
+  }
+  .control-panel-label{
+    font-size:15px;color:var(--muted);text-align:center;
+  }
+  .control-panel-buttons{
+    display:flex;gap:16px;
+  }
+  .turn-btn{
+    width:480px;height:62px;
+    border:none;border-radius:12px;
+    font-family:inherit;font-size:18px;font-weight:700;
+    cursor:pointer;
+  }
+  .turn-btn-sign{
+    background:var(--navy);color:var(--surface);
+  }
+  /* The ONE orange element on the thread screen (see the audit comment
+     above). */
+  .turn-btn-speak{
+    background:var(--orange);color:var(--surface);
+  }
+  .end-conversation-btn{
+    width:976px;height:60px;
+    border:2px solid var(--red);border-radius:12px;
+    background:var(--surface);color:var(--red);
+    font-family:inherit;font-size:18px;font-weight:700;
+    cursor:pointer;
+  }
+
+  /* ── Dev-only manual-test scaffolding for the modal shell (Task 2) —
+     still needed since openModal()/closeModal() have no real call sites
+     yet. Task 3 removed the sibling #dev-screen-switcher row that used to
+     sit below this one (real navigation — screen 02's cards, the thread's
+     Sign/Speak/End buttons — replaces it); this row is left at its original
+     bottom:60px offset rather than dropped to bottom:0, since moving it is
+     out of this task's scope. Not part of the real UI — Task 5/6 build the
+     real openModal() call sites (Confirm appearing after signing/speech,
+     idle countdown, error states); delete this block once those land. ── */
   #dev-modal-switcher{
     position:fixed;left:0;bottom:60px;width:1024px;
     display:flex;gap:8px;align-items:center;padding:8px;
@@ -295,20 +492,95 @@
     </div>
   </div>
 
+  <!-- Screen 02 — docs/ui-target/README.md "02 — Who speaks first". Shown
+       once at the start of a conversation only (docs/system/DECISIONS.md);
+       turn 2+ routes through #screen-thread's own control panel instead. -->
   <div class="screen" id="screen-who-first">
-    <div class="screen-placeholder">Who speaks first? (placeholder)</div>
+    <h2 class="who-first-heading">Who speaks first?</h2>
+    <div class="who-first-cards">
+      <button type="button" class="who-first-card" id="card-sign">
+        <div class="icon-tile"><span class="icon-tile-glyph">&#9995;</span></div>
+        <div class="who-first-card-label">Sign Language</div>
+        <div class="who-first-card-caption">Use the camera to sign</div>
+      </button>
+      <button type="button" class="who-first-card" id="card-speak">
+        <div class="icon-tile orange"><span class="icon-tile-glyph">&#127908;</span></div>
+        <div class="who-first-card-label">Speak or Type</div>
+        <div class="who-first-card-caption">Use your voice or the keyboard</div>
+      </button>
+    </div>
+    <!-- English/Filipino toggle (Task 3 interface note: value read by later
+         tasks, not acted on — nothing to switch in this fake-data phase). -->
+    <div class="lang-toggle" id="lang-toggle" data-lang="en">
+      <button type="button" class="lang-toggle-btn active" data-lang-value="en">English</button>
+      <button type="button" class="lang-toggle-btn" data-lang-value="fil">Filipino</button>
+    </div>
   </div>
 
+  <!-- Screen 03 — docs/ui-target/README.md "03 — Signing". The collapsed
+       #thread strip above already applies via this container's own
+       data-screen="signing" CSS (Task 2); nothing here needs to touch it. -->
   <div class="screen" id="screen-signing">
-    <div class="screen-placeholder">Signing (placeholder)</div>
+    <div class="camera-box">
+      <!-- Static hand-skeleton illustration only — no real MediaPipe
+           drawing (that's a later, real-integration phase). -->
+      <svg class="hand-skeleton" viewBox="0 0 200 220" aria-hidden="true">
+        <g fill="none" stroke="var(--surface)" stroke-width="3" stroke-linecap="round" opacity="0.85">
+          <line x1="100" y1="140" x2="60" y2="60"/>
+          <line x1="100" y1="140" x2="80" y2="40"/>
+          <line x1="100" y1="140" x2="100" y2="30"/>
+          <line x1="100" y1="140" x2="120" y2="40"/>
+          <line x1="100" y1="140" x2="138" y2="70"/>
+          <polygon points="60,140 100,150 140,140 130,190 70,190" stroke="none" fill="var(--surface)" opacity="0.25"/>
+        </g>
+        <g fill="var(--surface)">
+          <circle cx="100" cy="140" r="5"/>
+          <circle cx="60" cy="60" r="5"/>
+          <circle cx="80" cy="40" r="5"/>
+          <circle cx="100" cy="30" r="5"/>
+          <circle cx="120" cy="40" r="5"/>
+          <circle cx="138" cy="70" r="5"/>
+        </g>
+      </svg>
+      <!-- Live recognition caption — README "03": not decoration, tells the
+           signer what the system is reading as they sign. Static placeholder
+           word for this fake-data phase; Task 5 wires the real value. -->
+      <div class="signing-caption-pill"><span id="signing-caption">HELLO</span></div>
+    </div>
+    <!-- Stands in for the classifier's confirm step (Task 5's job). Inert in
+         this task per docs/system/DECISIONS.md's "two fake buttons" note —
+         no click handler wired here. -->
+    <button type="button" class="stop-signing-btn" id="stop-signing-btn">Stop &amp; Add to Conversation</button>
   </div>
 
+  <!-- Screen 04 — docs/ui-target/README.md "04 — Speak or type". Keyboard
+       (js/virtual-keyboard.js) is out of scope for this task — see the
+       .speaking-input-row CSS comment above for how the layout leaves room
+       for it. -->
   <div class="screen" id="screen-speaking">
-    <div class="screen-placeholder">Speaking (placeholder)</div>
+    <div class="speaking-input-row">
+      <input type="text" id="speaking-input" class="speaking-input" placeholder="Type your message" autocomplete="off">
+      <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
+    </div>
   </div>
 
+  <!-- Screen 05 — docs/ui-target/README.md "05 — The conversation". The
+       thread itself is #thread above (persistent, Task 2); this container
+       only adds the bottom control panel. -->
   <div class="screen" id="screen-thread">
-    <div class="screen-placeholder">Conversation thread (placeholder)</div>
+    <div class="control-panel">
+      <div class="control-panel-label">Whose turn is it?</div>
+      <div class="control-panel-buttons">
+        <button type="button" class="turn-btn turn-btn-sign" id="turn-sign-btn">Sign</button>
+        <button type="button" class="turn-btn turn-btn-speak" id="turn-speak-btn">Speak or Type</button>
+      </div>
+      <!-- Real navigation per docs/system/DECISIONS.md ("End Conversation is
+           a real page load back to index.html, not a hide") — calls the
+           already-defined empty onEndConversation() hook, then leaves the
+           page for real. Camera/speech teardown itself is a later phase's
+           job, not this task's. -->
+      <button type="button" class="end-conversation-btn" id="end-conversation-btn">End Conversation</button>
+    </div>
   </div>
 
   <!-- Modal shell (Task 2): fixed overlay + centred card, hidden unless
@@ -320,16 +592,6 @@
       <h2>Modal placeholder</h2>
       <p>No real content yet (Task 5/6 build confirm/idle/error). Kind: <span id="modalKindLabel">&mdash;</span></p>
     </div>
-  </div>
-
-  <!-- Dev-only manual-test hooks: scaffolding for this task's own
-       done-criteria check, not the real navigation UI (see comment in the
-       <style> block above). Calls showScreen() directly. -->
-  <div id="dev-screen-switcher">
-    <button type="button" data-goto="who-first">who-first</button>
-    <button type="button" data-goto="signing">signing</button>
-    <button type="button" data-goto="speaking">speaking</button>
-    <button type="button" data-goto="thread">thread</button>
   </div>
 
   <!-- Dev-only manual-test hooks for this task's own verification of the
@@ -396,11 +658,14 @@
       document.body.dataset.screen = name;
     }
 
-    // Wire the dev-only switcher row (see markup comment above).
-    document.getElementById('dev-screen-switcher').addEventListener('click', function (e) {
-      var btn = e.target.closest('button[data-goto]');
-      if (!btn) return;
-      showScreen(btn.getAttribute('data-goto'));
+    // Back button (header, top-left): visible on who-first/signing/speaking
+    // (hidden on thread by the CSS rule Task 2 already wrote). Routes back
+    // to screen 02 to choose again who speaks — the only screen "back" from
+    // signing/speaking sensibly means. Tapping it while already on who-first
+    // is a harmless no-op (showScreen() returns early for a same-screen
+    // call).
+    document.getElementById('backBtn').addEventListener('click', function () {
+      showScreen('who-first');
     });
 
     var VALID_STATUS_KINDS = ['listening', 'typing'];
@@ -458,6 +723,71 @@
       if (statusKind !== null) {
         setStatusPill(statusKind === '' ? null : statusKind);
       }
+    });
+
+    // ── Screen 02 — Who speaks first ──
+    // Card taps choose who starts; per docs/system/DECISIONS.md this screen
+    // is shown once only, so these are the only two places 'signing'/
+    // 'speaking' are entered from outside the thread's own control panel.
+    document.getElementById('card-sign').addEventListener('click', function () {
+      showScreen('signing');
+    });
+    document.getElementById('card-speak').addEventListener('click', function () {
+      showScreen('speaking');
+    });
+
+    // English/Filipino toggle: purely visual + attribute state in this
+    // fake-data phase (Task 3 interface note: "value read by later tasks
+    // but not acted on"). data-lang on #lang-toggle is what a later task
+    // reads; the .active class is just which button looks selected.
+    document.getElementById('lang-toggle').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-lang-value]');
+      if (!btn) return;
+      var toggle = document.getElementById('lang-toggle');
+      toggle.setAttribute('data-lang', btn.getAttribute('data-lang-value'));
+      var buttons = toggle.querySelectorAll('.lang-toggle-btn');
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].classList.toggle('active', buttons[i] === btn);
+      }
+    });
+
+    // ── Screen 03 — Signing ──
+    // "Stop & Add to Conversation" stands in for the classifier's confirm
+    // step (docs/system/DECISIONS.md's "two fake buttons" note) — Task 5's
+    // job to wire to openModal('confirm'). Left inert here on purpose: no
+    // click handler.
+
+    // ── Screen 04 — Speak or type ──
+    // Real logic (not fake data, per this task's own scope note): Send stays
+    // disabled until there is non-whitespace text in the field.
+    (function () {
+      var speakingInput = document.getElementById('speaking-input');
+      var speakingSend = document.getElementById('speaking-send');
+      speakingInput.addEventListener('input', function () {
+        speakingSend.disabled = speakingInput.value.trim() === '';
+      });
+    })();
+    // Send's own click (actually posting the typed message into the thread)
+    // is Task 4's job — left inert here.
+
+    // ── Screen 05 — The conversation ──
+    // Turn buttons hand control to the next screen; per
+    // docs/system/DECISIONS.md, turn 2+ routes through here, not back
+    // through screen 02.
+    document.getElementById('turn-sign-btn').addEventListener('click', function () {
+      showScreen('signing');
+    });
+    document.getElementById('turn-speak-btn').addEventListener('click', function () {
+      showScreen('speaking');
+    });
+    // End Conversation: a real page load back to the dashboard, per
+    // docs/system/DECISIONS.md ("End Conversation is a real page load back
+    // to index.html, not a hide") — not a showScreen() call. Calls the
+    // already-declared empty onEndConversation() hook first (a later phase
+    // attaches camera/speech teardown there), then navigates for real.
+    document.getElementById('end-conversation-btn').addEventListener('click', function () {
+      onEndConversation();
+      location.href = 'index.html';
     });
   </script>
 </body>
