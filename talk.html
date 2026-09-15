@@ -250,6 +250,59 @@
     cursor:pointer;
   }
 
+  /* ── Idle modal content (Task 6) ──
+     docs/ui-target/README.md "Idle warning": "Still there?" 32px bold,
+     "This conversation will end in", a countdown in 44px orange, an orange
+     Continue button, a plain End Now beneath. Built by renderIdleModal()
+     below into the same .modal-card shell as confirm/error — no new card.
+     .idle-title/.idle-label use their own classes (not .modal-card h2/p)
+     so this task's 32px/16px sizing doesn't fight the shell's generic
+     20px h2 / 16px p defaults. */
+  .idle-title{
+    font-size:32px;font-weight:700;color:var(--navy);margin-bottom:8px;
+  }
+  .idle-label{
+    font-size:16px;color:var(--muted);
+  }
+  .idle-countdown{
+    font-size:44px;font-weight:700;color:var(--orange);
+    margin:8px 0 24px;
+  }
+  .idle-continue-btn{
+    display:block;width:100%;height:60px;
+    border:none;border-radius:12px;
+    background:var(--orange);color:var(--surface);
+    font-family:inherit;font-size:18px;font-weight:700;
+    cursor:pointer;
+    margin-bottom:12px;
+  }
+  .idle-end-btn{
+    display:block;width:100%;height:44px;
+    border:none;background:transparent;
+    color:var(--muted);
+    font-family:inherit;font-size:16px;font-weight:600;
+    cursor:pointer;
+  }
+
+  /* ── Error modal content (Task 6) ──
+     docs/ui-target/README.md "Error states": same centred-card treatment,
+     a plain sentence, one way out. opts.message/opts.buttonLabel are always
+     set via textContent (renderErrorModal() below), never interpolated into
+     innerHTML. 16px floor applies to .error-message (the project's hard
+     minimum for body text) even though README doesn't give it an explicit
+     size beyond "plain sentence". */
+  .error-message{
+    font-size:18px;color:var(--navy);line-height:1.5;
+    margin-bottom:24px;
+  }
+  .error-action-btn{
+    display:block;width:100%;height:60px;
+    border:none;border-radius:12px;
+    background:var(--navy);color:var(--surface);
+    font-family:inherit;font-size:18px;font-weight:700;
+    cursor:pointer;
+  }
+
   /* ── Icon tile ──
      Filled rounded square, ~96x96, radius 16, one centred white icon glyph.
      Used by Task 3's screen 02 cards (Sign Language / Speak or Type); no
@@ -709,6 +762,15 @@
   <script>
     'use strict';
 
+    // ── Task 6: idle timer ──
+    // Configurable top-of-script constant, read once by startIdleTimer()
+    // below — kept separate from the trigger logic itself so this task's own
+    // verification can temporarily shorten it (e.g. to 50ms) without editing
+    // anything else. Production value: 2 minutes, per
+    // docs/ui-target/README.md "Idle warning": "Appears after two minutes
+    // without input."
+    const IDLE_TIMEOUT_MS = 120000; // 2 minutes, production value (see comment above)
+
     var VALID_SCREENS = ['who-first', 'signing', 'speaking', 'thread'];
 
     // Empty hooks — a later phase attaches camera start/MediaPipe setup here.
@@ -862,29 +924,169 @@
       card.appendChild(p);
     }
 
+    // Holds the running idle-countdown setInterval id (Task 6), or null when
+    // no idle modal is showing. Module-level rather than local to
+    // renderIdleModal() so closeModal() below can defensively clear it too —
+    // Continue/End Now/countdown-reaches-0 all clear it themselves on their
+    // own exit paths, but closeModal() also covers any other way the modal
+    // shell gets hidden (e.g. #dev-modal-switcher's generic "modal: close"
+    // button), so no dangling interval can ever keep ticking after the
+    // overlay is gone.
+    var idleCountdownIntervalId = null;
+
+    /**
+     * Build the idle-warning modal's real content (Task 6) into
+     * .modal-card: "Still there?" (32px bold), the "will end in" label, a
+     * 44px orange countdown that decrements once per second, an orange
+     * "Continue" button, and a plain "End Now" button beneath — per
+     * docs/ui-target/README.md "Idle warning". Built via
+     * createElement/textContent, matching renderConfirmModal()'s pattern
+     * above (no innerHTML rebuild with interpolated content — there is none
+     * here, but the pattern is kept consistent regardless).
+     *
+     * If the countdown reaches 0 with nobody answering, it behaves exactly
+     * like "End Now" — clears the interval, calls onEndConversation(), then
+     * navigates, same order as the real End Conversation button
+     * (docs/ui-target/README.md: "ends the conversation by itself if nobody
+     * answers").
+     *
+     * @param {{seconds: number}} opts
+     */
+    function renderIdleModal(opts) {
+      opts = opts || {};
+      var card = document.querySelector('.modal-card');
+      card.innerHTML = '';
+
+      var title = document.createElement('div');
+      title.className = 'idle-title';
+      title.textContent = 'Still there?';
+      card.appendChild(title);
+
+      var label = document.createElement('p');
+      label.className = 'idle-label';
+      label.textContent = 'This conversation will end in';
+      card.appendChild(label);
+
+      var countdown = document.createElement('div');
+      countdown.className = 'idle-countdown';
+      var secondsLeft = typeof opts.seconds === 'number' ? opts.seconds : 30;
+      countdown.textContent = String(secondsLeft);
+      card.appendChild(countdown);
+
+      if (idleCountdownIntervalId !== null) {
+        clearInterval(idleCountdownIntervalId);
+      }
+      idleCountdownIntervalId = setInterval(function () {
+        secondsLeft -= 1;
+        if (secondsLeft <= 0) {
+          clearInterval(idleCountdownIntervalId);
+          idleCountdownIntervalId = null;
+          onEndConversation();
+          location.href = 'index.html';
+          return;
+        }
+        countdown.textContent = String(secondsLeft);
+      }, 1000);
+
+      var continueBtn = document.createElement('button');
+      continueBtn.type = 'button';
+      continueBtn.className = 'idle-continue-btn';
+      continueBtn.textContent = 'Continue';
+      continueBtn.addEventListener('click', function () {
+        clearInterval(idleCountdownIntervalId);
+        idleCountdownIntervalId = null;
+        closeModal();
+        resetIdleTimer();
+      });
+      card.appendChild(continueBtn);
+
+      var endNowBtn = document.createElement('button');
+      endNowBtn.type = 'button';
+      endNowBtn.className = 'idle-end-btn';
+      endNowBtn.textContent = 'End Now';
+      endNowBtn.addEventListener('click', function () {
+        clearInterval(idleCountdownIntervalId);
+        idleCountdownIntervalId = null;
+        onEndConversation();
+        location.href = 'index.html';
+      });
+      card.appendChild(endNowBtn);
+    }
+
+    /**
+     * Build the error modal's real content (Task 6) into .modal-card: a
+     * centred one-sentence message (opts.message, via textContent — never
+     * interpolated into innerHTML) and exactly one button whose label/action
+     * the caller supplies (opts.buttonLabel/opts.onAction), falling back to
+     * closeModal() if no onAction is given. Not wired to any real failure
+     * condition this phase (no camera/mic exists yet to fail) — this is the
+     * reusable shell a later phase calls into, per
+     * docs/ui-target/README.md "Error states".
+     *
+     * @param {{message: string, buttonLabel: string, onAction: Function}} opts
+     */
+    function renderErrorModal(opts) {
+      opts = opts || {};
+      var card = document.querySelector('.modal-card');
+      card.innerHTML = '';
+
+      var message = document.createElement('p');
+      message.className = 'error-message';
+      message.textContent = opts.message || '';
+      card.appendChild(message);
+
+      var actionBtn = document.createElement('button');
+      actionBtn.type = 'button';
+      actionBtn.className = 'error-action-btn';
+      actionBtn.textContent = opts.buttonLabel || 'OK';
+      actionBtn.addEventListener('click', function () {
+        if (typeof opts.onAction === 'function') {
+          opts.onAction();
+        } else {
+          closeModal();
+        }
+      });
+      card.appendChild(actionBtn);
+    }
+
     /**
      * Open the modal shell with a given kind ("confirm"/"idle"/"error") and
-     * (for "confirm") the data it needs to render. Sets data-modal-kind on
-     * #modal, dispatches to the matching content-render step, then reveals
-     * the overlay via body.modal-open (pure class change).
+     * the data it needs to render. Sets data-modal-kind on #modal, dispatches
+     * to the matching content-render step, then reveals the overlay via
+     * body.modal-open (pure class change).
      *
      * @param {string} kind
-     * @param {{label: string, text: string, from: 'deaf'|'hearing'}} [opts]
-     *   Required for kind === "confirm"; ignored otherwise.
+     * @param {{label: string, text: string, from: 'deaf'|'hearing'}|{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
+     *   Shape depends on kind — see renderConfirmModal()/renderIdleModal()/
+     *   renderErrorModal() above. Ignored for any other kind.
      */
     function openModal(kind, opts) {
       document.getElementById('modal').setAttribute('data-modal-kind', kind);
       if (kind === 'confirm') {
         renderConfirmModal(opts);
+      } else if (kind === 'idle') {
+        renderIdleModal(opts);
+      } else if (kind === 'error') {
+        renderErrorModal(opts);
       } else {
         renderPlaceholderModal(kind);
       }
       document.body.classList.add('modal-open');
     }
 
-    /** Hide the modal shell. Leaves data-modal-kind/.modal-card content as-is (harmless while hidden). */
+    /**
+     * Hide the modal shell. Leaves data-modal-kind/.modal-card content as-is
+     * (harmless while hidden). Also defensively clears any running idle
+     * countdown (Task 6) — see the comment on idleCountdownIntervalId above
+     * for why this lives here too, not just in the idle modal's own
+     * Continue/End Now handlers.
+     */
     function closeModal() {
       document.body.classList.remove('modal-open');
+      if (idleCountdownIntervalId !== null) {
+        clearInterval(idleCountdownIntervalId);
+        idleCountdownIntervalId = null;
+      }
     }
 
     // ── Task 4: The persistent thread — appendBubble() ──
@@ -1145,6 +1347,40 @@
       onEndConversation();
       location.href = 'index.html';
     });
+
+    // ── Task 6: idle timer ──
+    // Page-level setTimeout, re-armed on any real input. Fires
+    // openModal('idle', { seconds: 30 }) after IDLE_TIMEOUT_MS of silence;
+    // does NOT re-arm itself on firing (a setTimeout only ever fires once) —
+    // the next arm only happens via resetIdleTimer(), either from a real
+    // input event or from the idle modal's own Continue button. This is what
+    // keeps the modal's mere appearance from resetting the timer: opening it
+    // happens from this callback, not from a listened event.
+    var idleTimerId = null;
+
+    function startIdleTimer() {
+      idleTimerId = setTimeout(function () {
+        openModal('idle', { seconds: 30 });
+      }, IDLE_TIMEOUT_MS);
+    }
+
+    function resetIdleTimer() {
+      if (idleTimerId !== null) {
+        clearTimeout(idleTimerId);
+      }
+      startIdleTimer();
+    }
+
+    // Any real input anywhere on the page re-arms the timer. Document-level
+    // per the task brief, so it fires regardless of which screen/element is
+    // under the pointer/keyboard — including taps on the idle modal's own
+    // Continue/End Now buttons, which is intentional (Continue is supposed
+    // to reset it; End Now navigates away before it matters).
+    document.addEventListener('pointerdown', resetIdleTimer);
+    document.addEventListener('keydown', resetIdleTimer);
+    document.addEventListener('input', resetIdleTimer);
+
+    startIdleTimer();
   </script>
 </body>
 </html>
