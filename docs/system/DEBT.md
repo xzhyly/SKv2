@@ -544,6 +544,23 @@ so a later session does not re-litigate them:
     adding version strings is outside a layout phase. Noted in
     `docs/system/MANUAL-CHECKS.md` so checks are run against fresh files.
 
+42. **Low severity, open: three pages still carry their own divergent
+    palette `:root` instead of the new shared `css/tokens.css`.**
+    `css/gesture-training.css:24-30`, `css/sign-to-text.css:14-21`, and
+    `reports.html:9-33` each still define local custom properties
+    (`--navy2`, `--orange-deep`, `--white`, no `--muted-light`, no `--red`,
+    `--surface`/`--primary` used inconsistently between them) instead of the
+    README-named palette `css/tokens.css` now defines
+    (`--navy`, `--navy-2`, `--orange`, `--orange-dark`, `--bg`, `--surface`,
+    `--border`, `--muted`, `--muted-light`, `--green`, `--red`), created for
+    `talk.html` in the "Let's Talk" phase (`docs/system/DECISIONS.md`). Not
+    fixed: migrating three already-shipped pages to a new shared stylesheet
+    was out of scope for a phase that was told to edit nothing existing.
+    Migrating them would mean swapping each page's local `:root` for a
+    `<link rel="stylesheet" href="css/tokens.css">` and a values-only diff on
+    any variable name that changed; low risk since the underlying hex values
+    don't change, but each page needs its own visual re-check afterward.
+
 ## Dead code
 
 Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build
