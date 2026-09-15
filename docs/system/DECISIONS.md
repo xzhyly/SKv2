@@ -211,3 +211,17 @@ re-proposed or re-litigated.
   README describes the panel as ~190px, so Task 3 will need to shrink
   `#thread`'s full-height CSS rule accordingly once the panel exists — noted
   here so that adjustment isn't a surprise.
+- **The project's "no body text under 16px" hard rule governs over
+  README's smaller suggested sizes for secondary/meta text; it is not a
+  carve-out case.** Two instances of this same tension have now come up and
+  both were resolved the same way: `.bubble-label` (Task 2) is 16px against
+  README's "13px muted" for the Signed/Spoken timestamp label, and
+  `.control-panel-label` (Task 3) is 16px against README's "15px muted" for
+  the "Whose turn is it?" label. Task 3 originally followed README's 15px
+  literally, which a task reviewer flagged as inconsistent with the
+  already-settled `.bubble-label` precedent; it was corrected to 16px to
+  match. Reason: the hard rule has no stated exception for secondary/meta
+  text, and README's per-element numbers are suggestions the hard rule
+  overrides, not the other way around. This is the general precedent for any
+  future task that hits the same README-vs-16px-floor tension on any other
+  element — apply the 16px floor, do not re-litigate it a third time.
