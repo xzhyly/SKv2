@@ -16,7 +16,7 @@
     background:var(--bg);
   }
 
-  /* ── Header (title only — status pill logic is Task 2) ──
+  /* ── Header ──
      Fixed/out-of-flow: the 90px header is part of the fixed 1024×600 total
      (see docs/ui-target/README.md's screen-by-screen breakdowns), not extra
      height stacked on top of it, so it overlays the top of whichever
@@ -31,6 +31,162 @@
     color:var(--surface);
     font-size:20px;font-weight:700;
     letter-spacing:1.5px;
+  }
+
+  /* ── Back button (header, top-left) ──
+     Per docs/ui-target/README.md: pill, white at 12% opacity. Visible on
+     who-first/signing/speaking; hidden on thread per the seeded decision in
+     docs/system/DECISIONS.md ("no Back button on the thread screen").
+     Absolutely positioned within the (already non-static) .talk-header so it
+     never disturbs the title's centring. 44px height/min-width: README says
+     "40px tall" for the status pill and implies a similar pill here, but the
+     touch-target rule ("nothing tappable smaller than 44x44") wins for any
+     actually-tappable element — see the matching note on .status-pill below
+     and docs/system/DECISIONS.md. */
+  .back-btn{
+    position:absolute;left:16px;top:50%;transform:translateY(-50%);
+    min-width:44px;height:44px;padding:0 18px;
+    display:flex;align-items:center;justify-content:center;
+    border:none;border-radius:99px;
+    background:rgba(255,255,255,0.12);
+    color:var(--surface);
+    font-family:inherit;font-size:16px;font-weight:600;
+    cursor:pointer;
+  }
+  body[data-screen="thread"] .back-btn{display:none}
+
+  /* ── Status pill (header, top-right) ──
+     `.status-pill` alone renders nothing (display:none) — a real state
+     exists only once `.listening` or `.typing` is applied, and
+     setStatusPill() below guarantees the two are mutually exclusive by
+     clearing both before adding one. Dot colour and label text are both
+     driven purely by the class (no textContent writes), matching the
+     attribute/class-only pattern showScreen() already established.
+     Height: README specifies 40px; bumped to 44px here because the pill is
+     in .status-pill, which this task's own touch-target done-criterion (4)
+     requires to be >=44x44 — see the same note on .back-btn above and
+     docs/system/DECISIONS.md for this deviation. */
+  .status-pill{
+    position:absolute;right:16px;top:50%;transform:translateY(-50%);
+    display:none;align-items:center;gap:8px;
+    height:44px;padding:0 16px;
+    border-radius:99px;
+    background:rgba(255,255,255,0.12);
+  }
+  .status-pill.listening,
+  .status-pill.typing{display:flex}
+  .status-dot{
+    width:10px;height:10px;border-radius:50%;
+    flex:0 0 auto;
+  }
+  .status-pill.listening .status-dot{background:var(--green)}
+  .status-pill.typing .status-dot{background:var(--orange)}
+  .status-text{
+    color:var(--surface);font-size:16px;font-weight:700;letter-spacing:0.5px;
+  }
+  .status-text::before{content:''}
+  .status-pill.listening .status-text::before{content:'LISTENING'}
+  .status-pill.typing .status-text::before{content:'TYPING'}
+
+  /* ── Persistent thread subtree ──
+     One element, never duplicated per screen. Visibility/height keyed
+     entirely off body[data-screen], matching Task 1's one-pattern rule
+     (attribute selectors, no second toggling mechanism). Hidden on
+     who-first (no conversation exists yet); 96px collapsed strip on
+     signing/speaking per docs/system/DECISIONS.md; full height
+     (y=90 to the bottom of the 600px screen — this task builds no control
+     panel yet, Task 3 does) on thread. Positioned fixed so the same element
+     can overlay whichever .screen container is currently showing without
+     living inside any one of them. */
+  #thread{
+    position:fixed;left:0;top:90px;width:1024px;
+    background:var(--surface);
+    overflow:hidden;
+    z-index:60;
+    display:none;
+  }
+  body[data-screen="signing"] #thread,
+  body[data-screen="speaking"] #thread{
+    display:block;height:96px;
+  }
+  body[data-screen="thread"] #thread{
+    display:block;height:510px;
+  }
+  #thread-list{
+    height:100%;overflow-y:auto;
+    padding:12px 16px;
+    display:flex;flex-direction:column;gap:16px;
+  }
+
+  /* ── Bubble shape ──
+     Convention per docs/ui-target/README.md "05 — The conversation" /
+     docs/system/DECISIONS.md: deaf person left/white/1px border, hearing
+     person right/navy/white text. Task 4's appendBubble() will generate
+     .bubble-row groups like the placeholders below. Radius 18px per the
+     palette's bubble radius. min-width/min-height guarantee the 44x44 touch
+     rule regardless of how short the message text is (bubbles aren't
+     tappable in this design, but the done criteria hold every .bubble to
+     the same floor as tappable elements, so it's satisfied either way). */
+  .bubble-row{
+    display:flex;flex-direction:column;max-width:640px;
+  }
+  .bubble-row.deaf{align-items:flex-start;align-self:flex-start}
+  .bubble-row.hearing{align-items:flex-end;align-self:flex-end}
+  .bubble-label{
+    font-size:16px;color:var(--muted);margin-bottom:4px;padding:0 4px;
+  }
+  .bubble{
+    display:flex;align-items:center;gap:8px;
+    min-width:44px;min-height:44px;
+    padding:14px 18px;
+    border-radius:18px;
+    font-size:16px;line-height:1.4;
+  }
+  .bubble.deaf{
+    background:var(--surface);border:1px solid var(--border);color:var(--navy);
+  }
+  .bubble.hearing{
+    background:var(--navy);border:1px solid var(--navy);color:var(--surface);
+  }
+  .bubble-icon{font-size:16px;flex:0 0 auto}
+
+  /* ── Modal shell ──
+     Fixed overlay + centred card, hidden unless body.modal-open. Content
+     for each data-modal-kind (confirm/idle/error) is Task 5/6's job; this
+     task only builds the empty shell and the show/hide mechanism
+     (openModal/closeModal below). */
+  #modal{
+    position:fixed;top:0;left:0;width:1024px;height:600px;
+    display:none;
+    align-items:center;justify-content:center;
+    background:rgba(0,0,0,0.5);
+    z-index:200;
+  }
+  body.modal-open #modal{display:flex}
+  .modal-card{
+    width:640px;max-width:90%;
+    background:var(--surface);
+    border-radius:16px;
+    box-shadow:0 20px 50px rgba(0,0,0,0.35);
+    padding:32px;
+    text-align:center;
+  }
+  .modal-card h2{font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px}
+  .modal-card p{font-size:16px;color:var(--muted);line-height:1.5}
+
+  /* ── Icon tile ──
+     Filled rounded square, ~96x96, radius 16, one centred white icon glyph.
+     Used by Task 3's screen 02 cards (Sign Language / Speak or Type); no
+     colour variant is baked in here beyond the default navy fill — the
+     orange variant README specifies for the right-hand card is that
+     caller's concern (an inline style or modifier class), not this shape's. */
+  .icon-tile{
+    width:96px;height:96px;border-radius:16px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--navy);
+  }
+  .icon-tile-glyph{
+    font-size:40px;line-height:1;color:var(--surface);
   }
 
   /* ── Screen containers ──
@@ -59,9 +215,9 @@
   }
 
   /* ── Dev-only manual-test scaffolding for this task's own verification.
-     Task 2 replaces this row with the real navigation UI (Who-first cards,
-     header back button, thread's Sign/Speak buttons, etc.) — delete this
-     block once that lands. ── */
+     Task 3 replaces this row with the real navigation UI (Who-first cards,
+     thread's Sign/Speak buttons, etc.) — delete this block once that lands.
+     (The header back button is now real, built by Task 2 above.) ── */
   #dev-screen-switcher{
     position:fixed;left:0;bottom:0;width:1024px;
     display:flex;gap:8px;padding:8px;
@@ -75,12 +231,67 @@
     font-family:inherit;font-size:16px;font-weight:600;
     cursor:pointer;
   }
+
+  /* ── Dev-only manual-test scaffolding for this task's (Task 2) own
+     verification of the modal shell and the .icon-tile shape. Sits directly
+     above #dev-screen-switcher so neither row overlaps. Not part of the
+     real UI — Task 5/6 build the real openModal() call sites (Confirm
+     appearing after signing/speech, idle countdown, error states) and
+     Task 3 places the real .icon-tile instances on screen 02; delete this
+     block once those land. ── */
+  #dev-modal-switcher{
+    position:fixed;left:0;bottom:60px;width:1024px;
+    display:flex;gap:8px;align-items:center;padding:8px;
+    background:var(--surface);border-top:1px solid var(--border);
+    z-index:9999;
+  }
+  #dev-modal-switcher button{
+    flex:1;min-height:44px;
+    border-radius:12px;border:1px solid var(--border);
+    background:var(--bg);color:var(--navy);
+    font-family:inherit;font-size:16px;font-weight:600;
+    cursor:pointer;
+  }
 </style>
 </head>
 <body data-screen="who-first">
 
   <div class="talk-header">
+    <button type="button" class="back-btn" id="backBtn">&#8249; Back</button>
     <h1>NEW CONVERSATION</h1>
+    <div class="status-pill" id="statusPill">
+      <span class="status-dot"></span>
+      <span class="status-text"></span>
+    </div>
+  </div>
+
+  <!-- Persistent thread subtree (Task 2 interface note: the plan text calls
+       this #thread-strip/#thread-full; built here as one single #thread
+       element instead, per the task's own "Your Job" instructions — its
+       collapsed-vs-full height is a CSS/data-screen concern on ONE node, not
+       two nodes toggled by JS. See the CSS block above for the ids Task 4/
+       Task 3 should target: #thread (persistent container) and #thread-list
+       (inner scrollable list Task 4's appendBubble() appends into).
+       The two bubble-rows below are placeholders for this task's own visual
+       verification of collapsed (96px) vs full height — Task 4 replaces
+       them with real appended bubbles. -->
+  <div id="thread">
+    <div id="thread-list">
+      <div class="bubble-row deaf">
+        <div class="bubble-label">Signed &middot; 10:41</div>
+        <div class="bubble deaf">
+          <span class="bubble-icon">&#128264;</span>
+          <span class="bubble-text">Placeholder signed message.</span>
+        </div>
+      </div>
+      <div class="bubble-row hearing">
+        <div class="bubble-label">Spoken &middot; 10:42</div>
+        <div class="bubble hearing">
+          <span class="bubble-text">Placeholder spoken reply.</span>
+          <span class="bubble-icon">&#9995;</span>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="screen" id="screen-who-first">
@@ -99,6 +310,17 @@
     <div class="screen-placeholder">Conversation thread (placeholder)</div>
   </div>
 
+  <!-- Modal shell (Task 2): fixed overlay + centred card, hidden unless
+       body.modal-open. data-modal-kind is set by openModal() below so
+       Task 5/6 can key real confirm/idle/error content off it; this task's
+       content is a placeholder only. -->
+  <div id="modal">
+    <div class="modal-card">
+      <h2>Modal placeholder</h2>
+      <p>No real content yet (Task 5/6 build confirm/idle/error). Kind: <span id="modalKindLabel">&mdash;</span></p>
+    </div>
+  </div>
+
   <!-- Dev-only manual-test hooks: scaffolding for this task's own
        done-criteria check, not the real navigation UI (see comment in the
        <style> block above). Calls showScreen() directly. -->
@@ -107,6 +329,21 @@
     <button type="button" data-goto="signing">signing</button>
     <button type="button" data-goto="speaking">speaking</button>
     <button type="button" data-goto="thread">thread</button>
+  </div>
+
+  <!-- Dev-only manual-test hooks for this task's own verification of the
+       modal shell and status pill (see comment in the <style> block
+       above). The trailing .icon-tile is a visual check of that shape too,
+       not real screen-02 markup. -->
+  <div id="dev-modal-switcher">
+    <button type="button" data-modal="confirm">modal: confirm</button>
+    <button type="button" data-modal="idle">modal: idle</button>
+    <button type="button" data-modal="error">modal: error</button>
+    <button type="button" data-modal-close>modal: close</button>
+    <button type="button" data-status="listening">pill: listening</button>
+    <button type="button" data-status="typing">pill: typing</button>
+    <button type="button" data-status="">pill: none</button>
+    <div class="icon-tile"><span class="icon-tile-glyph">&#9995;</span></div>
   </div>
 
   <script>
@@ -163,6 +400,63 @@
       var btn = e.target.closest('button[data-goto]');
       if (!btn) return;
       showScreen(btn.getAttribute('data-goto'));
+    });
+
+    var VALID_STATUS_KINDS = ['listening', 'typing'];
+
+    /**
+     * Show/hide the header status pill. kind is null (render nothing),
+     * "listening", or "typing" — never both: both state classes are always
+     * cleared first, so applying one is the only way either appears. Pure
+     * class change, no textContent writes (dot colour and label text are
+     * both driven by CSS off the class — see .status-pill rules above).
+     */
+    function setStatusPill(kind) {
+      var pill = document.getElementById('statusPill');
+      pill.classList.remove('listening', 'typing');
+      if (kind === null) {
+        return;
+      }
+      if (VALID_STATUS_KINDS.indexOf(kind) === -1) {
+        throw new Error('setStatusPill: invalid kind "' + kind + '"');
+      }
+      pill.classList.add(kind);
+    }
+
+    /**
+     * Open the modal shell with a given kind ("confirm"/"idle"/"error").
+     * Sets data-modal-kind on #modal so later tasks can key real content off
+     * it, then reveals it via body.modal-open (pure class change).
+     */
+    function openModal(kind) {
+      document.getElementById('modal').setAttribute('data-modal-kind', kind);
+      document.getElementById('modalKindLabel').textContent = kind;
+      document.body.classList.add('modal-open');
+    }
+
+    /** Hide the modal shell. Leaves data-modal-kind as-is (harmless while hidden). */
+    function closeModal() {
+      document.body.classList.remove('modal-open');
+    }
+
+    // Wire the dev-only modal/status-pill/icon-tile verification row (see
+    // markup comment above).
+    document.getElementById('dev-modal-switcher').addEventListener('click', function (e) {
+      var btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.hasAttribute('data-modal-close')) {
+        closeModal();
+        return;
+      }
+      var modalKind = btn.getAttribute('data-modal');
+      if (modalKind) {
+        openModal(modalKind);
+        return;
+      }
+      var statusKind = btn.getAttribute('data-status');
+      if (statusKind !== null) {
+        setStatusPill(statusKind === '' ? null : statusKind);
+      }
     });
   </script>
 </body>

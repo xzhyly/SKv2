@@ -182,4 +182,26 @@ re-proposed or re-litigated.
 
 ## Decisions made during implementation
 
-_(append below as tasks are executed)_
+- **Task 2: `.status-pill` and `.back-btn` are 44px tall, not the 40px the
+  README specifies for the status pill.** Reason: the task's own numeric
+  done criteria (criterion 4) require every element carrying `.status-pill`
+  or `.back-btn` to be `>=44x44`, which directly conflicts with the README's
+  "40px tall" for the status pill. The done criteria are the actual
+  verification gate, so they win; the visual difference (4px) is negligible
+  at this size.
+- **Task 2: the persistent thread subtree is one element, `#thread`
+  (inner scrollable list `#thread-list`), not the plan text's
+  `#thread-strip`/`#thread-full` pair.** Reason: the task prompt's own "Your
+  Job" section explicitly left the concrete id/structure to this task's
+  judgment, and a single element toggled by `body[data-screen]` CSS (collapsed
+  96px on signing/speaking, full 510px on thread, hidden on who-first)
+  matches Task 1's one-pattern rule (attribute selectors, no second toggling
+  mechanism) more directly than two separously-named elements would. Task 3/
+  4/5/6 should target `#thread` and `#thread-list`, not `#thread-strip`/
+  `#thread-full`.
+- **Task 2: the full-height thread on the `thread` screen is 510px
+  (600 − 90), with no space reserved for a control panel.** Reason: this
+  task builds no control panel (that's Task 3's screen-05 layout job); the
+  README describes the panel as ~190px, so Task 3 will need to shrink
+  `#thread`'s full-height CSS rule accordingly once the panel exists — noted
+  here so that adjustment isn't a surprise.
