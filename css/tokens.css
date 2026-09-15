@@ -1,0 +1,18 @@
+/* css/tokens.css */
+/* Shared design-token palette for talk.html (and future pages that adopt
+   it — see docs/system/DECISIONS.md). Exact variable names and hex values
+   are taken verbatim from docs/ui-target/README.md's "Visual language"
+   section. Do not add values here that aren't in that section. */
+:root{
+  --navy:#1a2540;
+  --navy-2:#27344f;
+  --orange:#f97316;
+  --orange-dark:#ea6a0a;
+  --bg:#f0f2f5;
+  --surface:#ffffff;
+  --border:#e2e8f0;
+  --muted:#64748b;
+  --muted-light:#94a3b8;
+  --green:#22c55e;
+  --red:#ef4444;
+}

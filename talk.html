@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1024, initial-scale=1.0, user-scalable=no">
+<title>Let's Talk — Sining Kamay</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/virtual-keyboard.css">
+<style>
+  /* ── Reset ── */
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden}
+  body{
+    font-family:'Inter','Segoe UI',Arial,sans-serif;
+    background:var(--bg);
+  }
+
+  /* ── Header (title only — status pill logic is Task 2) ──
+     Fixed/out-of-flow: the 90px header is part of the fixed 1024×600 total
+     (see docs/ui-target/README.md's screen-by-screen breakdowns), not extra
+     height stacked on top of it, so it overlays the top of whichever
+     600px-tall screen is showing rather than adding to document height. */
+  .talk-header{
+    position:fixed;top:0;left:0;z-index:100;
+    width:1024px;height:90px;
+    background:var(--navy);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .talk-header h1{
+    color:var(--surface);
+    font-size:20px;font-weight:700;
+    letter-spacing:1.5px;
+  }
+
+  /* ── Screen containers ──
+     Exactly one visible at a time, gated purely by body[data-screen].
+     Each is pinned to the fixed kiosk size — no 100vw/100vh, no responsive
+     units — and padded below the fixed header so placeholder content isn't
+     hidden under it. Task 3 fills these in with real layout; for now each
+     is a labelled placeholder so the state machine can be verified by
+     hand. */
+  .screen{
+    display:none;
+    width:1024px;height:600px;
+    padding-top:90px;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  body[data-screen="who-first"] #screen-who-first{display:flex}
+  body[data-screen="signing"] #screen-signing{display:flex}
+  body[data-screen="speaking"] #screen-speaking{display:flex}
+  body[data-screen="thread"] #screen-thread{display:flex}
+
+  .screen-placeholder{
+    flex:1;
+    display:flex;align-items:center;justify-content:center;
+    font-size:24px;font-weight:700;color:var(--muted);
+  }
+
+  /* ── Dev-only manual-test scaffolding for this task's own verification.
+     Task 2 replaces this row with the real navigation UI (Who-first cards,
+     header back button, thread's Sign/Speak buttons, etc.) — delete this
+     block once that lands. ── */
+  #dev-screen-switcher{
+    position:fixed;left:0;bottom:0;width:1024px;
+    display:flex;gap:8px;padding:8px;
+    background:var(--surface);border-top:1px solid var(--border);
+    z-index:9999;
+  }
+  #dev-screen-switcher button{
+    flex:1;min-height:44px;
+    border-radius:12px;border:1px solid var(--border);
+    background:var(--bg);color:var(--navy);
+    font-family:inherit;font-size:16px;font-weight:600;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body data-screen="who-first">
+
+  <div class="talk-header">
+    <h1>NEW CONVERSATION</h1>
+  </div>
+
+  <div class="screen" id="screen-who-first">
+    <div class="screen-placeholder">Who speaks first? (placeholder)</div>
+  </div>
+
+  <div class="screen" id="screen-signing">
+    <div class="screen-placeholder">Signing (placeholder)</div>
+  </div>
+
+  <div class="screen" id="screen-speaking">
+    <div class="screen-placeholder">Speaking (placeholder)</div>
+  </div>
+
+  <div class="screen" id="screen-thread">
+    <div class="screen-placeholder">Conversation thread (placeholder)</div>
+  </div>
+
+  <!-- Dev-only manual-test hooks: scaffolding for this task's own
+       done-criteria check, not the real navigation UI (see comment in the
+       <style> block above). Calls showScreen() directly. -->
+  <div id="dev-screen-switcher">
+    <button type="button" data-goto="who-first">who-first</button>
+    <button type="button" data-goto="signing">signing</button>
+    <button type="button" data-goto="speaking">speaking</button>
+    <button type="button" data-goto="thread">thread</button>
+  </div>
+
+  <script>
+    'use strict';
+
+    var VALID_SCREENS = ['who-first', 'signing', 'speaking', 'thread'];
+
+    // Empty hooks — a later phase attaches camera start/MediaPipe setup here.
+    function onEnterSigning() {}
+    // Empty hook — a later phase attaches camera stop/frame-loop teardown here.
+    function onLeaveSigning() {}
+    // Empty hook — a later phase attaches Vosk model start/mic capture here.
+    function onEnterSpeaking() {}
+    // Empty hook — a later phase attaches Vosk stop/mic teardown here.
+    function onLeaveSpeaking() {}
+    // Empty hook — a later phase attaches full teardown then location.href
+    // navigation back to index.html here (see docs/ui-target/README.md,
+    // "End Conversation must be a real teardown").
+    function onEndConversation() {}
+
+    /**
+     * Show one of the four screens by name. Pure attribute-change: no
+     * innerHTML rebuild, and the onEnter/onLeave hooks only fire on an
+     * actual transition — calling showScreen() again with the screen
+     * already active is a no-op past the validation/diff check.
+     */
+    function showScreen(name) {
+      if (VALID_SCREENS.indexOf(name) === -1) {
+        throw new Error('showScreen: invalid screen name "' + name + '"');
+      }
+
+      var previous = document.body.dataset.screen;
+      if (previous === name) {
+        return;
+      }
+
+      if (previous === 'signing') {
+        onLeaveSigning();
+      } else if (previous === 'speaking') {
+        onLeaveSpeaking();
+      }
+
+      if (name === 'signing') {
+        onEnterSigning();
+      } else if (name === 'speaking') {
+        onEnterSpeaking();
+      }
+
+      document.body.dataset.screen = name;
+    }
+
+    // Wire the dev-only switcher row (see markup comment above).
+    document.getElementById('dev-screen-switcher').addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-goto]');
+      if (!btn) return;
+      showScreen(btn.getAttribute('data-goto'));
+    });
+  </script>
+</body>
+</html>
