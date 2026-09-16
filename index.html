@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sining Kamay Kiosk</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/tokens.css">
     <link rel="stylesheet" href="css/virtual-keyboard.css">
     <link rel="prefetch" href="js/lib/tf.min.js" as="script">
     <link rel="prefetch" href="js/lib/mediapipe/hands.js" as="script">
@@ -598,28 +599,24 @@
                         </svg>
                     </div>
                     <span class="card-label">Learn Signs</span>
+                    <span class="card-caption">Practise FSL</span>
                 </a>
 
-                <!-- Translate Sign to Text -->
-                <button type="button" class="card-btn" onclick="window.location.href='sign-to-text.html'">
-                    <div class="card-icon">
+                <!-- Let's Talk — docs/ui-target/README.md "01 — Dashboard": replaces
+                     "Translate Sign to Text" and "Translate Text to Sign", orange 2px
+                     border + orange icon so the eye lands on it first (the ONE orange
+                     element on this screen — the other three stay plain). Points at
+                     talk.html directly (a real page load, matching every other card's
+                     own navigation, not a same-page reveal). -->
+                <a href="talk.html" class="card-btn card-btn-highlight">
+                    <div class="card-icon card-icon-highlight">
                         <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M23 7l-7 5 7 5V7z"></path>
-                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
                         </svg>
                     </div>
-                    <span class="card-label">Translate Sign to Text</span>
-                </button>
-
-                <!-- Translate Text to Sign -->
-                <button type="button" id="welcome-btn" class="card-btn">
-                    <div class="card-icon">
-                        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M4 5h16M12 5v14M8 19h8M4 5v2M20 5v2"></path>
-                        </svg>
-                    </div>
-                    <span class="card-label">Translate Text to Sign</span>
-                </button>
+                    <span class="card-label">Let's Talk</span>
+                    <span class="card-caption">Talk with someone</span>
+                </a>
 
                 <!-- Train Gestures -->
                 <button type="button" class="card-btn" onclick="window.location.href='gesture-training.html'">
@@ -630,6 +627,7 @@
                         </svg>
                     </div>
                     <span class="card-label">Train Gestures</span>
+                    <span class="card-caption">Add new signs</span>
                 </button>
 
                 <!-- View Reports -->
@@ -642,8 +640,20 @@
                         </svg>
                     </div>
                     <span class="card-label">View Reports</span>
+                    <span class="card-caption">Usage and accuracy</span>
                 </button>
             </nav>
+
+            <!-- js/script.js:13 unconditionally does
+                 document.getElementById('welcome-btn').addEventListener(...)
+                 with no null-guard, so removing this id entirely would throw
+                 on every load. This dashboard change only removes the visible
+                 "Translate Text to Sign" card; #translator-pane itself (and
+                 its ?screen=voice URL entry point) is untouched, per this
+                 change's own scope. Kept present-but-hidden instead, matching
+                 the existing #status/#download-history-btn precedent just
+                 below in #translator-pane for the same reason. -->
+            <button id="welcome-btn" style="display:none" aria-hidden="true">Translate Text to Sign</button>
         </div>
 
         <footer class="dashboard-footer">

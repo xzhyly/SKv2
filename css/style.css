@@ -148,7 +148,12 @@ select:focus-visible {
 
 #dashboard-pane .card-container {
     display: grid;
-    grid-template-columns: repeat(5, 180px);
+    /* Review pass, dashboard change: was repeat(5, 180px) for the five cards
+       this grid used to hold. Dropping to four cards without also dropping
+       this to repeat(4, 180px) would leave a fifth, empty 180px column
+       track — a lopsided row with a blank slot, not a centred four-card
+       row. Track count must match card count. */
+    grid-template-columns: repeat(4, 180px);
     gap: 20px;
     justify-content: center;
     align-items: stretch;
@@ -164,7 +169,7 @@ select:focus-visible {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 24px;
+    gap: 16px;
     cursor: pointer;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
     transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s;
@@ -179,6 +184,18 @@ select:focus-visible {
     transform: translateY(-5px);
     box-shadow: 0 20px 30px -10px rgba(27, 53, 90, 0.12), 0 10px 15px -8px rgba(27, 53, 90, 0.08);
     border-color: #1b355a;
+}
+
+/* docs/ui-target/README.md "01 — Dashboard": "Let's Talk" gets an orange
+   2px border and orange icon so the eye lands on it first; the other three
+   cards stay plain (the ONE orange element on this screen). var(--orange)
+   is css/tokens.css's value (#f97316) — index.html now links that
+   stylesheet (see <head>) rather than a new hex literal. */
+#dashboard-pane .card-btn-highlight {
+    border: 2px solid var(--orange, #f97316);
+}
+#dashboard-pane .card-icon-highlight {
+    color: var(--orange, #f97316);
 }
 
 #dashboard-pane .card-icon {
@@ -197,6 +214,21 @@ select:focus-visible {
     color: #1b355a;
     font-size: 1.05rem;
     font-weight: 750;
+    line-height: 1.3;
+    text-align: center;
+    margin: 0;
+}
+
+/* docs/ui-target/README.md "01 — Dashboard": "Each card gets a one-line
+   caption under its label, 14px muted... The cards currently have about
+   100px of dead space under the label." var(--muted) is css/tokens.css's
+   value (#64748b), same grey the rest of this project already calls
+   "muted" (this file's own .footer-text used the same hex before
+   css/tokens.css existed). */
+#dashboard-pane .card-caption {
+    color: var(--muted, #64748b);
+    font-size: 14px;
+    font-weight: 500;
     line-height: 1.3;
     text-align: center;
     margin: 0;
