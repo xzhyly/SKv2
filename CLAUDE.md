@@ -54,11 +54,17 @@ Confirmed working locally: camera capture and sign-to-text translation on
 `sign-to-text.html`, with the k-NN classifier loading all 120 ESL gestures and
 no console errors.
 
+`talk.html` is a new "Let's Talk" two-way conversation screen — UI only, fake
+data, no camera/mic/DB yet (see `docs/system/UI.md` Part 3 and
+`docs/system/DECISIONS.md`). It is not yet linked from the dashboard; open it
+directly at `/SKR/talk.html`.
+
 ## Where to read for what
 
 | Working on... | Read |
 |---|---|
-| Any screen's UI, camera/translation flow, gesture training, admin/reports pages | [docs/system/UI.md](docs/system/UI.md) |
+| Any screen's UI, camera/translation flow, gesture training, admin/reports pages, or the new "Let's Talk" conversation screen (`talk.html`) | [docs/system/UI.md](docs/system/UI.md) |
+| Settled design/build decisions for `talk.html` specifically (why a value was chosen, what an earlier task rejected) | [docs/system/DECISIONS.md](docs/system/DECISIONS.md) |
 | PHP endpoints, MySQL schema, ffmpeg invocations | [docs/system/BACKEND.md](docs/system/BACKEND.md) |
 | Kiosk boot, Chromium flags, Vosk speech model, Pi-specific constraints | [docs/system/HARDWARE_BOOT.md](docs/system/HARDWARE_BOOT.md) |
 | MediaPipe/TF.js vendored libraries themselves | [docs/system/VENDORED.md](docs/system/VENDORED.md) |

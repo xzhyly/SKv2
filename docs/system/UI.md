@@ -643,3 +643,220 @@ below. None of that ran.
   documented in code.
 - The reason `EPOCHS = 50` / "0 / 50 epochs" label was retained despite the
   training function not using epochs — not documented in code.
+
+---
+
+## Part 3: "Let's Talk" conversation screen (talk.html)
+
+New file, built as one phase (see `docs/superpowers/plans/2026-09-16-talk-html.md`
+for the six-task build order and `docs/system/DECISIONS.md` for every
+non-obvious call made while building it). UI-only, fake/canned data — no
+camera, microphone, MediaPipe, TensorFlow, Vosk, or database access anywhere
+in this file. Not yet linked from `index.html`'s dashboard (talk.html:1
+onward is reached only by typing `/SKR/talk.html` directly); see
+`docs/system/DECISIONS.md` for why.
+
+### 1. Owns these files
+
+- `talk.html` — the entire feature: markup, one inline `<style>` block, one
+  inline `<script>` block. No JS file split out, matching the existing
+  convention on `sign-to-text.html`/`reports.html`/`gesture-training.html`.
+- `css/tokens.css` — new, shared palette `:root` under the exact variable
+  names `docs/ui-target/README.md` uses (`--navy`, `--navy-2`, `--orange`,
+  `--orange-dark`, `--bg`, `--surface`, `--border`, `--muted`,
+  `--muted-light`, `--green`, `--red`). Only `talk.html` links it
+  (talk.html:7); `gesture-training.css`, `sign-to-text.css`, and
+  `reports.html` still carry their own separate, differently-named `:root`
+  blocks — migrating them is `docs/system/DEBT.md` item 42, not done.
+- Reused unmodified: `css/fonts.css`, `css/virtual-keyboard.css`,
+  `js/virtual-keyboard.js` (talk.html:8-9, 803).
+
+### 2. What it does
+
+A four-screen, three-modal conversation flow between a Deaf person (signs)
+and a hearing person (speaks/types), all inside one document that never
+reloads between turns — screens and modals are shown/hidden by attribute and
+class changes only, never by navigation or `innerHTML` rebuild. Messages are
+canned/fake in this phase (a small string pool, `talk.html` search
+`SIGNED_CANNED_POOL`/`SPOKEN_CANNED_POOL`) for two of the three ways a
+message can be produced; typed text is real. Nothing reaches the thread
+without passing through a confirm step first.
+
+### 3. How it works (state model)
+
+- **`body[data-screen]`** — one of `"who-first"`, `"signing"`, `"speaking"`,
+  `"thread"` (talk.html:816, `VALID_SCREENS`), read by CSS attribute
+  selectors to show exactly one of the four `.screen` containers
+  (`#screen-who-first` talk.html:691, `#screen-signing` talk.html:716,
+  `#screen-speaking` talk.html:755, `#screen-thread` talk.html:775). Set only
+  by `showScreen(name)` (talk.html:837), which throws on an invalid name,
+  no-ops on a same-screen call (so `onEnter*`/`onLeave*` fire exactly once
+  per real transition, never on a repeat), and is the only function that
+  writes the attribute.
+- **Five lifecycle hooks**, all empty on purpose (talk.html:819-829):
+  `onEnterSigning`/`onLeaveSigning`/`onEnterSpeaking`/`onLeaveSpeaking`/
+  `onEndConversation`. `showScreen()` calls the matching pair on every real
+  transition; a later phase attaches camera start/stop and Vosk start/stop
+  here without changing `showScreen()` itself. `onEndConversation()` is
+  already called for real by both real exit paths (End Conversation button,
+  talk.html:1386-1389; the idle modal's End Now/countdown-reaches-0,
+  talk.html:983-1054), each followed by a real `location.href =
+  'index.html'` — a genuine page reload, not a hide (per
+  `docs/system/DECISIONS.md`).
+- **`body.modal-open` + `#modal[data-modal-kind]`** — a second, independent
+  layer on top of whichever screen is showing. `openModal(kind, opts)`
+  (talk.html:1102) dispatches to `renderConfirmModal(opts)` (talk.html:918),
+  `renderIdleModal(opts)` (talk.html:983), or `renderErrorModal(opts)`
+  (talk.html:1056) and throws on any other `kind` — there is no fourth,
+  placeholder branch left in the file (removed once Task 6 gave all three
+  kinds real content; see Problems found, below, for why it existed at all
+  and how it was found to be actively harmful). `closeModal()` (talk.html:1125)
+  also defensively clears the idle countdown's `setInterval` regardless of
+  which route closed the modal.
+- **`appendBubble(msg)`** (talk.html:1190) is the *only* way a message enters
+  `#thread-list` — verified by grepping the finished file for real call
+  expressions (excluding comments and the declaration itself): exactly one,
+  inside `renderConfirmModal`'s "Add to Conversation" handler
+  (talk.html:1183 area). It caps the thread at 30 `.bubble-row` children by
+  real DOM removal (`talk.html:1237`, `THREAD_BUBBLE_CAP = 30` at
+  talk.html:1138), not hiding, and pins scroll to the newest bubble.
+- **The persistent thread** (`#thread` → `#thread-list`, talk.html:102) is
+  one element, never duplicated: `display:none` on `who-first`, `96px` tall
+  on `signing`/`speaking` (talk.html:110), `320px` tall on `thread`
+  (talk.html:113) — sized to `600 − 90 (header) − 190 (control panel,
+  talk.html:540) = 320`, not the naive `600 − 90 = 510`, so the thread and
+  the thread screen's own bottom control panel are geometrically disjoint
+  rather than depending on z-index alone (see Problems found for the bug
+  this replaced).
+- **The idle timer** (talk.html:1401, `startIdleTimer`/`resetIdleTimer`)
+  fires `openModal('idle', {seconds: 30})` after `IDLE_TIMEOUT_MS` (120000,
+  talk.html:814) of no `pointerdown`/`keydown`/`input` anywhere in the
+  document (talk.html:1432-1434) — but skips firing (and just re-arms
+  instead) while any modal is already open (talk.html:1401-1417), so it
+  cannot silently destroy a pending confirm.
+- **The status pill** (`setStatusPill`, talk.html:892) shows `TYPING`
+  (orange dot) exactly when `document.body.classList.contains('keyboard-active')`
+  is true, driven by a `MutationObserver` on `<body>`'s `class` attribute
+  (talk.html:1367) rather than a direct call from `js/virtual-keyboard.js`
+  (which exposes no hook to call directly). `LISTENING` (green dot) has no
+  driver anywhere in this phase — there is no camera yet to be listening to.
+
+### 4. Key decisions and why
+
+All recorded, with reasons, in `docs/system/DECISIONS.md` rather than
+repeated here — that file is the source of truth for this screen's design
+choices (screen/modal split, the `css/tokens.css` extraction, the two
+16px-floor-over-README deviations, the canned-vs-real data split, the idle
+countdown length, and the fixes below).
+
+### 5. Constraints
+
+Every screen is fixed at exactly 1024×600 — no `100vw`/`100vh`, no
+responsive units, no media queries anywhere in this file except the
+keyboard's own sizing rule (talk.html, `.sk-keyboard-wrap`), which is
+applied unconditionally rather than behind a breakpoint (talk.html's own
+comment there explains why: this file is never rendered at any other size).
+Nothing tappable under 44×44px; no body text under 16px (both audited
+per-task, see Problems found in earlier phases' equivalent sections for
+comparison method). One orange element per screen at rest; a modal's own
+orange button and, once the keyboard is raised, its orange `HIDE` key are
+each treated as belonging to their own temporary overlay layer, not counted
+against the screen underneath (`docs/system/DECISIONS.md`).
+
+### 6. Touches (dependencies / breakage risk)
+
+- **`talk.html` ↔ `js/virtual-keyboard.js`**: auto-attaches to any focused
+  `<input type="text">` via a page-wide `focusin` listener the script
+  installs itself (no manual "attach" call) — `#speaking-input`
+  (talk.html:767) needs no wiring beyond existing as a normal text input.
+  Signals open/closed via `document.body.classList` (`keyboard-active`), not
+  a custom event; `talk.html` neutralizes `css/virtual-keyboard.css`'s
+  unscoped `body.keyboard-active{padding-bottom:300px!important}` and
+  `html.keyboard-active,body.keyboard-active{overflow-y:auto!important;
+  height:auto!important}` rules (talk.html, the `.sk-keyboard-wrap` block
+  right after the `<link>` for it in `<head>`) — if a future edit reorders
+  `<head>` so that `<link rel="stylesheet" href="css/virtual-keyboard.css">`
+  ends up *after* this file's own `<style>` block, those `!important` rules
+  win again and the page gains a vertical scrollbar the moment the keyboard
+  opens, breaking the fixed-1024×600 contract silently (no console error).
+- **`talk.html` ↔ `css/tokens.css`**: the only page depending on it so far;
+  if `css/tokens.css` is deleted or its variable names change, every colour
+  in `talk.html` falls back to CSS's default (transparent/black), not a
+  console error — a purely visual break, easy to miss without loading the
+  page.
+- **`talk.html`'s back button** (`#backBtn`, talk.html:878) routes to
+  `'thread'` if `document.querySelector('#thread-list .bubble-row')` finds
+  an existing message, else `'who-first'` — this selector must keep matching
+  whatever `appendBubble()` (talk.html:1190) actually builds; if a future
+  change renames `.bubble-row` without updating this check, Back silently
+  reverts to always landing on `who-first`, which strands a mid-conversation
+  user exactly the way it did before this was fixed (see Problems found).
+- **`talk.html` → `index.html`**: `End Conversation` and the idle modal's
+  `End Now`/countdown-reaches-0 all do a real `location.href = 'index.html'`
+  — if `index.html` moves or is renamed, both exits break with a 404, not a
+  silent failure.
+- Not yet linked from anywhere: no other file in the repo references
+  `talk.html`. It is reachable only by typing the URL.
+
+### Problems found (Part 3)
+
+All four found and fixed in the same pass (a whole-branch review after all
+six build tasks were individually reviewed and approved) — task-level review
+catches per-task defects; these only showed up once the six tasks were
+exercised together as one flow:
+
+1. **A temporary dev-only scaffold (`#dev-modal-switcher`, since removed)
+   physically covered the thread screen's real Sign/Speak-or-Type/End
+   Conversation buttons.** It was `position:fixed; z-index:9999`, un-gated
+   by `data-screen`, and taller than its own buttons alone (a leftover
+   96px `.icon-tile` inside it), so at `bottom:60px` it overlapped the
+   `.control-panel` (`z-index:70`) sitting at `bottom:0`. Confirmed via
+   `document.elementFromPoint()` at the Sign button's centre returning the
+   scaffold, not the button — a real tap could not have reached it. Removed
+   entirely rather than just resized, since by the time this was found every
+   modal kind already had a real trigger except `error` (no real camera/mic
+   failure exists yet to trigger it organically) — that one is invoked from
+   the browser console when needed, documented in
+   `docs/system/DECISIONS.md`.
+2. **`js/virtual-keyboard.js` was never included**, despite the approved
+   plan explicitly requiring it — an error in how one build task was
+   dispatched, not a plan gap. Screen 04 was untypeable on the target
+   touchscreen (no way to raise a keyboard) until this was corrected by
+   wiring the script, neutralizing the shared CSS's unscoped `!important`
+   overrides, and adding the `body.keyboard-active`-scoped repositioning
+   `docs/ui-target/README.md` calls for (mic row hidden, input row moves up,
+   "no drift" on close — verified visually, not just by DOM measurement,
+   after an unrelated CSS-transition-timing artifact in the verification
+   tooling produced a misleading reading the first time around).
+3. **The header Back button always went to `who-first`**, including
+   mid-conversation. Since `who-first` hides `#thread` entirely and is meant
+   to show only once per conversation, a turn-2+ user who tapped Back landed
+   somewhere with their existing conversation invisible and no way back to
+   it except by adding another message. Fixed to route to `thread` when a
+   message already exists.
+4. **The idle-warning modal could silently overwrite an open confirm
+   modal.** Since the idle timer only resets on real input and reading a
+   confirm card is not itself input, a person who paused on the confirm
+   screen for the full 2-minute idle window would have their
+   just-signed/just-spoken text silently discarded when the idle modal
+   opened over it — reproduced directly (open confirm, force the idle fire,
+   read `.modal-card`'s content before/after: the confirm text was gone).
+   Fixed: the idle timer now checks `body.modal-open` before firing and
+   re-arms instead of overwriting if any modal is already showing.
+
+One reviewer-raised concern was checked and found **not** to reproduce:
+thread scroll position across the 96px↔320px height change when entering/
+leaving the thread screen. The browser's own scroll-clamping behavior keeps
+`#thread-list.scrollTop` pinned at its maximum (i.e. showing the newest
+bubble) across the resize, confirmed by directly measuring `scrollTop`/
+`scrollHeight`/`clientHeight` before and after the transition with an
+8-bubble thread — no fix was needed or applied.
+
+### Could not determine (Part 3)
+
+- Real-hardware touch behavior (finger vs. simulated pointer/click events) —
+  everything above was verified with a real browser (DOM measurement,
+  `elementFromPoint`, and visual screenshots at an emulated 1024×600
+  viewport), not a physical touchscreen. See
+  `docs/system/MANUAL-CHECKS.md`'s new "Let's Talk" section for what still
+  needs a person and a real Pi.
