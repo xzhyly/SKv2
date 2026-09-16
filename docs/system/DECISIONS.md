@@ -248,7 +248,10 @@ re-proposed or re-litigated.
   trigger in this fake-data phase (no camera/mic exists yet to fail) and is
   not expected to get one until that phase — it is meant to be invoked
   directly from the browser console when someone wants to eyeball it, e.g.
-  `openModal('error', {message: 'I cannot reach the camera.', buttonLabel: 'Try again'})`.
+  `openModal('error', {heading: 'Camera not available', message: 'I cannot reach the camera.', buttonLabel: 'Try again'})`
+  (as of the review-pass fix that gave Error a heading, matching
+  Confirm/Idle's shape — `opts.heading` is required for real content now,
+  see the corrected README "Error states" section for all four headings).
   `renderPlaceholderModal()` and its static `.modal-card` markup (the Task 2
   scaffold the dev row's `idle`/`error` buttons rendered through) were
   removed in the same pass since all three real kinds now have real render

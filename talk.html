@@ -301,15 +301,29 @@
     cursor:pointer;
   }
 
-  /* ── Error modal content (Task 6) ──
+  /* ── Error modal content (Fix C, review pass) ──
      docs/ui-target/README.md "Error states": same centred-card treatment,
-     a plain sentence, one way out. opts.message/opts.buttonLabel are always
-     set via textContent (renderErrorModal() below), never interpolated into
-     innerHTML. 16px floor applies to .error-message (the project's hard
-     minimum for body text) even though README doesn't give it an explicit
-     size beyond "plain sentence". */
+     a plain sentence, one way out. Originally built as just the sentence +
+     button, which reads as an afterthought next to Confirm (label → big
+     text → button) and Idle (title → label → countdown → button) — both
+     lead with a short bold heading. Error now matches that shape: heading
+     (.error-heading, same 32px bold navy as .idle-title) → sentence beneath
+     (.error-message, now 16px muted like .confirm-label/.idle-label, since
+     the heading now carries the primary emphasis the sentence used to) →
+     button. opts.heading/opts.message/opts.buttonLabel are always set via
+     textContent (renderErrorModal() below), never interpolated into
+     innerHTML. */
+  .error-heading{
+    font-size:32px;font-weight:700;color:var(--navy);
+    margin-bottom:8px;
+  }
+  /* .error-heading is built as a <div> (not <h2>), same reason
+     .idle-title above is a <div> — a `<h2 class="error-heading">` would
+     lose to the shell's own `.modal-card h2{font-size:20px}` rule by
+     specificity ((0,1,1) beats (0,1,0)), not just source order, since both
+     rules match. Caught by measuring the rendered font-size, not assumed. */
   .error-message{
-    font-size:18px;color:var(--navy);line-height:1.5;
+    font-size:16px;color:var(--muted);line-height:1.5;
     margin-bottom:24px;
   }
   .error-action-btn{
@@ -1071,21 +1085,29 @@
     }
 
     /**
-     * Build the error modal's real content (Task 6) into .modal-card: a
-     * centred one-sentence message (opts.message, via textContent — never
-     * interpolated into innerHTML) and exactly one button whose label/action
-     * the caller supplies (opts.buttonLabel/opts.onAction), falling back to
-     * closeModal() if no onAction is given. Not wired to any real failure
-     * condition this phase (no camera/mic exists yet to fail) — this is the
-     * reusable shell a later phase calls into, per
-     * docs/ui-target/README.md "Error states".
+     * Build the error modal's real content (Fix C, review pass) into
+     * .modal-card: a short bold heading (opts.heading), a sentence beneath
+     * it (opts.message), then exactly one button whose label/action the
+     * caller supplies (opts.buttonLabel/opts.onAction), falling back to
+     * closeModal() if no onAction is given. Same shape as Confirm/Idle —
+     * heading first — so Error reads as the same family of card, not an
+     * afterthought. All three strings go through textContent, never
+     * interpolated into innerHTML. Not wired to any real failure condition
+     * this phase (no camera/mic exists yet to fail) — this is the reusable
+     * shell a later phase calls into, per docs/ui-target/README.md "Error
+     * states".
      *
-     * @param {{message: string, buttonLabel: string, onAction: Function}} opts
+     * @param {{heading: string, message: string, buttonLabel: string, onAction: Function}} opts
      */
     function renderErrorModal(opts) {
       opts = opts || {};
       var card = document.querySelector('.modal-card');
       card.innerHTML = '';
+
+      var heading = document.createElement('div');
+      heading.className = 'error-heading';
+      heading.textContent = opts.heading || '';
+      card.appendChild(heading);
 
       var message = document.createElement('p');
       message.className = 'error-message';

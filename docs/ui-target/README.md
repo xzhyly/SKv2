@@ -228,12 +228,14 @@ nobody answers. Nobody can be relied on to press End before walking away.
 
 ### Error states — no image, build from this
 
-Same centred-card treatment. Plain sentence, one way out. At minimum:
+Same centred-card treatment as Confirm and Idle: a short bold heading first
+(same shape as the other two, not a lone sentence), then a plain sentence
+beneath it, then one way out. At minimum:
 
-- Camera did not open — *"I cannot reach the camera."*
-- No hand in frame for several seconds — *"I cannot see your hands — move back a little."*
-- Nothing recognised confidently — *"I did not catch that."* → Try again
-- Microphone missing or muted — *"I cannot hear anything."* → offer typing instead
+- Camera did not open — **"Camera not available"** / *"I cannot reach the camera."*
+- No hand in frame for several seconds — **"Hands not visible"** / *"I cannot see your hands — move back a little."*
+- Nothing recognised confidently — **"Didn't catch that"** / *"I did not catch that."* → Try again
+- Microphone missing or muted — **"Microphone not available"** / *"I cannot hear anything."* → offer typing instead
 
 Both prototypes drew only the happy path. On a real Pi in a real hallway, these
 happen on the first day.
