@@ -273,6 +273,17 @@
     font-family:inherit;font-size:16px;font-weight:600;
     cursor:pointer;
   }
+  /* Fix G (review pass): 640x281.6 is within README's "roughly 640x300" —
+     the height itself was never the problem — but the shared shell's flat
+     32px padding on all sides read cramped for this specific stack (label,
+     big text, two buttons) next to the card's own 640px width. More
+     vertical breathing room, not a forced height: padding grows, the card
+     is still exactly as tall as its (now more spaced-out) content needs.
+     Scoped to kind="confirm" only, same technique as Fix D's idle
+     width/scrim — Idle/Error's own padding is untouched. */
+  #modal[data-modal-kind="confirm"] .modal-card{
+    padding:44px 32px;
+  }
 
   /* ── Idle modal content (Task 6) ──
      docs/ui-target/README.md "Idle warning": "Still there?" 32px bold,
