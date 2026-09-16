@@ -300,6 +300,20 @@
     font-family:inherit;font-size:16px;font-weight:600;
     cursor:pointer;
   }
+  /* Fix D (review pass): README gives Idle its own dimensions — "Thread
+     dimmed behind a 62% scrim. Centred white card, 520 wide" — distinct from
+     Confirm's ~640. The shell (#modal/.modal-card above) is generic on
+     purpose (Task 2, reused by all three kinds); rather than change that
+     shared shell's own width/scrim for every kind, these two rules key off
+     #modal[data-modal-kind="idle"] (set by openModal() below before this
+     content renders) so only Idle gets them. max-width stays 90% from the
+     shell so a narrower screen still isn't overflowed. */
+  #modal[data-modal-kind="idle"]{
+    background:rgba(0,0,0,0.62);
+  }
+  #modal[data-modal-kind="idle"] .modal-card{
+    width:520px;
+  }
 
   /* ── Error modal content (Fix C, review pass) ──
      docs/ui-target/README.md "Error states": same centred-card treatment,
