@@ -191,10 +191,11 @@
   .bubble-icon{font-size:16px;flex:0 0 auto}
 
   /* ── Modal shell ──
-     Fixed overlay + centred card, hidden unless body.modal-open. Task 5
-     built real content for data-modal-kind="confirm" (renderConfirmModal(),
-     in <script> below) into this same shell; idle/error still render via
-     renderPlaceholderModal() until Task 6. */
+     Fixed overlay + centred card, hidden unless body.modal-open. All three
+     kinds — confirm (Task 5), idle/error (Task 6) — render real content
+     into this same shell via renderConfirmModal()/renderIdleModal()/
+     renderErrorModal() in <script> below; openModal() throws on any other
+     kind (Fix 1). */
   #modal{
     position:fixed;top:0;left:0;width:1024px;height:600px;
     display:none;
@@ -460,11 +461,12 @@
   }
 
   /* ── Screen 04 — Speak or type (docs/ui-target/README.md "04") ──
-     Keyboard is out of scope for this task (js/virtual-keyboard.js is not
-     included here) — this row is positioned near the top of the content
-     area on purpose, leaving the ~240px a future keyboard needs free at the
-     bottom of the screen so dropping it in later does not require
-     relayouting this row. */
+     js/virtual-keyboard.js is now wired (Fix 2 — an earlier task dispatch
+     had wrongly called it out of scope; see docs/system/DECISIONS.md). This
+     row's resting position is unaffected by that; see the
+     "Screen 04 keyboard-open layout" CSS block above for the
+     body.keyboard-active overrides that apply only while the keyboard is
+     raised. */
   /* Fake mic button (Task 5) — README "04": "Draw it with the keyboard
      raised and the microphone hidden," implying a microphone button exists
      in the non-keyboard state that the (not-yet-built) keyboard hides when
@@ -572,30 +574,87 @@
     cursor:pointer;
   }
 
-  /* ── Dev-only manual-test scaffolding for the modal shell (Task 2) —
-     still needed for "idle"/"error", which have no real trigger yet
-     (Task 6's job). Task 5 added the real confirm trigger points (signing's
-     Stop button, speaking's fake mic button, Send), so this row's own
-     "modal: confirm" button is now redundant with real UI but still
-     harmless — calling openModal('confirm') with no opts renders the
-     confirm layout with blank label/text via renderConfirmModal()'s
-     defensive `opts = opts || {}`. Task 3 removed the sibling
-     #dev-screen-switcher row that used to sit below this one (real
-     navigation replaces it); this row is left at its original bottom:60px
-     offset rather than dropped to bottom:0, since moving it is out of
-     scope. Delete this block once Task 6 lands real idle/error triggers. ── */
-  #dev-modal-switcher{
-    position:fixed;left:0;bottom:60px;width:1024px;
-    display:flex;gap:8px;align-items:center;padding:8px;
-    background:var(--surface);border-top:1px solid var(--border);
-    z-index:9999;
+  /* ── Virtual keyboard (Fix 2) ──
+     js/virtual-keyboard.js self-attaches to #speaking-input on focus (no
+     manual "attach" call needed — see index.html for the same pattern).
+     Its shared stylesheet (css/virtual-keyboard.css, linked in <head>
+     above) carries `!important` overrides meant for pages of varying
+     height; they would break this file's fixed no-scroll 1024×600 contract
+     the moment the keyboard opens, so they are neutralized below. This
+     block sits after that <link> in the cascade (inline <style> always
+     follows <link> tags in <head>), so equal selector specificity here
+     still wins by source order — no need to out-specificity it.
+     Sizing (240px tall, bottom:-280px hidden / 0 shown, smaller key font)
+     matches index.html's own 1024×600 override
+     (index.html, `@media screen and (max-height: 620px)`, search
+     `sk-keyboard-wrap`), applied here unconditionally rather than
+     re-wrapped in that same media query: talk.html is never rendered at any
+     size other than exactly 1024×600
+     (docs/system/DECISIONS.md: "Every screen is fixed at 1024×600, not
+     responsive, not a breakpoint" — this file has no other media query
+     anywhere), so an unconditional rule matches this file's own established
+     style more directly than reintroducing a breakpoint mechanism it
+     otherwise never uses. */
+  .sk-keyboard-wrap{
+    height:240px;
+    bottom:-280px;
+    padding:8px 6px;
+    gap:6px;
   }
-  #dev-modal-switcher button{
-    flex:1;min-height:44px;
-    border-radius:12px;border:1px solid var(--border);
-    background:var(--bg);color:var(--navy);
-    font-family:inherit;font-size:16px;font-weight:600;
-    cursor:pointer;
+  .sk-keyboard-wrap.show{
+    bottom:0;
+  }
+  .sk-key{
+    height:44px;font-size:16px;border-radius:6px;
+  }
+  .sk-key.ctrl,.sk-key.space,.sk-key.action,.sk-key.close{
+    font-size:13px;
+  }
+  /* Neutralizes css/virtual-keyboard.css's
+     `body.keyboard-active{padding-bottom:300px!important}` and
+     `html.keyboard-active,body.keyboard-active{overflow-y:auto!important;
+     height:auto!important}` — both would defeat the
+     html,body{overflow:hidden} no-scroll contract at the top of this file.
+     Same technique index.html uses for the same shared stylesheet. */
+  body.keyboard-active{
+    padding-bottom:0!important;
+  }
+  html.keyboard-active,
+  body.keyboard-active{
+    overflow-y:hidden!important;
+    height:100%!important;
+  }
+
+  /* ── Screen 04 keyboard-open layout (Fix 2) ──
+     docs/ui-target/README.md "04 — Speak or type": "Draw it with the
+     keyboard raised and the microphone hidden... When the keyboard closes,
+     the microphone button and its label return to their exact previous
+     positions. No drift." CSS-only, scoped by body.keyboard-active +
+     #screen-speaking, matching this file's no-JS-computed-positions pattern
+     and index.html's own body.keyboard-active #ttsBody ... precedent for
+     its voice screen (docs/system/UI-SURVEY-1024x600.md, finding 1).
+     Hiding .speaking-mic-row removes it from #screen-speaking's flex-column
+     flow entirely (flexbox does not collapse margins between siblings the
+     way block flow does), which alone puts .speaking-input-row back at the
+     top of the content area; the smaller margin-top below just makes that
+     intentional and documented instead of incidental. The keyboard's top
+     edge sits at y = 600 − 240 = 360 (see .sk-keyboard-wrap above);
+     #screen-speaking's padding-top:186px is unchanged, so with this
+     override the input row starts at y=186+16=202 and both it and the Send
+     button (each 64px tall) end at y=266 — about 94px clear of the
+     keyboard's top edge. See this fix pass's report for the actual
+     measured (not just arithmetic) numbers.
+     The keyboard itself is a temporary raised overlay, not part of this
+     screen's resting layout — same shape as the confirm modal Task 5
+     already resolved this exact tension for (see the "── Confirm modal
+     content (Task 5) ──" comment above) — so its own colouring is not
+     counted against this screen's one-orange-element audit; see
+     docs/system/DECISIONS.md for the recorded rationale. */
+  body.keyboard-active #screen-speaking .speaking-mic-row{
+    display:none;
+  }
+  body.keyboard-active #screen-speaking .speaking-input-row{
+    margin-top:16px;
   }
 </style>
 </head>
@@ -731,34 +790,17 @@
 
   <!-- Modal shell (Task 2): fixed overlay + centred card, hidden unless
        body.modal-open. data-modal-kind is set by openModal() below so
-       Task 5/6 can key real confirm/idle/error content off it; this task's
-       content is a placeholder only. -->
-  <!-- Static fallback markup only — never visible as-is. openModal() always
-       rebuilds .modal-card's content (renderConfirmModal() for "confirm",
-       renderPlaceholderModal() for "idle"/"error") before showing the
-       overlay, the first time it is opened. -->
+       confirm/idle/error content is keyed off it. -->
+  <!-- Empty by default — openModal() always rebuilds .modal-card's content
+       (renderConfirmModal()/renderIdleModal()/renderErrorModal(), all
+       below) before showing the overlay, so there is nothing static to put
+       here; the Task 2 placeholder markup this held is gone now that all
+       three real kinds have real render functions (Fix 1). -->
   <div id="modal">
-    <div class="modal-card">
-      <h2>Modal placeholder</h2>
-      <p>No real content yet (Task 6 builds idle/error). Kind: <span id="modalKindLabel">&mdash;</span></p>
-    </div>
+    <div class="modal-card"></div>
   </div>
 
-  <!-- Dev-only manual-test hooks for this task's own verification of the
-       modal shell and status pill (see comment in the <style> block
-       above). The trailing .icon-tile is a visual check of that shape too,
-       not real screen-02 markup. -->
-  <div id="dev-modal-switcher">
-    <button type="button" data-modal="confirm">modal: confirm</button>
-    <button type="button" data-modal="idle">modal: idle</button>
-    <button type="button" data-modal="error">modal: error</button>
-    <button type="button" data-modal-close>modal: close</button>
-    <button type="button" data-status="listening">pill: listening</button>
-    <button type="button" data-status="typing">pill: typing</button>
-    <button type="button" data-status="">pill: none</button>
-    <div class="icon-tile"><span class="icon-tile-glyph">&#9995;</span></div>
-  </div>
-
+  <script src="js/virtual-keyboard.js" defer></script>
   <script>
     'use strict';
 
@@ -818,13 +860,24 @@
     }
 
     // Back button (header, top-left): visible on who-first/signing/speaking
-    // (hidden on thread by the CSS rule Task 2 already wrote). Routes back
-    // to screen 02 to choose again who speaks — the only screen "back" from
-    // signing/speaking sensibly means. Tapping it while already on who-first
-    // is a harmless no-op (showScreen() returns early for a same-screen
-    // call).
+    // (hidden on thread by the CSS rule Task 2 already wrote). Fix 3: routes
+    // to 'thread' when at least one message already exists — per
+    // docs/system/DECISIONS.md, "Who speaks first?" (who-first) is shown
+    // once at the start of a conversation only, and turn 2+ reaches
+    // signing/speaking through the thread screen's own Sign/Speak-or-Type
+    // buttons, not through who-first. Routing Back to who-first
+    // unconditionally would strand an in-progress conversation behind a
+    // screen where #thread is display:none. On turn 1 (no messages yet,
+    // reached directly from who-first), the thread has no .bubble-row yet,
+    // so this still falls through to who-first, matching the original
+    // behaviour. Existence check uses the same .bubble-row class
+    // appendBubble() builds each bubble's row wrapper with (see
+    // appendBubble() below). Tapping Back while already on the resulting
+    // screen is a harmless no-op either way (showScreen() returns early for
+    // a same-screen call).
     document.getElementById('backBtn').addEventListener('click', function () {
-      showScreen('who-first');
+      var hasMessages = document.querySelector('#thread-list .bubble-row') !== null;
+      showScreen(hasMessages ? 'thread' : 'who-first');
     });
 
     var VALID_STATUS_KINDS = ['listening', 'typing'];
@@ -900,38 +953,13 @@
       card.appendChild(tryAgainBtn);
     }
 
-    /**
-     * Rebuild .modal-card with generic placeholder content for any
-     * non-confirm kind ("idle"/"error" — Task 6's job to give these real
-     * content). Kept so Task 6 can add its own branch in openModal() below
-     * without redesigning this function's signature, and so the
-     * #dev-modal-switcher scaffold's idle/error buttons stay non-broken.
-     */
-    function renderPlaceholderModal(kind) {
-      var card = document.querySelector('.modal-card');
-      card.innerHTML = '';
-
-      var h2 = document.createElement('h2');
-      h2.textContent = 'Modal placeholder';
-      card.appendChild(h2);
-
-      var p = document.createElement('p');
-      p.textContent = 'No real content yet (Task 6 builds idle/error). Kind: ';
-      var kindSpan = document.createElement('span');
-      kindSpan.id = 'modalKindLabel';
-      kindSpan.textContent = kind;
-      p.appendChild(kindSpan);
-      card.appendChild(p);
-    }
-
     // Holds the running idle-countdown setInterval id (Task 6), or null when
     // no idle modal is showing. Module-level rather than local to
     // renderIdleModal() so closeModal() below can defensively clear it too —
     // Continue/End Now/countdown-reaches-0 all clear it themselves on their
     // own exit paths, but closeModal() also covers any other way the modal
-    // shell gets hidden (e.g. #dev-modal-switcher's generic "modal: close"
-    // button), so no dangling interval can ever keep ticking after the
-    // overlay is gone.
+    // shell gets hidden, so no dangling interval can ever keep ticking
+    // after the overlay is gone.
     var idleCountdownIntervalId = null;
 
     /**
@@ -1049,27 +1077,40 @@
       card.appendChild(actionBtn);
     }
 
+    var VALID_MODAL_KINDS = ['confirm', 'idle', 'error'];
+
     /**
      * Open the modal shell with a given kind ("confirm"/"idle"/"error") and
      * the data it needs to render. Sets data-modal-kind on #modal, dispatches
      * to the matching content-render step, then reveals the overlay via
      * body.modal-open (pure class change).
      *
+     * Throws on any kind other than the three real ones, matching the
+     * pattern showScreen() above already established (validate up front,
+     * throw rather than silently no-op) — now that Fix 1 has removed the
+     * catch-all renderPlaceholderModal() fallback, every kind this function
+     * accepts has real content. To eyeball the "error" kind by hand (it has
+     * no real trigger yet this phase — no camera/mic exists to fail), call
+     * it directly from the browser console, e.g.:
+     *   openModal('error', {message: 'I cannot reach the camera.', buttonLabel: 'Try again'})
+     *
      * @param {string} kind
      * @param {{label: string, text: string, from: 'deaf'|'hearing'}|{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
      *   Shape depends on kind — see renderConfirmModal()/renderIdleModal()/
-     *   renderErrorModal() above. Ignored for any other kind.
+     *   renderErrorModal() above.
      */
     function openModal(kind, opts) {
+      if (VALID_MODAL_KINDS.indexOf(kind) === -1) {
+        throw new Error('openModal: invalid modal kind "' + kind + '"');
+      }
+
       document.getElementById('modal').setAttribute('data-modal-kind', kind);
       if (kind === 'confirm') {
         renderConfirmModal(opts);
       } else if (kind === 'idle') {
         renderIdleModal(opts);
-      } else if (kind === 'error') {
-        renderErrorModal(opts);
       } else {
-        renderPlaceholderModal(kind);
+        renderErrorModal(opts);
       }
       document.body.classList.add('modal-open');
     }
@@ -1200,26 +1241,6 @@
       list.scrollTop = list.scrollHeight;
     }
 
-    // Wire the dev-only modal/status-pill/icon-tile verification row (see
-    // markup comment above).
-    document.getElementById('dev-modal-switcher').addEventListener('click', function (e) {
-      var btn = e.target.closest('button');
-      if (!btn) return;
-      if (btn.hasAttribute('data-modal-close')) {
-        closeModal();
-        return;
-      }
-      var modalKind = btn.getAttribute('data-modal');
-      if (modalKind) {
-        openModal(modalKind);
-        return;
-      }
-      var statusKind = btn.getAttribute('data-status');
-      if (statusKind !== null) {
-        setStatusPill(statusKind === '' ? null : statusKind);
-      }
-    });
-
     // ── Screen 02 — Who speaks first ──
     // Card taps choose who starts; per docs/system/DECISIONS.md this screen
     // is shown once only, so these are the only two places 'signing'/
@@ -1328,6 +1349,25 @@
       });
     })();
 
+    // ── Fix 2 (step 5): wire .status-pill's TYPING state for real ──
+    // README defines TYPING as exactly "keyboard is open." js/virtual-
+    // keyboard.js sets/clears body.keyboard-active from its own internal
+    // showKeyboard()/hideKeyboard() with no exposed hook or custom event
+    // (see the comment on the "Virtual keyboard" CSS block above), so a
+    // MutationObserver watching document.body's class attribute is the
+    // simplest robust way to react to it without modifying that shared
+    // script. Nothing else in this file drives .status-pill yet (its only
+    // previous caller was the #dev-modal-switcher scaffold Fix 1 removed),
+    // so unconditionally setting it here — 'typing' while the class is
+    // present, null otherwise — cannot clobber some other intentional pill
+    // state; if a future phase adds one, this observer will need to become
+    // aware of it. LISTENING (camera-related) has no trigger in this
+    // fake-data phase and is intentionally left undriven — there is no real
+    // camera yet to be listening to.
+    new MutationObserver(function () {
+      setStatusPill(document.body.classList.contains('keyboard-active') ? 'typing' : null);
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
     // ── Screen 05 — The conversation ──
     // Turn buttons hand control to the next screen; per
     // docs/system/DECISIONS.md, turn 2+ routes through here, not back
@@ -1360,6 +1400,19 @@
 
     function startIdleTimer() {
       idleTimerId = setTimeout(function () {
+        // Fix 4: a modal (most importantly "confirm") can already be open
+        // when this fires — e.g. someone reading the confirm card without
+        // tapping anything for the full IDLE_TIMEOUT_MS, since nothing about
+        // an open modal itself resets this timer. openModal('idle', ...)
+        // unconditionally would overwrite .modal-card's content and
+        // silently discard whatever was showing (recognised/typed text with
+        // no way to recover it). If any modal is already open, leave its
+        // content alone and just re-arm the timer to check again after
+        // another full timeout, rather than firing over the top of it.
+        if (document.body.classList.contains('modal-open')) {
+          resetIdleTimer();
+          return;
+        }
         openModal('idle', { seconds: 30 });
       }, IDLE_TIMEOUT_MS);
     }

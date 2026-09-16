@@ -225,3 +225,90 @@ re-proposed or re-litigated.
   overrides, not the other way around. This is the general precedent for any
   future task that hits the same README-vs-16px-floor tension on any other
   element — apply the 16px floor, do not re-litigate it a third time.
+
+## Decisions made during the post-Task-6 final-review fix pass
+
+- **`#dev-modal-switcher` (the fixed dev scaffold row that switched
+  modal/status-pill state by hand) was removed, not left for a later
+  phase.** It was legitimately needed while `openModal()` had no real
+  content for `idle`/`error` (Tasks 2–5). Task 6 gave all three modal kinds
+  real content and Task 5 already gave `confirm` a real trigger (Signing's
+  Stop button), so its `confirm`/`idle` buttons had become redundant with
+  real UI. Confirmed live in a browser that this was not merely redundant
+  but actively harmful: it sat `position:fixed; z-index:9999` at
+  `bottom:60px`, and the 96px `.icon-tile` placed inside it (an ad-hoc
+  visual check of that shape, unrelated to its own buttons) pushed its
+  total height past what its buttons alone needed, so it physically
+  overlapped the thread screen's real control-panel buttons —
+  `document.elementFromPoint()` at the centre of the thread screen's Sign
+  button returned `#dev-modal-switcher`, not the button, meaning a real tap
+  there could never reach it. That is a blocker for hand-testing the real
+  navigation, not a cosmetic leftover, which is why it was removed in this
+  pass rather than deferred again. The `error` modal kind has no real
+  trigger in this fake-data phase (no camera/mic exists yet to fail) and is
+  not expected to get one until that phase — it is meant to be invoked
+  directly from the browser console when someone wants to eyeball it, e.g.
+  `openModal('error', {message: 'I cannot reach the camera.', buttonLabel: 'Try again'})`.
+  `renderPlaceholderModal()` and its static `.modal-card` markup (the Task 2
+  scaffold the dev row's `idle`/`error` buttons rendered through) were
+  removed in the same pass since all three real kinds now have real render
+  functions; `openModal(kind, opts)` throws on any kind other than
+  `confirm`/`idle`/`error`, mirroring `showScreen()`'s existing
+  invalid-input pattern instead of silently no-op-ing.
+
+- **`js/virtual-keyboard.js` is wired into `talk.html` for real; the
+  speaking screen's own comment that previously called it "out of scope for
+  this task" was a controller error, now corrected.** The approved plan
+  (`docs/superpowers/plans/2026-09-16-talk-html.md`, Investigation §2 and
+  the screen-04 done criteria) always required it, and this file's own
+  "Typing via the reused keyboard and tapping Send" decision (above, under
+  "Decisions made while writing the plan") already assumed a genuinely
+  functional keyboard — the earlier dispatch that told an implementer to
+  skip it contradicted both. Fixed by including
+  `<script src="js/virtual-keyboard.js" defer></script>` (ordered right
+  before this file's own inline `<script>`, matching `index.html`), sizing
+  the shared `.sk-keyboard-wrap`/`.sk-key` for the fixed 1024×600 kiosk case
+  the same way `index.html` does, neutralizing `css/virtual-keyboard.css`'s
+  global `!important` scroll/padding overrides so they don't break this
+  file's no-scroll contract, and adding CSS-only
+  `body.keyboard-active #screen-speaking …` rules (no JS-computed
+  positions) that hide the fake mic row and move the input row clear of the
+  keyboard while it's raised — the same technique
+  `docs/system/UI-SURVEY-1024x600.md` finding 1 already established for
+  `index.html`'s voice screen.
+
+  As part of the same fix, `.status-pill`'s `TYPING` state (built by Task 2
+  via `setStatusPill('typing')`, but never given a real caller — its only
+  previous trigger was `#dev-modal-switcher`, removed above) is now wired
+  for real: a `MutationObserver` watches `document.body`'s `class`
+  attribute and calls `setStatusPill('typing')` while `keyboard-active` is
+  present, `setStatusPill(null)` otherwise. `js/virtual-keyboard.js` only
+  ever sets/clears that class from its own internal `showKeyboard()`/
+  `hideKeyboard()`, with no exposed hook or custom event, so observing the
+  class attribute is the simplest robust way to react to it without
+  modifying the shared script. `LISTENING` (camera-related) stays
+  intentionally undriven — there is no real camera in this fake-data phase
+  for it to reflect, and inventing a fake trigger for it would misrepresent
+  a state that doesn't actually exist yet.
+
+  **Open design question, resolved:** README's screen-04 spec says the
+  keyboard's `HIDE` key is orange, and this screen already has one orange
+  element (`#speaking-send`, per the Task 3 orange-audit comment in
+  `talk.html`). Once the real keyboard can be shown, that is a second
+  orange element visible at the same time — the same shape of tension Task
+  5 already resolved for the confirm modal's own orange "Add to
+  Conversation" button appearing over a screen that already has its own one
+  orange element: an overlay/temporary-state element's own orange is
+  treated as separate from the underlying screen's "one orange element"
+  count, since it is not part of that screen's resting layout. The raised
+  keyboard is the same shape of thing — a temporary overlay, not part of
+  `#screen-speaking`'s steady-state layout — so the same precedent applies
+  here without re-litigating it. (Separately, and not the deciding factor:
+  as actually implemented in `js/virtual-keyboard.js`/
+  `css/virtual-keyboard.css`, no key has a resting orange fill — every
+  `.sk-key`, `HIDE` included, only flashes orange on `:active`, a generic
+  touch-feedback effect shared by all keys, not a `HIDE`-specific resting
+  colour. Whether or not that's read as literally satisfying README's "HIDE
+  is orange," it does not change the resolution above: the keyboard's
+  colouring, resting or transient, is this overlay's own concern, not
+  `#screen-speaking`'s.)
