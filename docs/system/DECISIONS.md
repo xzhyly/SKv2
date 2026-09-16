@@ -439,3 +439,28 @@ itself was wrong and got corrected rather than the code bent to match it.
   is gone at four cards — 780px fits inside 904px with room to spare, and
   the row now centres in the 1024px viewport with a clean, equal 122px
   margin on each side.
+
+## Decisions made during the second review-pass fix (owner-directed)
+
+- **The English/Filipino language toggle is removed from the who-speaks-first
+  screen entirely** — markup, CSS (`.lang-toggle`/`.lang-toggle-btn`), and its
+  click handler are gone, not just hidden. Reason: making a stranger choose a
+  language before they can begin talking is friction on a public kiosk, and
+  the conversations this system is built for are Filipino. It was only ever
+  in the spec because the old voice screen (`index.html?screen=voice`) had
+  one and it needed somewhere to live once that screen was folded into
+  `talk.html` — not because this screen itself needs one.
+  **Consequence, recorded but not built:** a later phase still has to decide
+  which Vosk speech model loads, since that decision can no longer come from
+  a per-conversation toggle. The language now **defaults** rather than being
+  chosen per conversation. Changing the default is an **operator setting**
+  that belongs behind the same PIN `reports.html` already uses — the same
+  privacy/admin boundary this project already draws around every other
+  configuration surface — not a screen a member of the public sees. This is
+  a decision to build later, not built in this pass.
+  With the toggle gone, `#screen-who-first` drops from three flex children
+  (heading, cards, toggle) to two (heading, cards); no extra centring CSS was
+  needed; `justify-content:center` (already on `#screen-who-first`, set when
+  the screen was first built) re-centres the smaller content block on its
+  own. Verified live: the gap above the heading and the gap below the cards
+  are both exactly 78.5px, i.e. genuinely centred, not just visually close.

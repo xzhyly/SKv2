@@ -492,23 +492,6 @@
   .icon-tile.orange{
     background:var(--orange);
   }
-  .lang-toggle{
-    display:flex;
-    margin-top:32px;
-    border:1px solid var(--border);border-radius:99px;
-    overflow:hidden;
-    background:var(--surface);
-  }
-  .lang-toggle-btn{
-    min-width:120px;height:44px;
-    padding:0 20px;
-    border:none;background:transparent;
-    font-family:inherit;font-size:16px;font-weight:600;color:var(--muted);
-    cursor:pointer;
-  }
-  .lang-toggle-btn.active{
-    background:var(--navy);color:var(--surface);
-  }
 
   /* ── Screen 03 — Signing (docs/ui-target/README.md "03") ── */
   .camera-box{
@@ -806,12 +789,6 @@
         <div class="who-first-card-label">Speak or Type</div>
         <div class="who-first-card-caption">Use your voice or the keyboard</div>
       </button>
-    </div>
-    <!-- English/Filipino toggle (Task 3 interface note: value read by later
-         tasks, not acted on — nothing to switch in this fake-data phase). -->
-    <div class="lang-toggle" id="lang-toggle" data-lang="en">
-      <button type="button" class="lang-toggle-btn active" data-lang-value="en">English</button>
-      <button type="button" class="lang-toggle-btn" data-lang-value="fil">Filipino</button>
     </div>
   </div>
 
@@ -1363,21 +1340,6 @@
     });
     document.getElementById('card-speak').addEventListener('click', function () {
       showScreen('speaking');
-    });
-
-    // English/Filipino toggle: purely visual + attribute state in this
-    // fake-data phase (Task 3 interface note: "value read by later tasks
-    // but not acted on"). data-lang on #lang-toggle is what a later task
-    // reads; the .active class is just which button looks selected.
-    document.getElementById('lang-toggle').addEventListener('click', function (e) {
-      var btn = e.target.closest('button[data-lang-value]');
-      if (!btn) return;
-      var toggle = document.getElementById('lang-toggle');
-      toggle.setAttribute('data-lang', btn.getAttribute('data-lang-value'));
-      var buttons = toggle.querySelectorAll('.lang-toggle-btn');
-      for (var i = 0; i < buttons.length; i++) {
-        buttons[i].classList.toggle('active', buttons[i] === btn);
-      }
     });
 
     // ── Task 5: canned-data pools for the two fake buttons ──

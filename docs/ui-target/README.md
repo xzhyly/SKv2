@@ -105,9 +105,9 @@ Two cards, 380 × 280, side by side, 40px gap:
 The icon sits **inside a filled rounded square**, roughly 96 × 96, radius 16. Not
 a bare outline icon — a bare icon does not read from two metres away.
 
-Add the **English / Filipino toggle** to this screen, under the two cards. It
-was on the old voice screen and has nowhere to live otherwise. Chosen once at
-the start of a conversation, never mid-thread.
+No language toggle on this screen (removed in the review pass that follows —
+see `docs/system/DECISIONS.md`). It was here only because the old voice screen
+had one, not because starting a conversation needs it.
 
 **This screen is also the lazy-load trigger.** See the loading rules below.
 
