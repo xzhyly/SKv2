@@ -402,6 +402,21 @@
     align-items:center;
     transition:padding-top 140ms ease;
   }
+  /* Fix F (review pass): at rest (keyboard down), the mic/label/input block
+     sat top-aligned right under the collapsed strip, leaving ~194px of flat
+     --bg empty below it — the 240px the keyboard needs when raised, but
+     with nothing to show for it while it's still down. Centring the block
+     in the space between the strip and the screen's bottom edge distributes
+     that room instead of dumping it all below, so the resting state reads
+     as deliberate. Only #screen-speaking — #screen-signing's camera+button
+     already fill their space without this. Restored to flex-start (the
+     original, already-measured layout) the moment the keyboard is up, so
+     Fix 2's keyboard-clearance numbers (input row ends at y=266, 94px clear
+     of the keyboard's y=360 top edge) are unaffected — that override lives
+     with the rest of the keyboard-open rules below, not here. */
+  #screen-speaking{
+    justify-content:center;
+  }
   /* Fix A (review pass), continued: collapsing #thread's own height to 0
      above is not enough on its own — this rule's flat 186px (90 header + 96
      collapsed strip) would still reserve the strip's 96px as dead space at
@@ -546,18 +561,22 @@
     display:flex;flex-direction:column;align-items:center;gap:8px;
     margin-bottom:24px;
   }
+  /* Fix F (review pass): README never gave this button a size, and 72px
+     read far too small for the primary action on this screen — now 110px,
+     with an 18px label, both added to the README so a later phase does not
+     have to re-guess it. */
   .speaking-mic-btn{
-    width:72px;height:72px;border-radius:50%;
+    width:110px;height:110px;border-radius:50%;
     border:none;
     background:var(--navy);
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
   }
   .speaking-mic-glyph{
-    font-size:32px;line-height:1;
+    font-size:40px;line-height:1;
   }
   .speaking-mic-label{
-    font-size:16px;color:var(--muted);
+    font-size:18px;color:var(--muted);
   }
   .speaking-input-row{
     display:flex;align-items:center;gap:20px;
@@ -720,6 +739,17 @@
   body.keyboard-active #screen-speaking .speaking-input-row{
     margin-top:16px;
   }
+  /* Fix F (review pass): #screen-speaking's resting state now vertically
+     centres its content (see justify-content:center above); while the
+     keyboard is raised this must fall back to the original flex-start so
+     the input row lands at its already-measured, already-clear-of-the-
+     keyboard position (padding-top:186px + margin-top:16px above = y=202)
+     rather than being centred into the now-much-shorter visible space above
+     the keyboard, which would push it down and could put it back under the
+     keyboard's top edge. */
+  body.keyboard-active #screen-speaking{
+    justify-content:flex-start;
+  }
 </style>
 </head>
 <body data-screen="who-first">
@@ -822,10 +852,10 @@
          buttons" note). Wired below to openModal('confirm', ...) with a
          canned result, same as the signing screen's Stop button. -->
     <div class="speaking-mic-row">
-      <button type="button" id="speaking-mic-btn" class="speaking-mic-btn" aria-label="Tap to speak">
+      <button type="button" id="speaking-mic-btn" class="speaking-mic-btn" aria-label="Tap to Speak">
         <span class="speaking-mic-glyph" aria-hidden="true">&#127908;</span>
       </button>
-      <div class="speaking-mic-label">Tap to speak</div>
+      <div class="speaking-mic-label">Tap to Speak</div>
     </div>
     <div class="speaking-input-row">
       <input type="text" id="speaking-input" class="speaking-input" placeholder="Type your message" autocomplete="off">

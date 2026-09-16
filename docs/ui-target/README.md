@@ -139,6 +139,13 @@ only finds out what the system understood after committing to it.
 Draw it with the keyboard raised and the microphone hidden.
 
 - Same 96px collapsed strip.
+- **Resting state (keyboard down):** microphone button, 110px circle, navy,
+  white icon, with "Tap to Speak" at 18px beneath it — the primary action on
+  this screen, so it reads at size, not as an afterthought. The whole block
+  (mic, label, text field) is vertically centred in the space between the
+  collapsed strip and the bottom of the screen, not pinned to the top — the
+  keyboard's 240px still has to fit below it when raised, but there is no
+  reason to leave that room empty while the keyboard is down.
 - Text field, 700 × 64, radius 12, orange 2px focus border. Placeholder reads
   **"Type your message"** — not "Or type here", which refers to a microphone
   that is hidden at that moment.
