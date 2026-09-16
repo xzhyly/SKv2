@@ -315,3 +315,127 @@ re-proposed or re-litigated.
   is orange," it does not change the resolution above: the keyboard's
   colouring, resting or transient, is this overlay's own concern, not
   `#screen-speaking`'s.)
+
+## Decisions made during the eight-screenshot review-pass fix (owner-directed)
+
+The owner reviewed all eight screenshots against the README and the five
+reference images and issued a fixed, non-negotiable list (A–G plus the
+dashboard change). Each landed in its own commit; the resolutions below are
+what each one turned out to require, including three places the README
+itself was wrong and got corrected rather than the code bent to match it.
+
+- **Fix A — the empty thread strip collapses to 0px, not a fixed 96px of
+  blank white.** `#thread` on signing/speaking is `height:0` whenever
+  `#thread-list` holds no `.bubble-row` (`:not(:has(.bubble-row))`), and
+  `#screen-signing`/`#screen-speaking`'s own `padding-top` falls back from
+  186px to 90px in the same condition — collapsing `#thread` alone would
+  have left a second, content-side hole where its reserved space used to
+  be. Both transition at 140ms. README's "03 — Signing" collapsed-strip
+  bullet, which only ever described "the most recent message," now has an
+  explicit empty-state line covering both 03 and 04. Reason: a first-turn
+  user's very first real screen was a blank band under the header — the
+  worst of the eight findings, fixed first per the owner's explicit
+  ordering.
+- **Fix B — the keyboard's five rows, 68×44 keys, and radius 6 are correct;
+  only its colours were wrong, and only two of them.** The prior review had
+  flagged the number row/ABC key/key size as spec deviations; the owner
+  overruled that — "people type numbers into messages," the component is
+  right and the README's original ~92×46/4-row description was the
+  mistake — so the README's keyboard paragraph was corrected to describe
+  what `js/virtual-keyboard.js` (a component shared with `index.html` and
+  `gesture-training.html`, reused unmodified) actually builds, not the
+  other way around. The two colours that WERE wrong: the wrap's background
+  (`#111827`, no relation to any palette) is now `var(--navy, #1a2540)`;
+  `HIDE` (the last key of the last row — the one CSS-only way to target it
+  without a class of its own or touching the shared script) is now
+  `var(--orange, #f97316)`. Both use a fallback because `css/style.css`
+  and this file are the only two stylesheets loaded together on `index.html`,
+  and `index.html` defines neither `--navy` nor `--orange` itself — the
+  fallback keeps the colour correct there too. Verified on both consumers:
+  `index.html`'s keyboard wrap keeps its own separate, pre-existing
+  translucent-blur override (a local rule with higher specificity than the
+  shared one this fix touched), unchanged and still correct; its `HIDE` key
+  now also picks up the new orange, since it had no such override.
+- **Fix C — the error modal gets a heading, matching Confirm/Idle's
+  shape.** `renderErrorModal` now builds `opts.heading` first (as a `<div>`,
+  not `<h2>` — an `<h2 class="error-heading">` loses to the shell's own
+  generic `.modal-card h2{font-size:20px}` rule by specificity, (0,1,1)
+  beats (0,1,0), not just by source order — the exact trap `.idle-title`
+  already sidestepped the same way; caught by measuring the rendered
+  20px, not assumed 32px). The existing sentence becomes secondary text
+  beneath it (16px muted, was 18px navy — matching `.confirm-label`/
+  `.idle-label`'s size now that the heading carries the primary weight).
+  README's four example messages each get a heading; camera's is
+  "Camera not available" as the owner specified, the other three
+  ("Hands not visible" / "Didn't catch that" / "Microphone not available")
+  are this fix's own choice, short and in the same voice.
+- **Fix D — Idle is 520px wide on a 62% scrim; Confirm/Error stay on the
+  shared shell's 640px/50%.** Both numbers were already in the README and
+  simply not built. Rather than change the shared `#modal`/`.modal-card`
+  shell (used by all three kinds) for everyone, both rules key off
+  `#modal[data-modal-kind="idle"]` — set by `openModal()` before content
+  renders — so only Idle picks them up.
+- **Fix E — the thread scrollbar was already visible; the review finding
+  that it wasn't was a false positive from the reviewing browser's own
+  `--hide-scrollbars` flag, not a real defect.** A `::-webkit-scrollbar`
+  rule already existed (Task 4) and already reserved real layout width —
+  confirmed by re-testing the exact same page without that flag
+  (`clientWidth` dropped from 1024 to 1016, matching its 8px). The owner's
+  fix instructions were followed anyway, since they're a legitimate
+  refinement independent of whether the original finding was accurate: now
+  6px wide (was 8px), `--border` track (was `--bg`), `--muted-light` thumb
+  (unchanged). Also adds `scrollbar-gutter:stable` so the 6px gutter is
+  reserved unconditionally — confirmed `#thread-list.clientWidth` stays at
+  1018 whether the thread is empty, has one message, or has enough to
+  scroll, so the bar's appearance never shifts the thread's width. Recorded
+  here so a future review trusts a live re-test over a screenshot taken
+  with scrollbar-hiding flags on — the same lesson
+  `docs/system/UI-SURVEY-1024x600.md` already logged once for a different
+  reason ("Two things this survey nearly got wrong").
+- **Fix F — the mic button is 110px, and README now says so; the resting
+  Speak-or-Type block is vertically centred, not top-pinned.** README gave
+  no size for the mic button at all — the owner's own gap, now closed: 110px
+  circle (was 72px), glyph scaled 32→40 to match, "Tap to Speak" label at
+  18px, both numbers added to the README's "04" section. Separately,
+  `#screen-speaking{justify-content:center}` centres the mic/label/input
+  block in the space between the collapsed strip and the screen's bottom
+  edge at rest, instead of leaving the ~194px the keyboard needs when
+  raised sitting empty below a top-pinned block. `body.keyboard-active
+  #screen-speaking{justify-content:flex-start}` restores the original,
+  already-measured layout the instant the keyboard is up, so Fix 2's
+  keyboard-clearance numbers (input row ends at y=266, 94px clear of the
+  keyboard's y=360 top edge) are unaffected — re-verified unchanged after
+  this change, not assumed.
+- **Fix G — the confirm card gets more vertical padding (44px top/bottom,
+  was 32px all round), not a forced height.** 640×281.6 was already inside
+  README's "roughly 640×300" — the owner was explicit that height was never
+  the actual problem, just the shared shell's flat padding reading cramped
+  against the card's width. Scoped to `kind="confirm"` only via the same
+  `#modal[data-modal-kind=...]` technique as Fix D, so Idle/Error's own
+  32px is untouched. Card now measures 640×305.6 — still "roughly 300,"
+  still not a forced number.
+- **Dashboard: four cards, not five; "Let's Talk" replaces both translate
+  cards; `grid-template-columns` changed from `repeat(5, 180px)` to
+  `repeat(4, 180px))`.** `index.html` now also links `css/tokens.css` (new
+  `<link>`, nothing else about that file's own palette system touched) so
+  the new orange border/icon can use `var(--orange)` instead of a new hex.
+  Captions (14px, `var(--muted)`) close most of the ~100px dead space under
+  each label — the shared `.card-btn` gap shrank from 24px to 16px to make
+  room for the third stacked line without inflating the fixed 270px card
+  height. `#welcome-btn` (the removed "Translate Text to Sign" card) is
+  kept as a hidden, present-in-DOM button rather than deleted outright:
+  `js/script.js:13` unconditionally does
+  `document.getElementById('welcome-btn').addEventListener(...)` with no
+  null-guard, and this fix pass's own file-scope gate does not include
+  `js/script.js` — removing the id entirely would have thrown on every
+  `index.html` load. This matches the file's own pre-existing
+  `#status`/`#download-history-btn` precedent (`index.html:734,739`),
+  kept hidden for the identical reason. `#translator-pane` itself (and its
+  `?screen=voice` URL entry point, `setTtsLanguage()`, the EN/FIL chips)
+  and `sign-to-text.html` are both untouched and re-verified reachable —
+  removing a dashboard card is not removing the feature behind it.
+  Measured: the five-card row's old 76px overflow (980px of content wanting
+  more room than its 904px-capped container, bleeding 38px off each side)
+  is gone at four cards — 780px fits inside 904px with room to spare, and
+  the row now centres in the 1024px viewport with a clean, equal 122px
+  margin on each side.
