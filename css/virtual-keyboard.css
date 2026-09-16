@@ -6,7 +6,13 @@
   left: 0;
   width: 100%;
   height: 280px;
-  background: #111827; /* Dark gray/navy theme */
+  /* docs/ui-target/README.md "04 — Speak or type": "Keyboard, bottom 240px,
+     navy." This is --navy from css/tokens.css (#1a2540) — the fallback
+     keeps the same value on pages that load this shared stylesheet but
+     don't define --navy themselves (index.html has no such variable; it
+     uses raw hex for its translator-pane redesign), so this renders
+     identically everywhere the keyboard appears, not only on talk.html. */
+  background: var(--navy, #1a2540);
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -74,6 +80,18 @@
   background: #f97316;
   color: white;
   border-color: #f97316;
+}
+
+/* docs/ui-target/README.md "04 — Speak or type": "HIDE is orange." Hide is
+   always the last key in the keyboard's last row (rows = [...,["clear",
+   "space","hide"]] in js/virtual-keyboard.js) and gets no class of its own
+   to distinguish it from Clear/Backspace — this is the one CSS-only,
+   position-based way to single it out without modifying that shared script.
+   var(--orange, ...) matches the same fallback approach as the wrap's
+   background above, for the same reason (index.html defines no --orange). */
+.sk-keyboard-row:last-child .sk-key:last-child {
+  background: var(--orange, #f97316);
+  color: #ffffff;
 }
 
 /* Add custom padding and enable scroll when keyboard is active to prevent blocking content */
