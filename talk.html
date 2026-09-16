@@ -109,6 +109,22 @@
   body[data-screen="signing"] #thread,
   body[data-screen="speaking"] #thread{
     display:block;height:96px;
+    transition:height 140ms ease;
+  }
+  /* Fix A (review pass): a first-turn conversation has no messages yet, and
+     the rule above still rendered #thread at a fixed 96px — a blank white
+     band under the header with nothing in it, on the very first real screen
+     a new user reaches. README's collapsed-strip description only ever
+     described "the most recent message"; it never considered the case where
+     there isn't one yet. Collapsed to 0 (no border, matching this element's
+     own base rule, which sets none) whenever #thread-list holds no
+     .bubble-row — the moment appendBubble() adds the first one, :has()
+     re-matches and the 96px rule above takes over, with the same
+     transition. Chromium (this kiosk's browser) has supported :has() since
+     v105, well within what this project already assumes. */
+  body[data-screen="signing"] #thread:not(:has(.bubble-row)),
+  body[data-screen="speaking"] #thread:not(:has(.bubble-row)){
+    height:0;border:none;
   }
   body[data-screen="thread"] #thread{
     /* Task 3: shrunk from Task 2's placeholder 510px (600-90, "no control
@@ -349,6 +365,19 @@
   #screen-speaking{
     padding-top:186px;
     align-items:center;
+    transition:padding-top 140ms ease;
+  }
+  /* Fix A (review pass), continued: collapsing #thread's own height to 0
+     above is not enough on its own — this rule's flat 186px (90 header + 96
+     collapsed strip) would still reserve the strip's 96px as dead space at
+     the top of the screen's own content even while #thread itself is 0
+     tall. On the first turn (no #thread-list .bubble-row yet), fall back to
+     the base .screen padding-top of 90px instead, so the camera/mic content
+     actually moves up into the space the empty strip just gave back rather
+     than leaving a second, content-side hole in its place. */
+  body[data-screen="signing"]:not(:has(#thread .bubble-row)) #screen-signing,
+  body[data-screen="speaking"]:not(:has(#thread .bubble-row)) #screen-speaking{
+    padding-top:90px;
   }
 
   /* ── Task 3 orange audit ──
