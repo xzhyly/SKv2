@@ -561,6 +561,28 @@ so a later session does not re-litigate them:
     any variable name that changed; low risk since the underlying hex values
     don't change, but each page needs its own visual re-check afterward.
 
+43. **Low severity, open: two different approaches to filling a larger-than-
+    design viewport now coexist in the same system.** `index.html` (and every
+    other pre-existing page — `sign-to-text.html`, `gesture-training.html`,
+    `reports.html`) is a fluid layout: elements reflow/resize with the
+    viewport, no single fixed canvas size. `talk.html` (since the review pass
+    that added the scaled stage — `docs/system/DECISIONS.md`) is the
+    opposite: a locked 1024×600 canvas (`#stage`) that keeps every element at
+    its exact design pixel size and scales the whole canvas up with
+    `transform:scale()`, letterboxed, rather than reflowing anything. Both
+    solve "the kiosk's own 1024×600 panel is the only screen that matters,
+    but a developer's laptop is bigger" — chosen independently, for different
+    reasons (the older pages predate the pixel-exact 1024×600 design contract
+    talk.html was built under, and already have fluid CSS from before that
+    contract existed; talk.html's own verification suite depends on every
+    element's exact pixel size, which a fluid re-layout would have broken).
+    Not fixed: reconciling them into one approach — either making the older
+    pages scale-locked the same way, or accepting fluid layout was never
+    actually required and revisiting whether talk.html needs to be as strict
+    as it is — is a real decision for a later phase, not a mechanical fix;
+    recorded here so it's a choice made on purpose rather than a surprise
+    found later.
+
 ## Dead code
 
 Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build

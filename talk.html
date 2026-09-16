@@ -14,6 +14,35 @@
   body{
     font-family:'Inter','Segoe UI',Arial,sans-serif;
     background:var(--bg);
+    /* Review pass: body is now just a centring frame for #stage — it fills
+       whatever viewport the kiosk has and centres the fixed-size stage
+       inside it, both axes, so the stage is never pinned to the top-left
+       corner on a larger display. The flex box itself contributes no fixed
+       sizing of its own; #stage below still carries the real 1024×600. */
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  /* ── Scaled stage ──
+     Exactly 1024×600, never fluid — every element inside keeps its exact
+     design pixel size (560×300 camera, 480×62 turn buttons, the 96px strip,
+     all of it); this box is what gets scaled as a whole, via
+     transform:scale() set by updateStageScale() in <script> below, so the
+     numbers the verification suite depends on never change. transform-
+     origin is the box's own centre, matching the centring above: growing or
+     shrinking the scale keeps the stage centred in the viewport rather than
+     pinned to a corner. overflow:hidden is a defensive edge, not a
+     functional requirement — every screen already fits exactly 1024×600 on
+     its own. background:var(--bg) repeats body's own background so the
+     stage's interior (the collapsed thread strip's empty edges, gaps
+     between screens and the header) still reads correctly now that body's
+     own box is larger than the stage and no longer doubles as it. */
+  #stage{
+    position:relative;
+    width:1024px;height:600px;
+    flex:0 0 auto;
+    transform-origin:center center;
+    overflow:hidden;
+    background:var(--bg);
   }
 
   /* ── Header ──
@@ -748,6 +777,22 @@
 </head>
 <body data-screen="who-first">
 
+  <!-- Scaled stage (review pass): everything visual lives inside this one
+       1024×600 box. Every element below keeps its exact design pixel size —
+       nothing here becomes fluid — the box itself is what gets scaled
+       (transform:scale, applied via JS in updateStageScale() near the top
+       of the <script> below) to fill whatever viewport the kiosk actually
+       has, centred, letterboxed with --bg. On the Pi's own 1024×600 panel
+       the computed scale is exactly 1 and this wrapper is inert.
+       Every existing position:fixed rule in this file (.talk-header,
+       #thread, #modal, .control-panel, the virtual keyboard) was written
+       assuming its containing block is a 1024×600 box at the viewport
+       origin — applying a CSS transform to #stage makes #stage that
+       containing block for all of them (a transformed ancestor always
+       becomes the containing block for its position:fixed/absolute
+       descendants), so none of those rules needed to change. -->
+  <div id="stage">
+
   <div class="talk-header">
     <button type="button" class="back-btn" id="backBtn">&#8249; Back</button>
     <h1>NEW CONVERSATION</h1>
@@ -882,9 +927,60 @@
     <div class="modal-card"></div>
   </div>
 
+  </div><!-- #stage -->
+
   <script src="js/virtual-keyboard.js" defer></script>
   <script>
     'use strict';
+
+    // ── Scaled stage (review pass) ──
+    // #stage is a fixed 1024×600 box; this scales the whole thing to fill
+    // whatever viewport the kiosk actually has, without making any element
+    // inside it fluid. min(), not separate x/y scales, so the aspect ratio
+    // never distorts — the shorter axis is always the binding constraint,
+    // and the other axis letterboxes (visible as --bg, since #stage and
+    // body share that background and body's flex centring does the actual
+    // letterboxing). Rounded to 2 decimal places: at exactly 1024×600 this
+    // is a no-op (1024/1024 and 600/600 are both exactly 1, no floating-
+    // point remainder to round away), so the Pi's own panel is untouched;
+    // at any other size it keeps the scale off any long fractional value
+    // that could otherwise leave sub-pixel seams. Recomputed on resize
+    // (covers a kiosk window being resized, and orientation/DPI changes on
+    // a dev machine) — no debounce, this is one style write, not layout
+    // work worth deferring.
+    function updateStageScale() {
+      var rawScale = Math.min(window.innerWidth / 1024, window.innerHeight / 600);
+      var scale = Math.round(rawScale * 100) / 100;
+      document.getElementById('stage').style.transform = 'scale(' + scale + ')';
+    }
+    window.addEventListener('resize', updateStageScale);
+    updateStageScale();
+
+    // js/virtual-keyboard.js (loaded via the deferred <script> below this
+    // one — and this inline script runs first, mid-parse, since only the
+    // src="" tag is deferred) creates its keyboard element with a plain
+    // document.body.appendChild(), with no knowledge #stage exists. Left
+    // alone, the keyboard would land as a sibling of #stage rather than a
+    // descendant of it — outside the transform, rendered at native
+    // (unscaled) viewport coordinates instead of the stage's own. Rather
+    // than editing that shared script (out of scope for this pass — it's
+    // reused by index.html and gesture-training.html too), this watches
+    // document.body for the keyboard element appearing and re-parents it
+    // into #stage the moment it exists. appendChild() on an existing node
+    // moves it — the IIFE's internal `keyboardEl` reference and every event
+    // listener already attached to it survive the move untouched. The
+    // one-time immediate call covers the (currently impossible, but
+    // harmless to guard) case where the keyboard already exists by the time
+    // this line runs.
+    function adoptKeyboardIntoStage() {
+      var keyboard = document.getElementById('sk-global-keyboard');
+      var stage = document.getElementById('stage');
+      if (keyboard && keyboard.parentElement !== stage) {
+        stage.appendChild(keyboard);
+      }
+    }
+    adoptKeyboardIntoStage();
+    new MutationObserver(adoptKeyboardIntoStage).observe(document.body, { childList: true });
 
     // ── Task 6: idle timer ──
     // Configurable top-of-script constant, read once by startIdleTimer()

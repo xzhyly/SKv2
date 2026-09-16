@@ -55,6 +55,15 @@ Radius: 12px on cards and buttons, 18px on bubbles, 99px on pills, 8px on keys.
   hovering is unreachable
 - One orange element per screen. If there are two, one of them is wrong.
 
+**The scaled stage.** Every screen's 1024×600 canvas is fixed, never fluid —
+every element keeps its exact design pixel size, always. On anything larger
+than the Pi's own 7-inch panel, the whole canvas is scaled up as one block
+(`transform:scale`, uniform on both axes, centred, the remainder letterboxed
+in `--bg`) rather than any element inside it resizing or reflowing. On the
+Pi's own 1024×600 panel the scale is exactly 1 and this is invisible. See
+`docs/system/DECISIONS.md` for why, and `docs/system/DEBT.md` item 43 for how
+this now differs from the rest of the kiosk's (fluid) pages.
+
 ---
 
 ## Screen by screen

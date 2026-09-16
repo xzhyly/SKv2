@@ -464,3 +464,72 @@ itself was wrong and got corrected rather than the code bent to match it.
   the screen was first built) re-centres the smaller content block on its
   own. Verified live: the gap above the heading and the gap below the cards
   are both exactly 78.5px, i.e. genuinely centred, not just visually close.
+
+- **talk.html's entire body is now wrapped in one `#stage` div — a fixed
+  1024×600 box — scaled as a whole with `transform:scale()` to fill whatever
+  viewport the kiosk actually has, rather than being pinned to the top-left
+  corner on anything larger than the Pi's own panel.** Every element inside
+  keeps its exact design pixel size; the layout is not fluid anywhere —
+  `scale = min(window.innerWidth/1024, window.innerHeight/600)`, rounded to
+  2 decimal places, recomputed on resize, `transform-origin` at the box's own
+  centre so the stage stays centred (not corner-anchored) as it grows or
+  shrinks. Body itself became a `display:flex;align-items:center;
+  justify-content:center` frame that does the actual centring/letterboxing;
+  `#stage` carries the real 1024×600 and `background:var(--bg)` so the
+  letterbox and the stage's own background match.
+  This worked with almost no changes to the file's existing CSS, for one
+  specific reason: applying a CSS `transform` to an ancestor makes that
+  ancestor the containing block for every `position:fixed`/`position:absolute`
+  descendant below it. Every screen-level `position:fixed` rule already in
+  this file (`.talk-header`, `#thread`, `#modal`, `.control-panel`, the
+  virtual keyboard) was written assuming its containing block was a
+  1024×600 box at the viewport origin — once `#stage` became that box
+  (instead of the real viewport), all of them kept working unmodified.
+  Likewise every `body[data-screen="..."] X` / `body.keyboard-active X`
+  selector still matches: they're descendant selectors, and `#stage` sitting
+  between `<body>` and its old children doesn't break a descendant match.
+  **One real gap this exposed:** `js/virtual-keyboard.js` creates its
+  keyboard element with a plain `document.body.appendChild()`, with no
+  knowledge `#stage` exists — left alone, the keyboard would land as a
+  sibling of `#stage`, outside the transform, at native unscaled viewport
+  coordinates. Not fixed by editing that shared script (out of scope this
+  pass — `index.html` and `gesture-training.html` reuse it too, and this
+  pass's own file-scope gate is talk.html + docs only); instead a
+  `MutationObserver` on `document.body` re-parents the keyboard element into
+  `#stage` the instant `js/virtual-keyboard.js` creates it.
+  **Verified, not assumed:**
+  - At exactly 1024×600 the computed transform is `matrix(1, 0, 0, 1, 0, 0)`
+    — scale exactly 1 — and every measurement re-taken from the previous
+    review pass (who-first cards, camera box, stop button, speaking
+    input/send, mic button, control panel, turn buttons, end-conversation
+    button, confirm/idle modal dimensions, idle scrim) came back identical
+    to the numbers already on record. Nothing moved.
+  - At 1920×1080 (scale 1.8), 1366×768 (scale 1.28), and 1280×720 (scale
+    1.2) — the height ratio is the binding constraint at all three, since
+    every one of these is a wider-than-1024:600 aspect ratio — `document.
+    elementFromPoint()` at the geometric centre of the Sign, Speak or Type,
+    and End Conversation buttons returned that exact button at every scale,
+    confirming a tap lands on the element under the finger, not on
+    whatever's underneath a mis-scaled hit target.
+  - The keyboard was confirmed re-parented into `#stage` (`parentElement
+    === stage`) before it ever becomes visible, and both its raised
+    (`bottom:0`) and parked (`bottom:-280px`) positions were measured
+    relative to the *scaled stage's* edges, not the raw viewport's — e.g. at
+    1366×768 the parked keyboard's offset below the stage's bottom edge is
+    358.4px, exactly `280 × 1.28`.
+  - Text crispness: cropped and enlarged (4×) screenshots of small text (a
+    keyboard key, the status pill) at a fractional scale (1.28) show the
+    same RGB sub-pixel fringing as an identical crop taken at scale 1 (no
+    transform at all) — i.e. this is ordinary sub-pixel font rendering,
+    present regardless of scaling, not blur introduced by the transform.
+    The scale is still rounded to 2 decimal places as a standing part of
+    `updateStageScale()` (protects the "exactly 1 at exactly 1024×600"
+    guarantee against any future floating-point/measurement noise at other
+    sizes), but for these specific scales — 1.8, 1.28, 1.2 — rounding was
+    already a no-op, since none of them carry more than 2 decimal digits;
+    it did not need to "fix" anything here because there was nothing to fix.
+  **Recorded, not resolved, in `docs/system/DEBT.md` item 43:** `index.html`
+  and every other existing page in this kiosk are fluid layouts; talk.html
+  is now the one page that is a scaled *fixed* stage. Two different answers
+  to "the design is 1024×600 but the actual screen might not be" now coexist
+  in one system — a decision for later, not a surprise.
