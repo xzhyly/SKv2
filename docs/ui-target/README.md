@@ -144,9 +144,14 @@ Draw it with the keyboard raised and the microphone hidden.
   that is hidden at that moment.
 - Orange **Send**, 180 × 64, beside it. **Pale / disabled while the field is
   empty.** This is a real state and it must be drawn.
-- Keyboard, bottom 240px, navy. QWERTY. Rows: `QWERTYUIOP` / `ASDFGHJKL` /
-  `ZXCVBNM` + backspace / `CLEAR` + space + `HIDE`. Keys ~92 × 46, radius 8,
-  white letters. `HIDE` is orange.
+- Keyboard, bottom 240px, navy (this is `js/virtual-keyboard.js`'s shared
+  component — reused everywhere in the kiosk, not built fresh for this
+  screen). QWERTY, **five** rows, numbers included — people type numbers
+  into messages: `1234567890` / `QWERTYUIOP` / `ASDFGHJKL` / `ABC`(caps) +
+  `ZXCVBNM` + backspace / `CLEAR` + space + `HIDE`. Keys 68 × 44, radius 6,
+  white letters — narrower than a first guess, because fitting ten number
+  keys across 1024px leaves no room for anything wider. `HIDE` is orange;
+  every other key is dark slate.
 
 When the keyboard closes, the microphone button and its label return to their
 exact previous positions. No drift. This is the same rule Phase 3b established
