@@ -187,7 +187,8 @@ select:focus-visible {
     }
 }
 #dashboard-pane .card-btn:focus-visible {
-    border-color: #1b355a;
+    outline: 3px solid #1b355a;
+    outline-offset: 2px;
 }
 
 /* docs/ui-target/README.md "01 — Dashboard": "Let's Talk" gets an orange
