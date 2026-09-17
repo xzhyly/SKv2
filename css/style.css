@@ -227,7 +227,7 @@ select:focus-visible {
    css/tokens.css existed). */
 #dashboard-pane .card-caption {
     color: var(--muted, #64748b);
-    font-size: 14px;
+    font-size: 17px;
     font-weight: 500;
     line-height: 1.3;
     text-align: center;
