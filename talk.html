@@ -81,6 +81,10 @@
     color:var(--surface);
     font-family:inherit;font-size:16px;font-weight:600;
     cursor:pointer;
+    transition:background 0.08s;
+  }
+  .back-btn:active{
+    background:rgba(255,255,255,0.22);
   }
   body[data-screen="thread"] .back-btn{display:none}
 
@@ -294,6 +298,10 @@
     font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
     margin-bottom:12px;
+    transition:background 0.08s;
+  }
+  .confirm-add-btn:active{
+    background:#ea6a0a;
   }
   .confirm-try-again-btn{
     display:block;width:100%;height:44px;
@@ -301,6 +309,10 @@
     color:var(--muted);
     font-family:inherit;font-size:16px;font-weight:600;
     cursor:pointer;
+    transition:background 0.08s;
+  }
+  .confirm-try-again-btn:active{
+    background:rgba(0,0,0,0.05);
   }
   /* Fix G (review pass): 640x281.6 is within README's "roughly 640x300" —
      the height itself was never the problem — but the shared shell's flat
@@ -339,6 +351,10 @@
     font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
     margin-bottom:12px;
+    transition:background 0.08s;
+  }
+  .idle-continue-btn:active{
+    background:#ea6a0a;
   }
   .idle-end-btn{
     display:block;width:100%;height:60px;
@@ -346,6 +362,10 @@
     color:var(--muted);
     font-family:inherit;font-size:16px;font-weight:600;
     cursor:pointer;
+    transition:background 0.08s;
+  }
+  .idle-end-btn:active{
+    background:rgba(0,0,0,0.05);
   }
   /* Fix D (review pass): README gives Idle its own dimensions — "Thread
      dimmed behind a 62% scrim. Centred white card, 520 wide" — distinct from
@@ -393,6 +413,10 @@
     background:var(--navy);color:var(--surface);
     font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
+    transition:filter 0.08s;
+  }
+  .error-action-btn:active{
+    filter:brightness(1.25);
   }
 
   /* ── Icon tile ──
@@ -508,6 +532,11 @@
     border:1px solid var(--border);border-radius:12px;
     font-family:inherit;
     cursor:pointer;
+    transition:transform 0.08s, border-color 0.08s;
+  }
+  .who-first-card:active{
+    transform:scale(0.97);
+    border-color:var(--navy);
   }
   .who-first-card-label{
     font-size:20px;font-weight:700;color:var(--navy);
@@ -560,6 +589,10 @@
     color:var(--surface);
     font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
+    transition:background 0.08s;
+  }
+  .stop-signing-btn:active{
+    background:#ea6a0a;
   }
 
   /* ── Screen 04 — Speak or type (docs/ui-target/README.md "04") ──
@@ -594,6 +627,10 @@
     background:var(--navy);
     display:flex;align-items:center;justify-content:center;
     cursor:pointer;
+    transition:filter 0.08s;
+  }
+  .speaking-mic-btn:active{
+    filter:brightness(1.25);
   }
   .speaking-mic-glyph{
     font-size:40px;line-height:1;
@@ -626,6 +663,10 @@
     color:var(--surface);
     font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
+    transition:background 0.08s;
+  }
+  .speaking-send:active{
+    background:#ea6a0a;
   }
   /* README "04": "Pale / disabled while the field is empty." Faded via
      opacity, not a colour swap, so background-color stays var(--orange) in
@@ -666,11 +707,19 @@
   }
   .turn-btn-sign{
     background:var(--navy);color:var(--surface);
+    transition:filter 0.08s;
+  }
+  .turn-btn-sign:active{
+    filter:brightness(1.25);
   }
   /* The ONE orange element on the thread screen (see the audit comment
      above). */
   .turn-btn-speak{
     background:var(--orange);color:var(--surface);
+    transition:background 0.08s;
+  }
+  .turn-btn-speak:active{
+    background:#ea6a0a;
   }
   .end-conversation-btn{
     width:976px;height:60px;
@@ -678,6 +727,11 @@
     background:var(--surface);color:var(--red);
     font-family:inherit;font-size:18px;font-weight:700;
     cursor:pointer;
+    transition:transform 0.08s, border-color 0.08s;
+  }
+  .end-conversation-btn:active{
+    transform:scale(0.97);
+    border-color:var(--navy);
   }
 
   /* ── Virtual keyboard (Fix 2) ──
