@@ -506,19 +506,6 @@ select:focus-visible {
         align-items: center;
     }
 
-    .title-sining {
-        font-size: 1.75rem;
-    }
-
-    .title-kamay {
-        font-size: 2.65rem;
-    }
-
-    .dash-btn {
-        min-height: 58px;
-        font-size: 1.05rem;
-    }
-
     .main-layout {
         grid-template-columns: 1fr 1fr;
     }
@@ -549,25 +536,6 @@ select:focus-visible {
     #dashboard-pane {
         gap: 20px;
         padding: 20px;
-    }
-
-    .title-sining {
-        font-size: 1.8rem;
-        padding: 10px 16px;
-    }
-
-    .title-kamay {
-        font-size: 2.8rem;
-        padding: 10px 18px 12px;
-    }
-
-    .button-container {
-        gap: 8px;
-    }
-
-    .dash-btn {
-        min-height: 52px;
-        font-size: 1.1rem;
     }
 
     /* --- Translate Text to Sign Adjustments (Aggressive Squish) --- */
