@@ -53,7 +53,10 @@ Radius: 12px on cards and buttons, 18px on bubbles, 99px on pills, 8px on keys.
   44px is 6.5 mm — below the 9 mm a fingertip needs. 60px is 8.9 mm.
 - No body text under 16px
 - No hover states — a touchscreen has no hover, so anything only reachable by
-  hovering is unreachable
+  hovering is unreachable. Every tappable control MUST have an `:active` state
+  instead: a tap with no visible response reads as a tap that did not
+  register, and the user taps again. `:focus-visible` is not hover and stays —
+  it is the only indication a keyboard user gets.
 - One orange element per screen. If there are two, one of them is wrong.
 
 **The scaled stage.** Every screen's 1024×600 canvas is fixed, never fluid —
