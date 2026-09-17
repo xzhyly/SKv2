@@ -9,8 +9,13 @@ here.
 
 ## Layout at 1024×600
 
-- [ ] `index.html` — just load it — dashboard renders full width, all 5 cards
-      visible, no horizontal scrollbar, nothing cut off.
+- [ ] `index.html` — just load it — dashboard renders full width, all 4 cards,
+      each with a caption beneath its label, visible, no horizontal scrollbar,
+      nothing cut off.
+- [ ] Stand in front of the real Pi at the distance it will actually be used —
+      arm's length, standing. Can you read the card captions ("Practise FSL",
+      "Talk with someone")? 17px renders at 2.5 mm on this panel. If you have
+      to work at it, raise the caption to 19px and re-check.
 - [ ] `index.html?screen=voice` — just load it — mic button, EN/Filipino
       toggle, mic dropdown, and text input all visible without scrolling.
 - [ ] `reports.html` — enter PIN `2026`, stay on ESL Signs tab — stat cards
@@ -117,15 +122,15 @@ simulation, and visual screenshots at an emulated 1024×600 viewport), not a
 physical finger on a physical Pi touchscreen. Load it directly at
 `http://localhost/SKR/talk.html` — it is not linked from the dashboard yet.
 
-- [ ] Walk the whole happy path with a real finger on a real touchscreen (or
-      the closest available touch device): "Who speaks first?" → tap Sign
-      Language → tap "Stop & Add to Conversation" → confirm card appears →
-      tap "Add to Conversation" → you land on the thread screen with your
-      message visible → tap "Speak or Type" → type a real message → tap
-      Send → confirm → tap "Add to Conversation" again → both messages
-      visible, newest at the bottom. Expected: every tap lands on the
-      control it visually appears to be on — no dead zones, nothing requires
-      a second tap.
+- [ ] `[DEFERRED — signing screen is being rebuilt]` Walk the whole happy path
+      with a real finger on a real touchscreen (or the closest available touch
+      device): "Who speaks first?" → tap Sign Language → tap "Stop & Add to
+      Conversation" → confirm card appears → tap "Add to Conversation" → you
+      land on the thread screen with your message visible → tap "Speak or
+      Type" → type a real message → tap Send → confirm → tap "Add to
+      Conversation" again → both messages visible, newest at the bottom.
+      Expected: every tap lands on the control it visually appears to be on —
+      no dead zones, nothing requires a second tap.
 - [ ] On the Speak or Type screen, tap the text field. Expected: the
       keyboard rises from the bottom with no visible lag, the microphone
       button and its label disappear, the text field and Send button stay
