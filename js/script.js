@@ -449,19 +449,6 @@ textSignInput.addEventListener('keydown', (event) => {
 });
 
 // --- TOAST NOTIFICATION HELPERS ---
-function showToast(msg, ms = 3000) {
-    const t = document.getElementById('sk-toast');
-    if (!t) return;
-    t.textContent = msg;
-    t.style.opacity = '1';
-    t.style.pointerEvents = 'auto';
-    clearTimeout(window.skToastTimer);
-    window.skToastTimer = setTimeout(() => {
-        t.style.opacity = '0';
-        t.style.pointerEvents = 'none';
-    }, ms);
-}
-
 // --- LANGUAGE SWITCHER FOR TEXT TO SIGN ---
 function setTtsLanguage(lang) {
     const langSelect = document.getElementById('lang-select');
@@ -513,7 +500,6 @@ function setTtsLanguage(lang) {
         }
     }
     
-    showToast(lang === 'fil-PH' ? '🇵🇭 Filipino (Tagalog) mode' : '🇺🇸 English mode');
 }
 window.setTtsLanguage = setTtsLanguage;
 
