@@ -172,20 +172,18 @@ select:focus-visible {
     gap: 16px;
     cursor: pointer;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
-    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.22s;
+    transition: transform 0.08s ease, border-color 0.08s ease;
     text-decoration: none;
     height: 270px;
     width: 200px;
     outline: none;
 }
 
-@media (hover: hover) {
-    #dashboard-pane .card-btn:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 20px 30px -10px rgba(27, 53, 90, 0.12), 0 10px 15px -8px rgba(27, 53, 90, 0.08);
-        border-color: #1b355a;
-    }
+#dashboard-pane .card-btn:active {
+    transform: scale(0.97);
+    border-color: #1b355a;
 }
+
 #dashboard-pane .card-btn:focus-visible {
     outline: 3px solid #1b355a;
     outline-offset: 2px;
