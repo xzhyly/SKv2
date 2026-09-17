@@ -179,10 +179,14 @@ select:focus-visible {
     outline: none;
 }
 
-#dashboard-pane .card-btn:hover,
+@media (hover: hover) {
+    #dashboard-pane .card-btn:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 30px -10px rgba(27, 53, 90, 0.12), 0 10px 15px -8px rgba(27, 53, 90, 0.08);
+        border-color: #1b355a;
+    }
+}
 #dashboard-pane .card-btn:focus-visible {
-    transform: translateY(-5px);
-    box-shadow: 0 20px 30px -10px rgba(27, 53, 90, 0.12), 0 10px 15px -8px rgba(27, 53, 90, 0.08);
     border-color: #1b355a;
 }
 
