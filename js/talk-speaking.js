@@ -227,6 +227,17 @@
     }
   }
 
+  // Abandon a start whose getUserMedia is still in flight: the bumped gen makes startCapture stop the
+  // stream when it resolves (its `myGen !== gen` guard). Returns true if a start was discarded; the
+  // caller then calls changed() (once, together with whatever else it changed) so the page re-gates
+  // Translate and the mic button re-syncs.
+  function discardPendingStart() {
+    if (!starting) return false;
+    gen++;
+    starting = false;
+    return true;
+  }
+
   function onMicTap() {
     if (micBtn.disabled) return;
     if (capturing) stopCapture(); else startCapture();
@@ -238,8 +249,10 @@
     micLabel = document.querySelector('.speaking-mic-label');
     input = document.getElementById('speaking-input');
     micBtn.addEventListener('click', onMicTap);
-    // Typing and talking are alternatives: raising the keyboard ends a capture in progress.
-    input.addEventListener('focus', function () { if (capturing) stopCapture(); });
+    // Typing and talking are alternatives: raising the keyboard ends a capture in progress, or
+    // discards one whose getUserMedia is still pending (the keyboard hides the mic row, so a mic
+    // that went live afterwards would have no visible indicator).
+    input.addEventListener('focus', function () { if (capturing) stopCapture(); else if (discardPendingStart()) changed(); });
     syncMic();
   }
 
@@ -264,7 +277,7 @@
     lang = next;
     if (lang === 'fil-PH') {                              // js/script.js:469-471
       if (capturing) stopCapture();
-      if (starting) { gen++; starting = false; }          // discard a getUserMedia still in flight: no voice input in Filipino
+      discardPendingStart();                              // a getUserMedia still in flight: no voice input in Filipino
     }
     changed();
   }
