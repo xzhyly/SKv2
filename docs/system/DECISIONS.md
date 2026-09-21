@@ -533,3 +533,22 @@ itself was wrong and got corrected rather than the code bent to match it.
   is now the one page that is a scaled *fixed* stage. Two different answers
   to "the design is 1024×600 but the actual screen might not be" now coexist
   in one system — a decision for later, not a surprise.
+
+## Decisions made during the signing-screen merge (2026-09-21, autonomous loop)
+
+Spec: `docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md`.
+Appended one line per settled decision as the run proceeds.
+
+- **The Guide is asymmetric on purpose: Sign Language keeps its real 3-step
+  guide (carried over from `sign-to-text.html`); Speak or Type gets no guide,
+  only a "Getting ready…" loading state while the queue is unfinished.**
+  Reason: owner-confirmed in the spec. Signing has non-obvious steps (start
+  gesture, hold to add a word, stop gesture); "tap the mic or type" has
+  nothing to explain. Not a gap to fill in a later pass.
+- **The loading queue gates on EVERYTHING: the Guide/waiting screen's
+  proceed control stays disabled until BOTH stacks (sign and speech) have
+  finished, even if the user only picked one.** Reason: owner-confirmed in the
+  spec. A conversation can switch turn type at any time; if only the picked
+  stack were awaited, the second turn's screen would then hit its own
+  loading wait mid-conversation, which is the exact "switching lag" this
+  whole single-document design exists to remove.
