@@ -933,7 +933,7 @@
      intentional and documented instead of incidental. The keyboard's top
      edge sits at y = 600 − 240 = 360 (see .sk-keyboard-wrap above);
      #screen-speaking's padding-top:186px is unchanged, so with this
-     override the input row starts at y=186+16=202 and both it and the Send
+     override the input row starts at y=186+16=202 and both it and the Translate
      button (each 64px tall) end at y=266 — about 94px clear of the
      keyboard's top edge. See this fix pass's report for the actual
      measured (not just arithmetic) numbers.
@@ -1238,7 +1238,7 @@
     var speakingPlayer = null;
     var resetSpeakingUi = function () {};
     // Leaving Speak or Type: stop any sign playback, release the mic (js/talk-speaking.js),
-    // and return the screen to an empty-looking compose state for the next entry.
+    // and return the screen to the compose state (typed text is kept) for the next entry.
     function onLeaveSpeaking() {
       if (speakingPlayer) speakingPlayer.cancel();
       TalkSpeaking.leave();
@@ -1862,8 +1862,12 @@
       });
 
       function setState(name) { screen.setAttribute('data-speaking', name); }
+      // Translate plays the text WITHOUT '?' (see the click handler), so emptiness is judged on
+      // that same text: an input of only '?' would play nothing. isBusy() covers the mic start
+      // that is still waiting on getUserMedia, not only a capture that is already running.
+      function playableText() { return input.value.replace(/[?]/g, ''); }
       function refreshTranslate() {
-        translateBtn.disabled = input.value.trim() === '' || TalkSpeaking.isCapturing();
+        translateBtn.disabled = playableText().trim() === '' || TalkSpeaking.isBusy();
       }
       function syncChips() {
         var fil = TalkSpeaking.getLanguage() === 'fil-PH';
@@ -1891,14 +1895,17 @@
 
       // Translate is the ONLY trigger (no auto-play on speech end or a typing pause).
       translateBtn.addEventListener('click', function () {
-        if (translateBtn.disabled) return;
-        input.blur();                       // lowers the virtual keyboard if it is up
+        if (translateBtn.disabled || TalkSpeaking.isBusy() || playableText().trim() === '') return;
+        // blur() ends typing focus. The keyboard itself comes down because this same click bubbles
+        // to handleDocClick in js/virtual-keyboard.js, which calls hideKeyboard() (that file has
+        // no blur/focusout listener).
+        input.blur();
         setState('preview');
         sendBtn.disabled = input.value.trim() === '';
         // js/sign-player.js's normalizeSpeechText does not strip '?' (nor does script.js's), so
         // the '?' formatGrammar adds to a spoken sentence would become part of the last token
         // ("you?") and break matching. Pass the text without '?' — the input keeps it for Send.
-        speakingPlayer.play(input.value.replace(/[?]/g, ''));
+        speakingPlayer.play(playableText()).catch(function (e) { console.error('[talk] sign preview failed:', e); });
       });
       editBtn.addEventListener('click', function () {
         speakingPlayer.cancel();

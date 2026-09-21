@@ -49,6 +49,8 @@
     if (fil) setLabel('Voice input disabled in Filipino');       // js/script.js:479
     else if (unavailable) setLabel('Microphone not available');
     else setLabel(capturing ? 'Tap to Stop' : 'Tap to Speak');    // js/script.js:584-586
+    // The visible label is the button's accessible name too: keep the two in step.
+    if (micLabel) micBtn.setAttribute('aria-label', micLabel.textContent);
   }
 
   function changed() {
@@ -91,12 +93,14 @@
   }
 
   // The saved mic may have been unplugged (OverconstrainedError / NotFoundError): retry once
-  // with the default device instead of failing outright.
-  async function acquireMic() {
+  // with the default device instead of failing outright — but only if this start is still
+  // wanted (screen not left, no newer start), or the retry would open the hardware for nobody.
+  async function acquireMic(myGen) {
     try {
       return await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints(true) });
     } catch (err) {
       if (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError')) {
+        if (!active || myGen !== gen || lang === 'fil-PH') throw err;   // startCapture ignores a stale start's error
         return await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints(false) });
       }
       throw err;
@@ -159,9 +163,12 @@
     var model = window.TalkLoader.voskModel;
     starting = true;
     var myGen = ++gen;
+    changed();                                  // isBusy() just became true: gate Translate now, not when the mic opens
     try {
-      var s = await acquireMic();
-      if (!active || myGen !== gen) {           // left the screen while getUserMedia was in flight
+      var s = await acquireMic(myGen);
+      // Discard the mic if the screen was left, a newer start replaced this one, or the language
+      // was switched to Filipino (no voice input there) while getUserMedia was in flight.
+      if (!active || myGen !== gen || lang === 'fil-PH') {
         s.getTracks().forEach(function (t) { t.stop(); });
         return;
       }
@@ -180,15 +187,22 @@
       };
       source.connect(processor);
       processor.connect(audioCtx.destination);
+      starting = false;                                      // starting -> capturing: isBusy() stays true, one notification
       capturing = true;
       changed();
       autoSelectMic();                                       // labels are readable now
     } catch (err) {
       if (myGen !== gen) return;               // failed after leave(): nothing of ours left to report or tear down
       console.error('[talk-speaking] capture failed:', err);
+      starting = false;                        // before fail(), so its changed() already sees isBusy() false
       fail('capture', (err && err.message) || String(err));
     } finally {
-      if (myGen === gen) starting = false;     // leave() already reset it; do not clobber a newer start
+      // Only a start that is still current and still pending gets here with starting === true
+      // (leave()/setLanguage() reset the flag themselves and bump gen; do not clobber a newer start).
+      if (myGen === gen && starting) {
+        starting = false;
+        changed();
+      }
     }
   }
 
@@ -200,11 +214,17 @@
     teardown();
     finalText = '';
     partialText = '';
-    if (text) {
-      input.value = window.SignPlayer ? window.SignPlayer.formatGrammar(text) : text;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
+    try {
+      if (text) {
+        var tidy = text;
+        try { if (window.SignPlayer) tidy = window.SignPlayer.formatGrammar(text); }
+        catch (err) { console.error('[talk-speaking] formatGrammar failed, keeping the raw transcript:', err); tidy = text; }
+        input.value = tidy;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    } finally {
+      changed();                               // the hardware is already released: always tell the page
     }
-    changed();
   }
 
   function onMicTap() {
@@ -236,14 +256,17 @@
     gen++;                                   // discards a getUserMedia still in flight
     if (capturing) stopCapture(); else teardown();
     starting = false;
-    syncMic();
+    changed();
   }
 
   function setLanguage(next) {
     if (next === lang) return;
     lang = next;
-    if (lang === 'fil-PH' && capturing) stopCapture();   // js/script.js:469-471
-    syncMic();
+    if (lang === 'fil-PH') {                              // js/script.js:469-471
+      if (capturing) stopCapture();
+      if (starting) { gen++; starting = false; }          // discard a getUserMedia still in flight: no voice input in Filipino
+    }
+    changed();
   }
 
   window.TalkSpeaking = {
@@ -252,6 +275,9 @@
     leave: leave,
     setLanguage: setLanguage,
     getLanguage: function () { return lang; },
-    isCapturing: function () { return capturing; }
+    isCapturing: function () { return capturing; },
+    // true from the moment a start is requested (getUserMedia in flight) until capture ends:
+    // the page gates anything that must not run with a mic that is about to go live.
+    isBusy: function () { return starting || capturing; }
   };
 })();
