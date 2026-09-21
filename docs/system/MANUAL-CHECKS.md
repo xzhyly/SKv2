@@ -116,13 +116,14 @@ cache once after deploying.
 
 ## "Let's Talk" conversation (`talk.html`)
 
-UI-only, fake data — no camera, microphone, or real recognition exists yet.
+UI-only, fake data — no microphone or real speech recognition exists yet (the
+signing screen became real on 2026-09-21; see the section at the end).
 Everything below was verified with automation (DOM measurement, real click
 simulation, and visual screenshots at an emulated 1024×600 viewport), not a
 physical finger on a physical Pi touchscreen. Load it directly at
 `http://localhost/SKR/talk.html` — it is not linked from the dashboard yet.
 
-- [ ] `[DEFERRED — signing screen is being rebuilt]` Walk the whole happy path
+- [ ] `[UNBLOCKED 2026-09-21 — the signing screen is real now; see the "Signing screen merge" section below]` Walk the whole happy path
       with a real finger on a real touchscreen (or the closest available touch
       device): "Who speaks first?" → tap Sign Language → tap "Stop & Add to
       Conversation" → confirm card appears → tap "Add to Conversation" → you
@@ -167,3 +168,70 @@ physical finger on a physical Pi touchscreen. Load it directly at
       more than roughly 30 messages, it stays scrolled to the newest one you
       just added, and the kiosk does not visibly slow down or stutter as the
       thread grows.
+
+## Signing screen merge — real camera in `talk.html` (2026-09-21)
+
+The signing screen in `talk.html` now runs the real camera and recognition
+(`js/talk-signing.js`), fed by a background loading queue (`js/talk-loader.js`).
+Automation (real Chrome + a fake camera device over CDP) measured everything
+that can be measured without a physical camera or a Pi — see
+`docs/system/UI.md` Part 3a and `docs/system/DECISIONS.md`. What follows
+needs a person, a real webcam, and ideally the Pi. **Hard-reload first**
+(Ctrl+Shift+R, or clear Chromium's cache once on the Pi): `talk.html` and
+`css/`/`js/` carry no version string, and Chromium served a stale `talk.html`
+during testing (`docs/system/DEBT.md` item 41).
+
+- [ ] **THE camera-release check.** Open `talk.html`, tap Sign Language → Start
+      Translating → allow the camera. The camera-in-use indicator (the
+      webcam's LED, and Chromium's tab indicator) comes on. Tap **Back**.
+      Expected: the LED and the tab's camera indicator go **off within about a
+      second**, and stay off while you use Speak or Type. Tap Sign again from
+      the thread: it comes back on. Repeat 10 times. (Automation proved every
+      track ends, `stream.active` is false and the MediaPipe frame loop
+      stops — it cannot see a physical LED.)
+- [ ] After "Add to Conversation" from a signed turn, the camera indicator is
+      off on the thread screen.
+- [ ] Re-entry speed: from the thread screen, tap Sign. Expected: the live
+      camera is up in about a second, with no Guide and no "AI is getting
+      ready" wait. (Dev machine, fake camera: 66–250 ms.)
+- [ ] Real recognition: at the Guide tap Start Translating, sign the "start"
+      gesture and hold it. Expected: "Starting in 3…", then the button reads
+      "Stop & Add to Conversation" and the frame outlines green. Sign two
+      trained words with a short pause between; the words appear in the pill
+      at the top of the camera. Tap **Stop & Add to Conversation**. Expected:
+      the confirm card shows a sensible sentence. **The "stop" gesture will not
+      work — neither ESL nor FSL has one recorded** (`DEBT.md` item 45).
+- [ ] ESL/FSL chips: tap FSL Mode. Expected: "AI is switching language…" for a
+      moment, then FSL words are recognised; tap ESL Mode to switch back.
+- [ ] Hand Guide toggle: tap it. Expected: the green skeleton disappears and
+      the chip reads "Hand Guide: Off"; tap again, it returns.
+- [ ] Loading queue feel on the Pi. Open `talk.html?devqueue`, and, straight
+      away, tap Sign Language. Expected: the Guide's "Start Translating →" stays
+      greyed with "Getting ready… N of 5" until all five overlay lines read
+      done, then enables. Write down the per-line ms next to the dev-machine
+      numbers (sign libs 168–327, MediaPipe 245–505, gestures 10–1269 depending
+      on whether the k-NN was cached, Vosk library ~80, Vosk model 999–3438).
+      If the Vosk model takes long enough that you would give up waiting, that
+      is worth knowing: Sign is held for it by design.
+- [ ] Same, but tap Speak or Type first. Expected: "Getting ready…" replaces
+      the mic and text field, then they appear. Choose Sign after that: the
+      Guide's button is already enabled.
+- [ ] Guide on a later turn: send one spoken/typed message first, then tap
+      Sign. Expected: the Guide still appears (first time in Sign), and its
+      step list scrolls inside the card (only about one step is visible at a
+      time in that case, with the fade cue) — check it is still readable.
+- [ ] `talk.html` with **no** `?devqueue`: no overlay text appears anywhere.
+- [ ] Long conversation on the Pi: alternate Sign and Speak or Type for 15+
+      turns without ending the conversation. Watch memory (`top`/Task
+      Manager) for Chromium. Expected: it plateaus rather than climbing every
+      turn. This is the crash risk the spec flags — page reloads used to be
+      the cleanup.
+- [ ] Idle warning while signing: leave the kiosk untouched for 2 minutes with
+      your hands in view of the camera. Expected (known limitation,
+      `DEBT.md` item 46): "Still there?" appears anyway.
+- [ ] Failure card: temporarily rename `models/vosk-model-small-en-us-0.15.tar.gz.zip`,
+      hard-reload, open Sign Language (it still works), then Back and Speak or
+      Type. Expected: a "Microphone not available / Type instead" card, once.
+      Rename the file back afterwards.
+- [ ] Failure card: with the camera unplugged or blocked, tap Start
+      Translating. Expected: "Camera not available / Go back".

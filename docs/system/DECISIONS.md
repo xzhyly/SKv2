@@ -552,3 +552,103 @@ Appended one line per settled decision as the run proceeds.
   stack were awaited, the second turn's screen would then hit its own
   loading wait mid-conversation, which is the exact "switching lag" this
   whole single-document design exists to remove.
+- **Load order is sign stack first, speech stack second — by measurement, not
+  assumption.** Measured on the dev machine (Chromium, cache-busted, 3 runs
+  each; medians): sign stack 581 ms with the k-NN cached in localStorage /
+  1551 ms with it empty (rebuilt from the database); speech stack 2737 ms
+  (`vosk.js` 73 ms + `Vosk.createModel` 2666 ms). Re-measured through the
+  real queue in Chrome: sign 358 ms → speech 1071 ms warm, sign 2102 ms →
+  speech 3518 ms cold. Not measured on the Pi; the ordering is expected to
+  hold, the absolute times will not.
+- **The spec's "queue on talk.html load" supersedes README's older "lazy —
+  load on the chosen screen" loading table.** Reason: the spec is later and
+  owner-approved, and it exists because README's lazy rule made the *second*
+  turn type pay its own wait mid-conversation. Consequence: Vosk now loads
+  (41 MB) even for a conversation that only ever types. README's Loading rules
+  section is stale on this point and should be read with this line.
+- **`onEnterSigning()`'s idempotency is read as "no duplicate work while
+  active", not "no `getUserMedia` on re-entry" — because the same spec also
+  requires `onLeaveSigning()` to release the camera hardware.** A released
+  camera must be re-acquired; both statements cannot hold literally. The
+  spec calls the release "more important than any other single detail in this
+  phase", so it wins. What stays true and was measured: one loading-queue run
+  per page load (Apache access log: one GET each for `tf.min.js`, `hands.js`,
+  the WASM, the tflite, `sign-to-text-ui.js`, `vosk.js`, the model), exactly
+  one `Hands` instance for the page's life, one `getUserMedia` per real entry
+  (a second `enter()` while active adds none), and the model/MediaPipe are
+  never recreated. Re-entry pays only for `getUserMedia`: 66–250 ms on the dev
+  machine with a fake camera; on the Pi it goes in MANUAL-CHECKS.
+- **`onLeaveSigning()` = `TalkSigning.leave()`: stop every track, null
+  `video.srcObject`, clear the 150 ms tick and any countdown, pause the
+  MediaPipe frame loop — and never touch the `Hands` instance, the k-NN model
+  or the queue.** Measured: after leaving, every track `readyState` is
+  `ended`, `stream.active` is false, `video.readyState` is 0, and
+  `hands.send()` calls drop from 9 per 1.5 s to 0; on re-entry they resume
+  with `Hands` constructed still exactly once. `README`'s "keep the camera
+  stream, just stop frames" rule is overridden for the same reason as above.
+- **`js/gesture-data.js` gained three additive exports
+  (`preloadMediaPipe`, `pauseHandLoop`, `resumeHandLoop`), a loop-generation
+  guard in `runHandLoop`, and an opt-out flag `SK_DISABLE_GESTURE_HOTKEY`.**
+  Reason: "stop the loop, not the object" needs a pause the file did not
+  have, and the loading queue needs the `Hands` instance created early via
+  `initialize()`. It is a shared file (`gesture-training.html` uses it), so
+  every change is additive — the diff removes no lines and a never-paused
+  loop is provably unchanged. The hotkey flag exists because the file's "G to
+  record" hotkey opens `prompt()`, which a kiosk with no keyboard should
+  never reach.
+- **`talk.html` reuses `js/sign-to-text-ui.js` (loaded by the queue) instead
+  of copying its k-NN, label-translation and sentence-forming code.** Only the
+  prediction *loop* was ported (`js/talk-signing.js`), constants copied with
+  their source line numbers, because the original loop is welded to
+  `sign-to-text.html`'s DOM and result screen. Consequence: that file stays in
+  use after `sign-to-text.html` is archived, so it is not orphaned.
+- **The one orange button on the signing screen is the old START/STOP toggle:
+  "Translate" (idle) → "Starting in N…" → "Stop & Add to Conversation".**
+  The spec ports "Stop & Translate" but is silent on how recording starts;
+  `sign-to-text.html` starts on the "start" gesture or a button, then a 3 s
+  countdown. The Guide's text is carried over unchanged and so still says
+  "TRANSLATE" / "STOP & TRANSLATE" (button names that did not match
+  `sign-to-text.html`'s own labels either — `DEBT.md`).
+- **A failed stack does not deadlock the gate; "done" means settled.** Sign
+  stack failed → Guide's Start stays disabled and says "Signing is not
+  available right now." (Back still works; Speak still works). Speech stack
+  failed → Sign is unaffected; the first Speak entry shows the existing error
+  card with README's "Microphone not available" wording and a "Type instead"
+  way out, once. The spec says nothing about failure of the queue.
+- **Errors reuse `talk.html`'s own error card, not `sign-to-text.html`'s
+  toasts.** `sign-to-text` reports a camera failure as a 5 s toast and leaves
+  its "AI is getting ready" overlay up forever
+  (`js/sign-to-text-ui.js:397-400`, `:328-348`); the merged screen uses
+  README's "Camera not available" card with a "Go back" way out, "Didn't
+  catch that" for an empty sentence, and a "Sign set not available" card if a
+  language switch fails. No "Hands not visible" state was built — `sign-to-text`
+  never had one either (README:256 describes a state that was never
+  implemented); the "Show your sign" caption is what it did and what this does.
+- **The ESL/FSL chips and the Hand Guide toggle sit in 200 px columns beside
+  the centred 560×300 camera.** README's screen 03 has no room under the
+  camera for them: with the 96 px strip showing, the stack is
+  90+96+16+300+14+68 = 584 of 600 px. Chips are 200×60, text 16 px, active =
+  navy fill; no orange, no emoji flags.
+- **Orange per signing sub-state:** the Guide's "Start Translating →" in the
+  Guide, `#stop-signing-btn` in the live view — the other is `display:none`
+  in each. The recording state is shown by a green (live) outline on the
+  camera box, not a red or orange one; README reserves red for stop/end.
+- **The dev overlay flag is the URL param `?devqueue`.** Not sticky, nothing
+  written to storage, so it cannot survive on the kiosk's Chromium profile; on
+  a plain load the overlay element does not exist in the DOM at all (verified:
+  `document.getElementById('dev-queue-overlay') === null`, `location.search
+  === ""`). Its text is 12 px monospace — dev-only, exempt from the kiosk's
+  16 px floor.
+- **The header LISTENING pill is still not driven.** README says it shows
+  while the camera reads; the spec's scope list does not include it and the
+  TYPING observer (`talk.html`, `MutationObserver` on `body` classes) would
+  clear it on any class change. Left for a follow-up rather than invented here.
+- **Data finding, not a code decision: neither the ESL nor the FSL gesture
+  set has a `stop` label** (ESL: 120 labels incl. `start`, no `stop`; FSL:
+  90 labels incl. `start`, no `stop`, read from the loaded k-NN). The "sign
+  stop to finish" half of the Guide's step 3 therefore cannot fire with the
+  current data; only the manual button ends a sentence. The stop-gesture
+  code path was exercised with a synthetic in-memory `stop` label.
+- **Nothing here touches `#translator-pane`.** Its header still links to
+  `sign-to-text.html` (`index.html:653`); once that page is archived the link
+  is dead. Remove, repoint, or retire `#translator-pane` too — owner's call.

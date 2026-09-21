@@ -656,6 +656,96 @@ in this file. Not yet linked from `index.html`'s dashboard (talk.html:1
 onward is reached only by typing `/SKR/talk.html` directly); see
 `docs/system/DECISIONS.md` for why.
 
+> **Updated 2026-09-21 — the signing screen and the speech-model load are now
+> real; the rest of this Part describes the earlier fake-data phase and is
+> still accurate for everything not listed in "3a" below.** Where the two
+> disagree ("no camera, MediaPipe, TensorFlow, Vosk … anywhere in this file",
+> "the five hooks are all empty", the canned signing pool), 3a wins. The
+> speaking screen's mic button is still a canned stand-in.
+
+### 3a. Signing-screen merge (spec: `docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md`)
+
+**New files:** `js/talk-loader.js` (loading queue + dev overlay),
+`js/talk-signing.js` (camera lifecycle + recognition loop). **Additive edit:**
+`js/gesture-data.js` (`preloadMediaPipe` `:434`, `pauseHandLoop` `:412`,
+`resumeHandLoop` `:422`, hotkey opt-out `:660`). Both new scripts are plain
+`<script src>` tags before the inline script (`talk.html:1118-1119`).
+Reused, not copied: `js/sign-to-text-ui.js` (`knnPredict`,
+`autoTrainForTranslate`, `translateGestureLabel`, `formulateSmartSentence`),
+`js/camera-helper.js` (`initCameraWithFallback`, `extractFeatures`).
+
+**Loading queue (`js/talk-loader.js`).** Starts once, on window `load`
+(`talk.html` never restarts it), and runs five items strictly one after
+another: sign-libs (`tf.min.js`, `hands.js`, `camera-helper.js`,
+`gesture-data.js`, `sign-to-text-ui.js`), MediaPipe (`Hands` constructed on the
+hidden `#signing-video` and `initialize()`d), gesture set (`autoTrainForTranslate()`
+— localStorage cache or database), then Vosk library (`js/vosk.js`), Vosk model
+(`Vosk.createModel(models/vosk-model-small-en-us-0.15.tar.gz.zip)`). Each item
+is `queued | loading | done | failed`; a failed item marks its dependents
+"skipped" and the other stack still runs. API: `TalkLoader.start/isSettled/
+getItems/getProgress/onChange`. Real timings through the queue (headless
+Chrome, cache disabled): warm k-NN cache — sign-libs 168 ms, MediaPipe 245 ms,
+gestures 10 ms, Vosk lib 72 ms, Vosk model 999 ms, all settled at 1.5 s; cold
+cache — gestures 1269 ms, Vosk model 3438 ms, settled at 5.8 s.
+**Dev overlay:** `talk.html?devqueue` shows one line per item (status, ms,
+failure reason); absent from the DOM on a plain load.
+
+**Signing screen sub-states** (`#screen-signing[data-signing]`):
+- `guide` — first entry to Sign this conversation until "Start Translating →"
+  is tapped once. The 3-step Guide text is `sign-to-text.html`'s, unchanged.
+  A label reads "Getting ready… N of 5" until the whole queue settles (both
+  stacks), then "Ready"; the button is disabled until then, and stays
+  disabled with "Signing is not available right now." if the sign stack failed.
+  The step list scrolls inside the card with a fade cue (`.guide-list.has-more`).
+- `live` — camera 560×300 in the centre, ESL Mode / FSL Mode chips and a Hand
+  Guide toggle in 200 px side columns (200×60 each), live caption pill
+  (`#signing-caption`), draft of accumulated words (`#signing-draft`), one
+  orange 560×68 button. Later turns skip the guide and go straight here.
+
+**Camera lifecycle** (`onEnterSigning` `talk.html:1559` → `TalkSigning.enter()`
+`js/talk-signing.js:255`; `onLeaveSigning` `:1568` → `leave()` `:294`).
+`enter()` is a no-op while active; a generation token discards a stream that
+arrives after the user has left; the success callback cannot throw
+(`camera-helper` would re-request). `leave()` stops every track, nulls
+`video.srcObject`, clears the tick and countdown, pauses the frame loop, and
+never touches `Hands`, the model or the queue. **Measured** (Chrome with a fake
+camera device, CDP): one `getUserMedia` per real entry (3 entries → 3), `Hands`
+constructed once, every track `ended` and `stream.active === false` after each
+leave, `video.readyState` 0, `hands.send` 9 calls/1.5 s live → 0 after leave →
+9 after re-entry.
+
+**Recognition** (`tick()` `js/talk-signing.js:125`, every 150 ms; constants
+copied from `js/sign-to-text-ui.js` with their line numbers): rolling window 4,
+stability 2 ticks, hold 500 ms, confidence floor 0.45, no-hand 300 ms,
+countdown 3 s. Flow is unchanged from `sign-to-text.html`: idle → the "start"
+gesture (held) or the orange button → 3 s countdown → recording (words are
+added on a held gesture; button reads "Stop & Add to Conversation"; camera
+outline turns green) → the "stop" gesture or the button. The tick does nothing
+while any modal is open.
+
+**Output.** Stop → `formulateSmartSentence(words, signLang)` →
+`openModal('confirm', {label:'You signed', text, from:'deaf'})` — the same
+confirm card every path uses ("Add to Conversation" → bubble + thread, "Try
+again" → back to idle). There is no Result screen and no "Translate Text to
+Sign" link. Error cards (existing `renderErrorModal`): "Camera not available" /
+"Go back", "Didn't catch that" (empty sentence) / "Try again", "Sign set not
+available" (language switch failed), "Microphone not available" / "Type
+instead" (speech stack failed, once).
+
+**Speak or Type** (`#screen-speaking[data-wait]`): no guide. While the queue is
+unsettled the mic row and text row are hidden and "Getting ready… This only
+takes a moment." shows; once settled they return. The mic button is still a
+canned stand-in — this phase loads the Vosk model but does not capture speech.
+
+**Measured layout** at 1024×600 (real Chrome, scale 1): `scrollWidth` 1024 in
+who-first, Guide, live, live turn 2+, speaking, confirm card, error card,
+camera-error card; camera 560×300; button 560×68; chips 200×60; Guide card
+660×482 on turn 1 and 660×386 on turn 2+; turn 2+ button bottom edge 584.
+Exactly one visible orange element per state (Guide: `guide-start-btn`; live:
+`stop-signing-btn`; speaking: `speaking-send`; who-first: the Speak tile) — the
+only other orange match is the parked, off-stage virtual keyboard's HIDE key,
+which is pre-existing.
+
 ### 1. Owns these files
 
 - `talk.html` — the entire feature: markup, one inline `<style>` block, one

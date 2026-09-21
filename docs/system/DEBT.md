@@ -583,6 +583,63 @@ so a later session does not re-litigate them:
     recorded here so it's a choice made on purpose rather than a surprise
     found later.
 
+44. **Medium severity, open (owner decision): `index.html:653`'s
+    `#translator-pane` header links to `sign-to-text.html`, which is now
+    archived.** The link ("Translate Sign to Text") is dead as of the archive
+    commit. Deliberately not touched by the signing-screen merge (spec: out of
+    scope). Options — remove the link, repoint it at `talk.html`, or retire
+    `#translator-pane` too; none was picked.
+
+45. **Medium severity, open: neither gesture set has a `stop` label.** The
+    loaded k-NN has `start` (49 frames) in both ESL (120 labels) and FSL (90
+    labels) but no `stop`, so the Guide's "sign stop to finish" instruction
+    cannot work — only the manual button ends a sentence. Predates the merge
+    (`sign-to-text.html` had the same gap); the stop-gesture code path was only
+    exercised with a synthetic label. Fix is data (record a `stop` gesture),
+    not code.
+
+46. **Low severity, open: the 2-minute idle timer ignores camera activity.**
+    `talk.html`'s timer re-arms on pointer/key/input only, so a hands-only
+    signer can be shown "Still there?" mid-sentence; `tick()` correctly pauses
+    behind the card but the countdown to ending the conversation keeps running.
+
+47. **Low severity, open: the header LISTENING pill is still not driven.**
+    README says it shows while the camera reads; the TYPING observer would
+    clear it on any body class change, so wiring it needs that observer
+    reworked. Not in the merge spec's scope list.
+
+48. **Low severity, open: `tf.min.js` (1.46 MB, about 209-255 ms of the ~276 ms
+    sign-library load) looks unused on the live path.** Nothing in
+    `js/sign-to-text-ui.js`/`js/gesture-data.js` calls `tf.*` except a guarded
+    `tf.io.removeModel` in `confirmAndSave`. The spec lists it in the sign
+    stack so the queue loads it; dropping it is a later, measured change.
+
+49. **Low severity, open: a hung item stalls the loading queue and the Guide
+    gate forever.** `js/talk-loader.js` handles rejections and throws but has
+    no per-item timeout; a `Vosk.createModel` or database fetch that never
+    settles leaves `isSettled()` false. The Guide proceeds only when the whole
+    queue settles (spec), so on the Pi a slow 41 MB Vosk load also delays Sign.
+
+50. **Low severity, open: `css/sign-to-text.css` is orphaned after the
+    archive** (only `sign-to-text.html` linked it). `js/sign-to-text-ui.js` is
+    not — `talk.html` loads it through the queue — but it now runs without its
+    own page's DOM, which it tolerates only through null-guards.
+
+51. **Low severity, open: the Guide's button names do not match any on-screen
+    label.** The carried-over text says "TRANSLATE" and "STOP & TRANSLATE"; the
+    live screen's orange button reads "Translate" / "Stop & Add to
+    Conversation" (and `sign-to-text.html` itself read "START" / "STOP").
+
+52. **Low severity, open: README's "Hands not visible" error state was never
+    built** (here or in `sign-to-text.html`); the live caption's "Show your
+    sign" is the only no-hand feedback.
+
+53. **Low severity, open: the Vosk model is English-only.** Only
+    `vosk-model-small-en-us-0.15` exists in `models/`; README's "one model
+    chosen on screen 02" and the operator-setting default recorded in
+    `DECISIONS.md` are unbuilt. The queue now loads it (41 MB) for every
+    conversation, including ones that only type.
+
 ## Dead code
 
 Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build

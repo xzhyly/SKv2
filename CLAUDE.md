@@ -50,14 +50,22 @@ locally via XAMPP:
   `docs/system/HARDWARE_BOOT.md`), so hardcoded `/SKR/`-relative references
   behave the same in local dev as on the Pi.
 
-Confirmed working locally: camera capture and sign-to-text translation on
-`sign-to-text.html`, with the k-NN classifier loading all 120 ESL gestures and
-no console errors.
+Confirmed working locally: camera capture and sign-to-text translation, with
+the k-NN classifier loading all 120 ESL gestures and no console errors — first
+on `sign-to-text.html`, now (2026-09-21) inside `talk.html`'s signing screen;
+`sign-to-text.html` itself is archived (`archive/sign-to-text.html`).
 
-`talk.html` is a new "Let's Talk" two-way conversation screen — UI only, fake
-data, no camera/mic/DB yet (see `docs/system/UI.md` Part 3 and
-`docs/system/DECISIONS.md`). It is not yet linked from the dashboard; open it
-directly at `/SKR/talk.html`.
+`talk.html` is the "Let's Talk" two-way conversation screen (see
+`docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing
+screen is real**: live camera + MediaPipe + the k-NN, output going through the
+confirm card. A background loading queue (`js/talk-loader.js`) loads the sign
+stack and then the Vosk speech model once per page load and gates the Guide /
+"Getting ready…" screens on the whole queue; `talk.html?devqueue` shows a
+diagnostic overlay for it (off otherwise). Leaving the signing screen stops the
+camera tracks (hardware released) but keeps the loaded model and the single
+MediaPipe instance. The **speak side is still fake**: the mic button is a
+canned stand-in (the Vosk model loads but nothing captures speech), and no DB
+logging happens from `talk.html`. Open it at `/SKR/talk.html`.
 
 ## Where to read for what
 
