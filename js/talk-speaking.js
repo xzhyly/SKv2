@@ -1,0 +1,257 @@
+// js/talk-speaking.js
+// Real speech capture for talk.html's Speak-or-Type screen: Vosk (already loaded by
+// js/talk-loader.js) → live transcript in #speaking-input. Logic ported from js/script.js's
+// VoskSpeechRecognition + mic toggle (line refs in comments). Contract: leave() stops every
+// audio track, closes the AudioContext, removes the recognizer (js/vosk.js: KaldiRecognizer.remove()
+// frees it in the worker; measured) and never touches the loaded model (TalkLoader.voskModel) — the
+// model is a page-lifetime resource.
+//
+// Deviation from js/script.js:263-286 (measured, see the task report): js/vosk.js implements
+// KaldiRecognizer.on() as model.addEventListener(...) with NO removal and NO recognizerId filter, so
+// every capture would leave two listeners on the model that all later captures also trigger (text
+// written N times after N captures). Instead this module registers ONE result/partialresult listener
+// pair per model and accepts only events whose recognizerId is the current recognizer's.
+(function () {
+  'use strict';
+
+  var MIC_KEY = 'selectedMicId';          // js/script.js:238, 1050-1072
+  var cb = {};
+  var lang = 'en-US';
+  var active = false;
+  var starting = false;
+  var capturing = false;
+  var gen = 0;
+  var stream = null;
+  var audioCtx = null;
+  var source = null;
+  var processor = null;
+  var recognizer = null;
+  var boundModel = null;                  // the model our single listener pair is attached to
+  var finalText = '';
+  var partialText = '';
+  var micBtn = null;
+  var micLabel = null;
+  var input = null;
+
+  function modelReady() {
+    return !!(window.TalkLoader && window.TalkLoader.voskModel);
+  }
+
+  function setLabel(text) { if (micLabel) micLabel.textContent = text; }
+
+  function syncMic() {
+    if (!micBtn) return;
+    var fil = lang === 'fil-PH';
+    var unavailable = !modelReady();
+    micBtn.disabled = fil || unavailable;
+    micBtn.classList.toggle('listening', capturing);
+    micBtn.setAttribute('aria-pressed', capturing ? 'true' : 'false');
+    if (fil) setLabel('Voice input disabled in Filipino');       // js/script.js:479
+    else if (unavailable) setLabel('Microphone not available');
+    else setLabel(capturing ? 'Tap to Stop' : 'Tap to Speak');    // js/script.js:584-586
+  }
+
+  function changed() {
+    syncMic();
+    if (cb.onChange) cb.onChange();
+  }
+
+  function renderTranscript() {
+    var combined = (finalText + (finalText && partialText ? ' ' : '') + partialText).trim();
+    input.value = combined;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  // js/script.js:1050-1063: keep the saved mic if it still exists, else prefer the kiosk's
+  // USB mic (label contains "ab13x" or "usb audio"). Labels are only readable after mic
+  // permission has been granted, so this also runs after a successful capture start.
+  function autoSelectMic() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(function (devices) {
+      var mics = devices.filter(function (d) { return d.kind === 'audioinput'; });
+      var saved = null;
+      try { saved = localStorage.getItem(MIC_KEY); } catch (e) { /* storage blocked */ }
+      if (saved && mics.some(function (m) { return m.deviceId === saved; })) return;
+      var target = mics.filter(function (m) {
+        var label = (m.label || '').toLowerCase();
+        return label.indexOf('ab13x') !== -1 || label.indexOf('usb audio') !== -1;
+      })[0];
+      if (target) {
+        try { localStorage.setItem(MIC_KEY, target.deviceId); } catch (e) { /* storage blocked */ }
+      }
+    }).catch(function (err) { console.error('[talk-speaking] enumerateDevices failed:', err); });
+  }
+
+  function audioConstraints(useSavedId) {
+    var c = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 };
+    var saved = null;
+    if (useSavedId) { try { saved = localStorage.getItem(MIC_KEY); } catch (e) { /* storage blocked */ } }
+    if (saved) c.deviceId = { exact: saved };
+    return c;
+  }
+
+  // The saved mic may have been unplugged (OverconstrainedError / NotFoundError): retry once
+  // with the default device instead of failing outright.
+  async function acquireMic() {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints(true) });
+    } catch (err) {
+      if (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError')) {
+        return await navigator.mediaDevices.getUserMedia({ video: false, audio: audioConstraints(false) });
+      }
+      throw err;
+    }
+  }
+
+  function teardown() {
+    capturing = false;
+    if (processor) { processor.onaudioprocess = null; try { processor.disconnect(); } catch (e) { /* already */ } processor = null; }
+    if (source) { try { source.disconnect(); } catch (e) { /* already */ } source = null; }
+    if (audioCtx && audioCtx.state !== 'closed') {
+      try { var closing = audioCtx.close(); if (closing && closing.catch) closing.catch(function () { /* already closed */ }); } catch (e) { /* already */ }
+    }
+    audioCtx = null;
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    if (recognizer) {
+      // js/vosk.js KaldiRecognizer.remove() makes the worker delete the Kaldi recognizer and its buffer
+      // (and post back one final 'result', which onVoskEvent ignores: no recognizer is current). The
+      // guard keeps this safe if a different Vosk build lacks it. The MODEL is never touched.
+      try { if (typeof recognizer.remove === 'function') recognizer.remove(); } catch (e) { /* best effort */ }
+      recognizer = null;
+    }
+  }
+
+  function fail(kind, message) {
+    teardown();
+    finalText = '';
+    partialText = '';
+    changed();
+    if (cb.onMicError) cb.onMicError(kind, message);
+  }
+
+  // Single page-lifetime listener pair (see header). message = { event, recognizerId, result }.
+  function onVoskEvent(ev) {
+    var message = ev.detail;
+    if (!capturing || !recognizer || !message || message.recognizerId !== recognizer.id) return;
+    if (message.event === 'result') {                      // js/script.js:263-274
+      var text = message.result && message.result.text;
+      if (text) {
+        finalText += (finalText ? ' ' : '') + text;
+        partialText = '';
+        renderTranscript();
+      }
+    } else if (message.event === 'partialresult') {        // js/script.js:276-286
+      partialText = (message.result && message.result.partial) || '';
+      renderTranscript();
+    }
+  }
+
+  function bindModel(model) {
+    if (boundModel === model) return;
+    model.addEventListener('result', onVoskEvent);
+    model.addEventListener('partialresult', onVoskEvent);
+    boundModel = model;
+  }
+
+  async function startCapture() {
+    if (capturing || starting || !active) return;
+    if (!modelReady()) { fail('model', 'Vosk model not loaded'); return; }
+    var model = window.TalkLoader.voskModel;
+    starting = true;
+    var myGen = ++gen;
+    try {
+      var s = await acquireMic();
+      if (!active || myGen !== gen) {           // left the screen while getUserMedia was in flight
+        s.getTracks().forEach(function (t) { t.stop(); });
+        return;
+      }
+      stream = s;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      source = audioCtx.createMediaStreamSource(stream);
+      bindModel(model);
+      recognizer = new model.KaldiRecognizer(audioCtx.sampleRate);
+      finalText = '';
+      partialText = '';
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processor.onaudioprocess = function (event) {         // js/script.js:288-297
+        if (recognizer && capturing) {
+          try { recognizer.acceptWaveform(event.inputBuffer); } catch (err) { console.error('[talk-speaking] acceptWaveform failed:', err); }
+        }
+      };
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+      capturing = true;
+      changed();
+      autoSelectMic();                                       // labels are readable now
+    } catch (err) {
+      if (myGen !== gen) return;               // failed after leave(): nothing of ours left to report or tear down
+      console.error('[talk-speaking] capture failed:', err);
+      fail('capture', (err && err.message) || String(err));
+    } finally {
+      if (myGen === gen) starting = false;     // leave() already reset it; do not clobber a newer start
+    }
+  }
+
+  // Finalise: append the last partial (js/script.js:688-691), tidy the text with formatGrammar,
+  // release the hardware. A late 'result' after this is ignored (capturing === false).
+  function stopCapture() {
+    if (!capturing) return;
+    var text = (finalText + (finalText && partialText ? ' ' : '') + partialText).trim();
+    teardown();
+    finalText = '';
+    partialText = '';
+    if (text) {
+      input.value = window.SignPlayer ? window.SignPlayer.formatGrammar(text) : text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    changed();
+  }
+
+  function onMicTap() {
+    if (micBtn.disabled) return;
+    if (capturing) stopCapture(); else startCapture();
+  }
+
+  function init(callbacks) {
+    cb = callbacks || {};
+    micBtn = document.getElementById('speaking-mic-btn');
+    micLabel = document.querySelector('.speaking-mic-label');
+    input = document.getElementById('speaking-input');
+    micBtn.addEventListener('click', onMicTap);
+    // Typing and talking are alternatives: raising the keyboard ends a capture in progress.
+    input.addEventListener('focus', function () { if (capturing) stopCapture(); });
+    syncMic();
+  }
+
+  function enter() {
+    if (active) return;
+    active = true;
+    syncMic();
+    autoSelectMic();
+  }
+
+  function leave() {
+    if (!active) return;
+    active = false;
+    gen++;                                   // discards a getUserMedia still in flight
+    if (capturing) stopCapture(); else teardown();
+    starting = false;
+    syncMic();
+  }
+
+  function setLanguage(next) {
+    if (next === lang) return;
+    lang = next;
+    if (lang === 'fil-PH' && capturing) stopCapture();   // js/script.js:469-471
+    syncMic();
+  }
+
+  window.TalkSpeaking = {
+    init: init,
+    enter: enter,
+    leave: leave,
+    setLanguage: setLanguage,
+    getLanguage: function () { return lang; },
+    isCapturing: function () { return capturing; }
+  };
+})();
