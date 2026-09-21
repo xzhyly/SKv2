@@ -6,6 +6,11 @@
     let activeInput = null;
     let capsOn = false;
     let keyboardEl = null;
+    // Set on pointerdown, in the capture phase — before focusin's
+    // showKeyboard() can shift the layout — so it holds the real target the
+    // gesture started on, even if the click that follows lands somewhere
+    // else because the keyboard opening moved things underneath it.
+    let pointerDownTarget = null;
 
     // Keyboard keys layout template
     const rows = [
@@ -70,10 +75,20 @@
 
         // Bind event listeners to existing and future inputs
         document.addEventListener('focusin', handleFocusIn);
+        // Capture phase, ahead of focusin: records the gesture's real start
+        // target before showKeyboard()'s own layout shift can move anything
+        // (docs/system/DEBT.md item 54 — opening the keyboard shifts the
+        // layout mid-tap, the same way the comment below already knew
+        // closing it could).
+        document.addEventListener('pointerdown', handlePointerDown, true);
         // Dismiss on click, not pointerdown: closing the keyboard can restore a
         // layout (index.html voice screen), and doing that mid-tap moves the
         // tapped control out from under the finger before the click lands.
         document.addEventListener('click', handleDocClick);
+    }
+
+    function handlePointerDown(e) {
+        pointerDownTarget = e.target;
     }
 
     function handleFocusIn(e) {
@@ -89,6 +104,12 @@
 
     function handleDocClick(e) {
         if (!keyboardEl || !keyboardEl.classList.contains('show')) return;
+
+        // A tap that started on the input now active must never close the
+        // keyboard it just opened, even if the keyboard's own layout shift
+        // moved this click's target elsewhere by the time it landed
+        // (docs/system/DEBT.md item 54).
+        if (activeInput && pointerDownTarget === activeInput) return;
 
         // If clicked outside active input and outside the keyboard container, hide it
         if (activeInput && e.target !== activeInput && !keyboardEl.contains(e.target)) {
