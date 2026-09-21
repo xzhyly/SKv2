@@ -1235,10 +1235,17 @@
     // so this still falls through to who-first, matching the original
     // behaviour. Existence check uses the same .bubble-row class
     // appendBubble() builds each bubble's row wrapper with (see
-    // appendBubble() below). Tapping Back while already on the resulting
-    // screen is a harmless no-op either way (showScreen() returns early for
-    // a same-screen call).
+    // appendBubble() below).
+    //
+    // who-first is talk.html's true entry point (docs/revision cycle 001):
+    // tapping Back while already there is a real "leave" action, not a
+    // same-screen no-op — it returns to the dashboard (index.html), the
+    // only place who-first can have been reached from.
     document.getElementById('backBtn').addEventListener('click', function () {
+      if (document.body.dataset.screen === 'who-first') {
+        location.href = 'index.html';
+        return;
+      }
       var hasMessages = document.querySelector('#thread-list .bubble-row') !== null;
       showScreen(hasMessages ? 'thread' : 'who-first');
     });
