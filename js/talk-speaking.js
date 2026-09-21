@@ -145,7 +145,13 @@
         renderTranscript();
       }
     } else if (message.event === 'partialresult') {        // js/script.js:276-286
-      partialText = (message.result && message.result.partial) || '';
+      // The worker posts a partialresult for every audio chunk it does not finalise, silence
+      // included (~7-12 a second). Re-rendering each one would wipe typed text the moment the mic
+      // opens and, through the bubbling 'input' event, re-arm talk.html's idle timer forever
+      // (js/script.js:276-286 guards this with `&& text`): only react when the partial changed.
+      var partial = (message.result && message.result.partial) || '';
+      if (partial === partialText) return;
+      partialText = partial;
       renderTranscript();
     }
   }
@@ -198,7 +204,8 @@
       fail('capture', (err && err.message) || String(err));
     } finally {
       // Only a start that is still current and still pending gets here with starting === true
-      // (leave()/setLanguage() reset the flag themselves and bump gen; do not clobber a newer start).
+      // (leave(), setLanguage() and the input-focus discard, discardPendingStart(), reset the flag
+      // themselves and bump gen; do not clobber a newer start).
       if (myGen === gen && starting) {
         starting = false;
         changed();
@@ -254,6 +261,10 @@
     // that went live afterwards would have no visible indicator).
     input.addEventListener('focus', function () { if (capturing) stopCapture(); else if (discardPendingStart()) changed(); });
     syncMic();
+    // The Vosk model may still be loading when this runs (and when the user reaches Speak or Type):
+    // re-sync the mic button whenever the load queue changes so it enables once the model is there.
+    // syncMic() only reads modelReady()/lang/capturing and rewrites the button state: safe any time.
+    if (window.TalkLoader && window.TalkLoader.onChange) window.TalkLoader.onChange(syncMic);
   }
 
   function enter() {
