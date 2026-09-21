@@ -1,1 +1,331 @@
-// placeholder — Task 4
+// js/talk-signing.js
+// Live camera + sign recognition for talk.html's signing screen. Logic is ported from
+// js/sign-to-text-ui.js's prediction loop (tlStartPredLoop, :416-601) and reuses that file's
+// k-NN / label / sentence functions instead of copying them (they are loaded by TalkLoader).
+// Contract: enter() acquires the camera; leave() releases the camera hardware (stops every
+// track) but never touches the MediaPipe Hands instance, the k-NN model or the queue, so
+// re-entry only pays for getUserMedia.
+(function () {
+  'use strict';
+
+  // Constants copied from js/sign-to-text-ui.js (line numbers there):
+  var ROLLING_WINDOW_SIZE = 4;    // :19
+  var STABILITY_THRESHOLD = 2;    // :22
+  var HOLD_MS = 500;              // :7 GESTURE_HOLD_MS
+  var CONFIDENCE_FLOOR = 0.45;    // :501
+  var NO_HAND_MS = 300;           // :432
+  var TICK_MS = 150;              // :600
+  var COUNTDOWN_S = 3;            // :723
+  var SKELETON_KEY = 'sining_kamay_show_skeleton'; // :876
+
+  var cb = {};
+  var active = false;
+  var gen = 0;
+  var stream = null;
+  var tickId = null;
+  var countdownId = null;
+  var uiState = 'idle';           // 'idle' | 'countdown' | 'recording'
+  var switching = false;
+  var words = [];
+  var history = [];
+  var lastConfirmed = null;
+  var stableTicks = 0;
+  var lastDetected = null;
+  var holdStart = null;
+  var currentGesture = null;
+  var lastHandAt = 0;
+
+  function $(id) { return document.getElementById(id); }
+
+  function setCaption(text) { $('signing-caption').textContent = text; }
+
+  function showDraft() {
+    var el = $('signing-draft');
+    el.textContent = words.join(' ');
+    el.classList.toggle('show', uiState === 'recording' && words.length > 0);
+  }
+
+  function setOverlay(show, text) {
+    if (text) $('signing-cam-overlay-text').textContent = text;
+    $('signing-cam-overlay').classList.toggle('show', !!show);
+  }
+
+  function renderButton(countdown) {
+    var b = $('stop-signing-btn');
+    b.disabled = !stream || switching || uiState === 'countdown';
+    if (uiState === 'countdown') b.textContent = 'Starting in ' + countdown + '…';
+    else if (uiState === 'recording') b.textContent = 'Stop & Add to Conversation';
+    else b.textContent = 'Translate';
+  }
+
+  function syncChips() {
+    var fil = signLang === 'fil';
+    $('chip-esl').classList.toggle('active', !fil);
+    $('chip-fsl').classList.toggle('active', fil);
+    var on = window.showSkeleton !== false;
+    var g = $('chip-guide');
+    g.textContent = 'Hand Guide: ' + (on ? 'On' : 'Off');
+    g.classList.toggle('active', on);
+    g.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  function clearHistory() {
+    history = [];
+    lastConfirmed = null;
+    stableTicks = 0;
+  }
+
+  function endSession() {
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+    uiState = 'idle';
+    words = [];
+    currentGesture = null;
+    lastDetected = null;
+    holdStart = null;
+    clearHistory();
+    $('camera-box').classList.remove('recording');
+    showDraft();
+    setCaption('Show your sign');
+    renderButton();
+  }
+
+  function beginCountdown() {
+    if (uiState !== 'idle' || !stream) return;
+    uiState = 'countdown';
+    var n = COUNTDOWN_S;
+    renderButton(n);
+    countdownId = setInterval(function () {
+      n--;
+      if (n > 0) { renderButton(n); return; }
+      clearInterval(countdownId);
+      countdownId = null;
+      uiState = 'recording';
+      words = [];
+      currentGesture = null;
+      lastDetected = null;
+      holdStart = null;
+      clearHistory();
+      $('camera-box').classList.add('recording');
+      showDraft();
+      renderButton();
+    }, 1000);
+  }
+
+  function finish() {
+    if (uiState !== 'recording') return;
+    var got = words.slice();
+    endSession();
+    if (!got.length) {
+      if (cb.onEmpty) cb.onEmpty();
+      return;
+    }
+    if (cb.onText) cb.onText(formulateSmartSentence(got, signLang));
+  }
+
+  function tick() {
+    if (!stream || !modelTrained || !knnModel || switching) return;
+    // Nothing should start or stop behind an open confirm/error card.
+    if (document.body.classList.contains('modal-open')) return;
+    try {
+      var now = Date.now();
+      if (!window.GestureDataRecorder.getLatestLandmarks()) {
+        if (now - lastHandAt > NO_HAND_MS) {
+          setCaption('Show your sign');
+          clearHistory();
+          lastDetected = null;
+          holdStart = null;
+          currentGesture = null;
+        }
+        return;
+      }
+      lastHandAt = now;
+      var f = extractFeatures($('signing-video'));
+      if (!Array.isArray(f) || f.length !== activeFeatureSize) return;
+      var pred = knnPredict(f);
+      if (!pred) return;
+
+      // 1. rolling temporal filter (newer predictions weigh more)
+      history.push(pred.scores);
+      if (history.length > ROLLING_WINDOW_SIZE) history.shift();
+      var weights = {};
+      history.forEach(function (scores, idx) {
+        var w = (idx + 1) / ROLLING_WINDOW_SIZE;
+        for (var l in scores) weights[l] = (weights[l] || 0) + scores[l] * w;
+      });
+      var smoothed = 'unknown';
+      var max = 0;
+      for (var lbl in weights) {
+        if (weights[lbl] > max) { max = weights[lbl]; smoothed = lbl; }
+      }
+      var totalW = history.reduce(function (s, _, i) { return s + (i + 1) / ROLLING_WINDOW_SIZE; }, 0);
+      var avg = max / (totalW || 1);
+
+      // 2. stability debounce
+      var confirmed = 'unknown';
+      if (smoothed !== 'unknown' && avg > CONFIDENCE_FLOOR) {
+        if (smoothed === lastConfirmed) {
+          stableTicks++;
+          if (stableTicks >= STABILITY_THRESHOLD) confirmed = smoothed;
+        } else {
+          lastConfirmed = smoothed;
+          stableTicks = 1;
+        }
+      } else {
+        lastConfirmed = null;
+        stableTicks = 0;
+      }
+
+      // 3. live caption
+      if (confirmed !== 'unknown') setCaption(translateGestureLabel(confirmed, signLang));
+      else setCaption(smoothed !== 'unknown' ? 'Stabilizing…' : 'Searching…');
+
+      // 4. start / word / stop flow
+      if (confirmed === 'unknown') { lastDetected = null; holdStart = null; return; }
+      if (uiState === 'idle') {
+        if (confirmed !== 'start') { lastDetected = null; holdStart = null; return; }
+        if (confirmed !== lastDetected) { lastDetected = confirmed; holdStart = Date.now(); return; }
+        if (Date.now() - holdStart < HOLD_MS) return;
+        lastDetected = null;
+        holdStart = null;
+        clearHistory();
+        beginCountdown();
+      } else if (uiState === 'recording') {
+        if (confirmed !== lastDetected) { lastDetected = confirmed; holdStart = Date.now(); return; }
+        if (Date.now() - holdStart < HOLD_MS) return;
+        if (confirmed === 'stop' && currentGesture !== 'stop') {
+          currentGesture = 'stop';
+          finish();
+        } else if (confirmed !== 'start' && confirmed !== 'stop' && currentGesture !== confirmed) {
+          currentGesture = confirmed;
+          words.push(translateGestureLabel(confirmed, signLang));
+          showDraft();
+          lastDetected = null;
+          holdStart = null;
+          clearHistory();
+        } else {
+          lastDetected = null;
+          holdStart = null;
+        }
+      }
+    } catch (e) {
+      console.error('[talk-signing] prediction tick failed:', e);
+    }
+  }
+
+  function loadModel() {
+    modelTrained = false;
+    knnModel = null;
+    return autoTrainForTranslate().catch(function (e) {
+      console.error('[talk-signing] model load failed:', e);
+      return false;
+    });
+  }
+
+  async function setLang(next) {
+    if (!active || switching || next === signLang) return;
+    var prev = signLang;
+    switching = true;
+    endSession();
+    setOverlay(true, 'AI is switching language…');
+    signLang = next;
+    syncChips();
+    var ok = await loadModel();
+    if (!ok) {
+      signLang = prev;
+      syncChips();
+      await loadModel();
+      if (cb.onModelError) cb.onModelError();
+    }
+    switching = false;
+    setOverlay(false);
+    renderButton();
+  }
+
+  function toggleSkeleton() {
+    window.showSkeleton = window.showSkeleton === false;
+    try { localStorage.setItem(SKELETON_KEY, window.showSkeleton); } catch (e) { /* storage blocked */ }
+    if (!window.showSkeleton) {
+      var c = $('tlCanvas1');
+      var ctx = c.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, c.width, c.height);
+    }
+    syncChips();
+  }
+
+  function enter() {
+    if (active) return;             // idempotent: never a second stream while one is active/starting
+    active = true;
+    var myGen = ++gen;
+    syncChips();
+    endSession();
+    setOverlay(true, 'Starting camera…');
+    renderButton();
+    initCameraWithFallback(320, 240, function (s) {
+      try {
+        if (!active || myGen !== gen) {   // left the screen while getUserMedia was in flight
+          s.getTracks().forEach(function (t) { t.stop(); });
+          return;
+        }
+        stream = s;
+        var v = $('signing-video');
+        v.srcObject = s;
+        v.classList.add('active');
+        var p = v.play();
+        if (p && p.catch) p.catch(function () { /* autoplay attr already set */ });
+        window.GestureDataRecorder.resumeHandLoop();
+        lastHandAt = Date.now();
+        tickId = setInterval(tick, TICK_MS);
+        setOverlay(false);
+        renderButton();
+      } catch (e) {
+        // must not throw: camera-helper would treat it as a getUserMedia failure and re-request
+        console.error('[talk-signing] camera start failed:', e);
+      }
+    }, function (err, msg) {
+      if (!active || myGen !== gen) return;
+      console.error('[talk-signing] camera failed:', err, msg);
+      active = false;
+      gen++;
+      setOverlay(false);
+      if (cb.onCameraError) cb.onCameraError(msg, err);
+    });
+  }
+
+  function leave() {
+    if (!active) return;
+    active = false;
+    gen++;
+    if (tickId) { clearInterval(tickId); tickId = null; }
+    if (countdownId) { clearInterval(countdownId); countdownId = null; }
+    if (window.GestureDataRecorder && window.GestureDataRecorder.pauseHandLoop) {
+      window.GestureDataRecorder.pauseHandLoop();
+    }
+    // Release the camera hardware: stop every track, then detach it from the <video>.
+    if (stream) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      stream = null;
+    }
+    var v = $('signing-video');
+    v.srcObject = null;
+    v.classList.remove('active');
+    var c = $('tlCanvas1');
+    var ctx = c.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, c.width, c.height);
+    setOverlay(false);
+    endSession();
+  }
+
+  function init(callbacks) {
+    cb = callbacks || {};
+    try { window.showSkeleton = localStorage.getItem(SKELETON_KEY) !== 'false'; } catch (e) { window.showSkeleton = true; }
+    $('stop-signing-btn').addEventListener('click', function () {
+      if (uiState === 'idle') beginCountdown();
+      else if (uiState === 'recording') finish();
+    });
+    $('chip-esl').addEventListener('click', function () { setLang('en'); });
+    $('chip-fsl').addEventListener('click', function () { setLang('fil'); });
+    $('chip-guide').addEventListener('click', toggleSkeleton);
+  }
+
+  window.TalkSigning = { init: init, enter: enter, leave: leave };
+})();

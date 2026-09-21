@@ -1045,12 +1045,11 @@
           <button type="button" class="mode-chip active" id="chip-guide" aria-pressed="true">Hand Guide: On</button>
         </div>
       </div>
-      <!-- Stands in for the classifier's confirm step, per
-           docs/system/DECISIONS.md's "two fake buttons" note — wired (Task 5)
-           to openModal('confirm', ...) with a canned result, never straight to
-           appendBubble(). See the click handler near the bottom of this
-           file's <script>. (Real camera logic replaces this handler in a
-           later task.) -->
+      <!-- Real control (js/talk-signing.js): "Translate" starts the 3 s
+           countdown, "Stop & Add to Conversation" ends the recording and
+           hands the recognised sentence to openModal('confirm', ...) — never
+           straight to appendBubble(). Its click handler lives in
+           TalkSigning.init(), not in this file's <script>. -->
       <button type="button" class="stop-signing-btn" id="stop-signing-btn">Translate</button>
     </div>
   </div>
@@ -1069,7 +1068,7 @@
     <!-- Fake mic button (Task 5) — stands in for real speech capture, which
          doesn't exist this phase (docs/system/DECISIONS.md's "two fake
          buttons" note). Wired below to openModal('confirm', ...) with a
-         canned result, same as the signing screen's Stop button. -->
+         canned result. -->
     <div class="speaking-mic-row">
       <button type="button" id="speaking-mic-btn" class="speaking-mic-btn" aria-label="Tap to Speak">
         <span class="speaking-mic-glyph" aria-hidden="true">&#127908;</span>
@@ -1094,9 +1093,9 @@
       </div>
       <!-- Real navigation per docs/system/DECISIONS.md ("End Conversation is
            a real page load back to index.html, not a hide") — calls the
-           already-defined empty onEndConversation() hook, then leaves the
-           page for real. Camera/speech teardown itself is a later phase's
-           job, not this task's. -->
+           already-defined onEndConversation() hook (releases the signing
+           camera), then leaves the page for real. Speech teardown is a later
+           phase's job. -->
       <button type="button" class="end-conversation-btn" id="end-conversation-btn">End Conversation</button>
     </div>
   </div>
@@ -1185,10 +1184,12 @@
     // after closeModal() (they use the loading-queue gate + openModal()).
     // Empty hook — a later phase attaches Vosk stop/mic teardown here.
     function onLeaveSpeaking() {}
-    // Empty hook — a later phase attaches full teardown then location.href
-    // navigation back to index.html here (see docs/ui-target/README.md,
-    // "End Conversation must be a real teardown").
-    function onEndConversation() {}
+    // End Conversation / idle "End Now": release the camera before the real page load (the
+    // load itself also frees it). Speech teardown (Vosk/mic) is still a later phase's job
+    // (see docs/ui-target/README.md, "End Conversation must be a real teardown").
+    function onEndConversation() {
+      TalkSigning.leave();
+    }
 
     /**
      * Show one of the four screens by name. Pure attribute-change: no
@@ -1411,9 +1412,10 @@
      * closeModal() if no onAction is given. Same shape as Confirm/Idle —
      * heading first — so Error reads as the same family of card, not an
      * afterthought. All three strings go through textContent, never
-     * interpolated into innerHTML. Not wired to any real failure condition
-     * this phase (no camera/mic exists yet to fail) — this is the reusable
-     * shell a later phase calls into, per docs/ui-target/README.md "Error
+     * interpolated into innerHTML. Real triggers now call into this shell:
+     * "Camera not available" / "Didn't catch that" / "Sign set not
+     * available" (js/talk-signing.js callbacks, wired below) and "Microphone
+     * not available" (maybeWarnMic()) — per docs/ui-target/README.md "Error
      * states".
      *
      * @param {{heading: string, message: string, buttonLabel: string, onAction: Function}} opts
@@ -1459,10 +1461,11 @@
      * pattern showScreen() above already established (validate up front,
      * throw rather than silently no-op) — now that Fix 1 has removed the
      * catch-all renderPlaceholderModal() fallback, every kind this function
-     * accepts has real content. To eyeball the "error" kind by hand (it has
-     * no real trigger yet this phase — no camera/mic exists to fail), call
-     * it directly from the browser console, e.g.:
-     *   openModal('error', {message: 'I cannot reach the camera.', buttonLabel: 'Try again'})
+     * accepts has real content. The "error" kind has real triggers (camera
+     * not available, didn't catch that, sign set not available, microphone
+     * not available); to eyeball it by hand, call it directly from the
+     * browser console, e.g.:
+     *   openModal('error', {heading: 'Camera not available', message: 'I cannot reach the camera.', buttonLabel: 'Go back'})
      *
      * @param {string} kind
      * @param {{label: string, text: string, from: 'deaf'|'hearing'}|{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
@@ -1516,6 +1519,9 @@
     function maybeWarnMic(entering) {
       if (micWarned || !TalkLoader.isSettled() || !stackFailed('speech')) return;
       if (!entering && document.body.dataset.screen !== 'speaking') return;
+      // Never overwrite an already-open card (idle / confirm / error). micWarned stays false,
+      // so the warning is deferred, not lost: onEnterSpeaking() retries on the next entry.
+      if (document.body.classList.contains('modal-open')) return;
       micWarned = true;
       openModal('error', {
         heading: 'Microphone not available',
@@ -1547,7 +1553,7 @@
       if (!TalkLoader.isSettled() || stackFailed('sign')) return;
       signingGuideSeen = true;
       setSigningSubstate('live');
-      if (window.TalkSigning) TalkSigning.enter();
+      TalkSigning.enter();
     });
 
     function onEnterSigning() {
@@ -1557,10 +1563,11 @@
         return;
       }
       setSigningSubstate('live');
-      if (window.TalkSigning) TalkSigning.enter();
+      TalkSigning.enter();
     }
     function onLeaveSigning() {
-      if (window.TalkSigning) TalkSigning.leave();
+      // leave() is a no-op when the camera was never started (Guide left without tapping Start).
+      TalkSigning.leave();
     }
     // Speak or Type gets no guide (spec: intentional asymmetry) — only the data-wait
     // "Getting ready…" state kept in sync by refreshGates() above.
@@ -1620,7 +1627,8 @@
      * total: this declaration, and the one real call site inside
      * renderConfirmModal()'s "Add to Conversation" button handler above.
      * Nothing else in this file calls appendBubble() directly; the signing
-     * Stop button, the speaking screen's fake mic button, and Send all route
+     * signing recognition (js/talk-signing.js), the speaking screen's fake
+     * mic button, and Send all route
      * through openModal('confirm', ...) first, per
      * docs/system/DECISIONS.md's "nothing enters the thread without passing
      * through Confirm."
@@ -1690,22 +1698,12 @@
       showScreen('speaking');
     });
 
-    // ── Task 5: canned-data pools for the two fake buttons ──
-    // docs/system/DECISIONS.md: the only two canned/fake inputs in this
-    // phase are the Signing screen's Stop button (stands in for the
-    // classifier) and the Speaking screen's fake mic button (stands in for
-    // real speech capture). Typed-and-Sent text is real data and never
-    // drawn from either pool. Choice is uniform-random (any deterministic
-    // or random choice was acceptable per the task brief); recorded here,
-    // not re-litigated in docs/system/DECISIONS.md since the brief already
-    // covers it as a non-decision.
-    var SIGNED_CANNED_POOL = [
-      'Hello, how are you?',
-      'Thank you very much',
-      'Nice to meet you',
-      'I need help, please',
-      'Yes, I understand'
-    ];
+    // ── Task 5: canned-data pool for the one remaining fake button ──
+    // The Signing screen is real now (js/talk-signing.js: live camera +
+    // k-NN recognition). The only canned input left is the Speaking
+    // screen's fake mic button (stands in for real speech capture, which
+    // does not exist yet). Typed-and-Sent text is real data and never drawn
+    // from this pool. Choice is uniform-random.
     var SPOKEN_CANNED_POOL = [
       'Hi, how can I help you today?',
       'Sure, one moment please',
@@ -1718,16 +1716,38 @@
     }
 
     // ── Screen 03 — Signing ──
-    // "Stop & Add to Conversation" stands in for the classifier's confirm
-    // step (docs/system/DECISIONS.md's "two fake buttons" note). Canned
-    // result, never appendBubble() directly — routes through the confirm
-    // modal like every other path into the thread.
-    document.getElementById('stop-signing-btn').addEventListener('click', function () {
-      openModal('confirm', {
-        label: 'You signed',
-        text: pickCanned(SIGNED_CANNED_POOL),
-        from: 'deaf'
-      });
+    // Real camera + recognition (js/talk-signing.js). Output goes through the SAME confirm
+    // card every other path uses — nothing reaches appendBubble() directly.
+    TalkSigning.init({
+      onText: function (text) {
+        openModal('confirm', { label: 'You signed', text: text, from: 'deaf' });
+      },
+      onEmpty: function () {
+        openModal('error', {
+          heading: "Didn't catch that",
+          message: 'I did not catch that.',
+          buttonLabel: 'Try again'
+        });
+      },
+      onCameraError: function () {
+        openModal('error', {
+          heading: 'Camera not available',
+          message: 'I cannot reach the camera.',
+          buttonLabel: 'Go back',
+          onAction: function () {
+            closeModal();
+            var hasMessages = document.querySelector('#thread-list .bubble-row') !== null;
+            showScreen(hasMessages ? 'thread' : 'who-first');
+          }
+        });
+      },
+      onModelError: function () {
+        openModal('error', {
+          heading: 'Sign set not available',
+          message: 'I could not load that sign language.',
+          buttonLabel: 'OK'
+        });
+      }
     });
 
     // ── Screen 04 — Speak or type ──
@@ -1741,8 +1761,8 @@
       });
 
       // Fake mic button (Task 5) — stands in for real speech capture, which
-      // doesn't exist this phase. Canned result, same pattern as the
-      // signing screen's Stop button.
+      // doesn't exist this phase. Canned result, routed through the confirm
+      // modal like every other path into the thread.
       document.getElementById('speaking-mic-btn').addEventListener('click', function () {
         openModal('confirm', {
           label: 'You said',
@@ -1752,7 +1772,7 @@
       });
 
       // Send: REAL typed text (docs/system/DECISIONS.md — "typed-and-sent
-      // messages are real data, not one of the two fake buttons"), never
+      // messages are real data, not a fake button"), never
       // drawn from SPOKEN_CANNED_POOL. Routes through the confirm modal like
       // every other path into the thread — Send itself never calls
       // appendBubble() directly. Field is cleared and Send re-disabled right
@@ -1784,9 +1804,9 @@
     // so unconditionally setting it here — 'typing' while the class is
     // present, null otherwise — cannot clobber some other intentional pill
     // state; if a future phase adds one, this observer will need to become
-    // aware of it. LISTENING (camera-related) has no trigger in this
-    // fake-data phase and is intentionally left undriven — there is no real
-    // camera yet to be listening to.
+    // aware of it. LISTENING has no trigger yet: the signing camera now
+    // exists (js/talk-signing.js) but does not drive this pill, and there is
+    // no real microphone to listen to, so it is intentionally left undriven.
     new MutationObserver(function () {
       setStatusPill(document.body.classList.contains('keyboard-active') ? 'typing' : null);
     }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -1804,8 +1824,8 @@
     // End Conversation: a real page load back to the dashboard, per
     // docs/system/DECISIONS.md ("End Conversation is a real page load back
     // to index.html, not a hide") — not a showScreen() call. Calls the
-    // already-declared empty onEndConversation() hook first (a later phase
-    // attaches camera/speech teardown there), then navigates for real.
+    // onEndConversation() hook first (it releases the signing camera; speech
+    // teardown is a later phase's job), then navigates for real.
     document.getElementById('end-conversation-btn').addEventListener('click', function () {
       onEndConversation();
       location.href = 'index.html';
