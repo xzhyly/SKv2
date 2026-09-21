@@ -504,10 +504,13 @@
          data-signing="guide", #stop-signing-btn in data-signing="live"
          (the other sub-state's container is display:none, so exactly one
          is ever visible)
-       - #screen-speaking  : #speaking-send ("Send" — stays orange even
-         disabled, see its :disabled rule below; opacity, not a colour swap,
-         is what "pale" means here, so the background-color audit still
-         finds exactly one orange element in either state)
+       - #screen-speaking  : one per sub-state — #speaking-translate in
+         data-speaking="compose" and #speaking-send in data-speaking="preview"
+         (the other's container is display:none in each, so exactly one is
+         ever visible). Both stay orange even disabled, see the
+         .speaking-send:disabled rule below: opacity, not a colour swap, is
+         what "pale" means here, so the background-color audit still finds
+         exactly one orange element in either state
        - #screen-thread    : #turn-speak-btn ("Speak or Type")
      Nothing else in this file sets a background to var(--orange)/
      var(--orange-dark). (.speaking-input's focus ring is an orange
@@ -690,6 +693,7 @@
   #screen-speaking[data-wait="1"] .speaking-wait{display:flex}
   #screen-speaking[data-wait="1"] .speaking-mic-row,
   #screen-speaking[data-wait="1"] .speaking-input-row{display:none}
+  /* (the chips and the preview panel are hidden while waiting by the "Screen 04 additions" rules below) */
 
   /* ── Screen 04 — Speak or type (docs/ui-target/README.md "04") ──
      js/virtual-keyboard.js is now wired (Fix 2 — an earlier task dispatch
@@ -698,17 +702,16 @@
      "Screen 04 keyboard-open layout" CSS block above for the
      body.keyboard-active overrides that apply only while the keyboard is
      raised. */
-  /* Fake mic button (Task 5) — README "04": "Draw it with the keyboard
-     raised and the microphone hidden," implying a microphone button exists
-     in the non-keyboard state that the (not-yet-built) keyboard hides when
-     raised. No real mic exists this phase (docs/system/DECISIONS.md "two
-     fake buttons"); this stands in for it, sitting above the text field —
-     the same general area the mic occupies before the keyboard covers it,
-     per README's "the microphone button and its label return to their
-     exact previous positions" note. Deliberately NOT orange: #speaking-send
-     is this screen's one orange element (see the Task 3 orange-audit
-     comment above) and this is a secondary/fake affordance, not the screen's
-     main action. */
+  /* Mic button — README "04": "Draw it with the keyboard raised and the
+     microphone hidden," implying a microphone button exists in the
+     non-keyboard state that the keyboard hides when raised. It is real now
+     (js/talk-speaking.js: Vosk capture into #speaking-input); it sits above
+     the text field, the same general area it occupies before the keyboard
+     covers it, per README's "the microphone button and its label return to
+     their exact previous positions" note. Deliberately NOT orange:
+     #speaking-translate (compose) / #speaking-send (preview) is this
+     screen's one orange element per sub-state (see the Task 3 orange-audit
+     comment above). */
   .speaking-mic-row{
     display:flex;flex-direction:column;align-items:center;gap:8px;
     margin-bottom:24px;
@@ -772,6 +775,40 @@
     opacity:0.5;
     cursor:not-allowed;
   }
+
+  /* ── Screen 04 additions (text-to-sign merge) ── */
+  .speaking-lang{display:flex;gap:12px;margin-bottom:16px}
+  .speaking-mic-btn:disabled{opacity:0.4;cursor:not-allowed}
+  /* Green = live/listening only (README colour rules). */
+  .speaking-mic-btn.listening{box-shadow:0 0 0 6px var(--green)}
+  .speaking-preview{display:none;flex-direction:column;align-items:center}
+  #screen-speaking[data-speaking="preview"] .speaking-preview{display:flex}
+  #screen-speaking[data-speaking="preview"] .speaking-lang,
+  #screen-speaking[data-speaking="preview"] .speaking-mic-row,
+  #screen-speaking[data-speaking="preview"] .speaking-input-row{display:none}
+  .speaking-sign-frame{
+    width:560px;height:260px;border-radius:12px;background:var(--navy);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;
+  }
+  .speaking-sign-word{
+    min-height:34px;margin:8px 0 16px;
+    font-size:28px;font-weight:700;color:var(--navy);text-align:center;
+  }
+  .speaking-preview-actions{display:flex;gap:20px;width:560px}
+  .speaking-preview-actions .speaking-edit,
+  .speaking-preview-actions .speaking-send{flex:1;width:auto;height:64px}
+  .speaking-edit{
+    border:1px solid var(--border);border-radius:12px;
+    background:var(--surface);color:var(--navy);
+    font-family:inherit;font-size:18px;font-weight:700;cursor:pointer;
+    transition:transform 0.08s, border-color 0.08s;
+  }
+  .speaking-edit:active{transform:scale(0.97);border-color:var(--navy)}
+  /* Raised keyboard: chips leave with the mic (both are hidden while typing). */
+  body.keyboard-active #screen-speaking .speaking-lang{display:none}
+  /* Waiting on the loading queue: nothing but "Getting ready…" (must come after the preview rules). */
+  #screen-speaking[data-wait="1"] .speaking-lang,
+  #screen-speaking[data-wait="1"] .speaking-preview{display:none}
 
   /* ── Screen 05 — The conversation (docs/ui-target/README.md "05") ──
      Bottom control panel. position:fixed + its own z-index (higher than
@@ -1054,21 +1091,24 @@
     </div>
   </div>
 
-  <!-- Screen 04 — docs/ui-target/README.md "04 — Speak or type". Keyboard
-       (js/virtual-keyboard.js) is out of scope for this task — see the
-       .speaking-input-row CSS comment above for how the layout leaves room
-       for it. -->
-  <div class="screen" id="screen-speaking" data-wait="1">
+  <!-- Screen 04 — docs/ui-target/README.md "04 — Speak or type". The keyboard
+       (js/virtual-keyboard.js) self-attaches to #speaking-input; see the
+       "Screen 04 keyboard-open layout" CSS above. data-speaking selects the
+       sub-state in place on this one screen: "compose" (language chips, mic,
+       input + Translate) or "preview" (sign frame + Edit/Send). -->
+  <div class="screen" id="screen-speaking" data-wait="1" data-speaking="compose">
     <!-- Waiting state — shown instead of the mic/input rows until the full
          loading queue has settled (kept in sync by refreshGates() below). -->
     <div class="speaking-wait" id="speaking-wait" role="status">
       <div class="speaking-wait-title">Getting ready…</div>
       <div class="speaking-wait-sub">This only takes a moment.</div>
     </div>
-    <!-- Fake mic button (Task 5) — stands in for real speech capture, which
-         doesn't exist this phase (docs/system/DECISIONS.md's "two fake
-         buttons" note). Wired below to openModal('confirm', ...) with a
-         canned result. -->
+    <div class="speaking-lang" id="speaking-lang" role="group" aria-label="Language">
+      <button type="button" class="mode-chip active" id="chip-lang-en" aria-pressed="true">English</button>
+      <button type="button" class="mode-chip" id="chip-lang-fil" aria-pressed="false">Filipino</button>
+    </div>
+    <!-- Real mic (js/talk-speaking.js): Vosk capture writes the live transcript into
+         #speaking-input; it is disabled in Filipino and while the model is not ready. -->
     <div class="speaking-mic-row">
       <button type="button" id="speaking-mic-btn" class="speaking-mic-btn" aria-label="Tap to Speak">
         <span class="speaking-mic-glyph" aria-hidden="true">&#127908;</span>
@@ -1077,7 +1117,17 @@
     </div>
     <div class="speaking-input-row">
       <input type="text" id="speaking-input" class="speaking-input" placeholder="Type your message" autocomplete="off">
-      <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
+      <button type="button" id="speaking-translate" class="speaking-send" disabled>Translate</button>
+    </div>
+    <!-- Preview panel (swaps in for the compose rows): the sign clip plays once here, pre-send.
+         Nothing in it is stored in the thread — Send routes the TEXT through the confirm card. -->
+    <div class="speaking-preview" id="speaking-preview">
+      <div class="speaking-sign-frame" id="speaking-sign-frame"></div>
+      <div class="speaking-sign-word" id="speaking-sign-word"></div>
+      <div class="speaking-preview-actions">
+        <button type="button" class="speaking-edit" id="speaking-edit">Edit</button>
+        <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
+      </div>
     </div>
   </div>
 
@@ -1094,8 +1144,7 @@
       <!-- Real navigation per docs/system/DECISIONS.md ("End Conversation is
            a real page load back to index.html, not a hide") — calls the
            already-defined onEndConversation() hook (releases the signing
-           camera), then leaves the page for real. Speech teardown is a later
-           phase's job. -->
+           camera and the speaking mic), then leaves the page for real. -->
       <button type="button" class="end-conversation-btn" id="end-conversation-btn">End Conversation</button>
     </div>
   </div>
@@ -1117,6 +1166,8 @@
   <script src="js/virtual-keyboard.js" defer></script>
   <script src="js/talk-loader.js"></script>
   <script src="js/talk-signing.js"></script>
+  <script src="js/sign-player.js"></script>
+  <script src="js/talk-speaking.js"></script>
   <script>
     'use strict';
 
@@ -1182,12 +1233,23 @@
 
     // onEnterSigning/onLeaveSigning/onEnterSpeaking are defined further down,
     // after closeModal() (they use the loading-queue gate + openModal()).
-    // Empty hook — a later phase attaches Vosk stop/mic teardown here.
-    function onLeaveSpeaking() {}
-    // End Conversation / idle "End Now": release the camera before the real page load (the
-    // load itself also frees it). Speech teardown (Vosk/mic) is still a later phase's job
-    // (see docs/ui-target/README.md, "End Conversation must be a real teardown").
+    // ── Text-to-sign merge: hoisted so onEnterSpeaking()/onLeaveSpeaking() can reach them ──
+    // Both are (re)assigned by the "Screen 04 — real speech + sign preview" IIFE further down.
+    var speakingPlayer = null;
+    var resetSpeakingUi = function () {};
+    // Leaving Speak or Type: stop any sign playback, release the mic (js/talk-speaking.js),
+    // and return the screen to an empty-looking compose state for the next entry.
+    function onLeaveSpeaking() {
+      if (speakingPlayer) speakingPlayer.cancel();
+      TalkSpeaking.leave();
+      resetSpeakingUi();
+    }
+    // End Conversation / idle "End Now": release the camera and the mic before the real page
+    // load (the load itself also frees them). The loaded Vosk model is a page-lifetime resource
+    // that the page load releases (see docs/ui-target/README.md, "End Conversation must be a
+    // real teardown").
     function onEndConversation() {
+      TalkSpeaking.leave();
       TalkSigning.leave();
     }
 
@@ -1587,6 +1649,9 @@
     // Speak or Type gets no guide (spec: intentional asymmetry) — only the data-wait
     // "Getting ready…" state kept in sync by refreshGates() above.
     function onEnterSpeaking() {
+      resetSpeakingUi();
+      TalkSpeaking.enter();
+      SignPlayer.registerCustomGestures();     // idempotent; one DB fetch per page load
       maybeWarnMic(true);
     }
 
@@ -1642,8 +1707,8 @@
      * total: this declaration, and the one real call site inside
      * renderConfirmModal()'s "Add to Conversation" button handler above.
      * Nothing else in this file calls appendBubble() directly; the signing
-     * signing recognition (js/talk-signing.js), the speaking screen's fake
-     * mic button, and Send all route
+     * signing recognition (js/talk-signing.js) and the speaking screen's Send
+     * (typed or spoken text) both route
      * through openModal('confirm', ...) first, per
      * docs/system/DECISIONS.md's "nothing enters the thread without passing
      * through Confirm."
@@ -1713,23 +1778,6 @@
       showScreen('speaking');
     });
 
-    // ── Task 5: canned-data pool for the one remaining fake button ──
-    // The Signing screen is real now (js/talk-signing.js: live camera +
-    // k-NN recognition). The only canned input left is the Speaking
-    // screen's fake mic button (stands in for real speech capture, which
-    // does not exist yet). Typed-and-Sent text is real data and never drawn
-    // from this pool. Choice is uniform-random.
-    var SPOKEN_CANNED_POOL = [
-      'Hi, how can I help you today?',
-      'Sure, one moment please',
-      'Thank you for waiting',
-      'Yes, that sounds good',
-      'Could you repeat that, please?'
-    ];
-    function pickCanned(pool) {
-      return pool[Math.floor(Math.random() * pool.length)];
-    }
-
     // ── Screen 03 — Signing ──
     // Real camera + recognition (js/talk-signing.js). Output goes through the SAME confirm
     // card every other path uses — nothing reaches appendBubble() directly.
@@ -1766,8 +1814,10 @@
     });
 
     // ── Screen 04 — Speak or type ──
-    // Real logic (not fake data, per this task's own scope note): Send stays
-    // disabled until there is non-whitespace text in the field.
+    // Real logic: Send stays disabled until there is non-whitespace text in the field. The
+    // text arrives by typing or by the real mic (js/talk-speaking.js writes the transcript
+    // into the field and fires `input` events); see the next IIFE for the mic, Translate,
+    // language chips and the sign preview.
     (function () {
       var speakingInput = document.getElementById('speaking-input');
       var speakingSend = document.getElementById('speaking-send');
@@ -1775,20 +1825,8 @@
         speakingSend.disabled = speakingInput.value.trim() === '';
       });
 
-      // Fake mic button (Task 5) — stands in for real speech capture, which
-      // doesn't exist this phase. Canned result, routed through the confirm
-      // modal like every other path into the thread.
-      document.getElementById('speaking-mic-btn').addEventListener('click', function () {
-        openModal('confirm', {
-          label: 'You said',
-          text: pickCanned(SPOKEN_CANNED_POOL),
-          from: 'hearing'
-        });
-      });
-
-      // Send: REAL typed text (docs/system/DECISIONS.md — "typed-and-sent
-      // messages are real data, not a fake button"), never
-      // drawn from SPOKEN_CANNED_POOL. Routes through the confirm modal like
+      // Send: REAL typed or spoken text (docs/system/DECISIONS.md —
+      // "typed-and-sent messages are real data"). Routes through the confirm modal like
       // every other path into the thread — Send itself never calls
       // appendBubble() directly. Field is cleared and Send re-disabled right
       // after handing the text off to the modal, so no stale text is left
@@ -1807,6 +1845,73 @@
       });
     })();
 
+    // ── Screen 04 — real speech + sign preview (js/talk-speaking.js, js/sign-player.js) ──
+    (function () {
+      var screen = document.getElementById('screen-speaking');
+      var input = document.getElementById('speaking-input');
+      var translateBtn = document.getElementById('speaking-translate');
+      var editBtn = document.getElementById('speaking-edit');
+      var sendBtn = document.getElementById('speaking-send');
+      var chipEn = document.getElementById('chip-lang-en');
+      var chipFil = document.getElementById('chip-lang-fil');
+
+      speakingPlayer = SignPlayer.create({
+        container: document.getElementById('speaking-sign-frame'),
+        wordLabel: document.getElementById('speaking-sign-word'),
+        getLanguage: function () { return TalkSpeaking.getLanguage(); }
+      });
+
+      function setState(name) { screen.setAttribute('data-speaking', name); }
+      function refreshTranslate() {
+        translateBtn.disabled = input.value.trim() === '' || TalkSpeaking.isCapturing();
+      }
+      function syncChips() {
+        var fil = TalkSpeaking.getLanguage() === 'fil-PH';
+        chipEn.classList.toggle('active', !fil);
+        chipFil.classList.toggle('active', fil);
+        chipEn.setAttribute('aria-pressed', fil ? 'false' : 'true');
+        chipFil.setAttribute('aria-pressed', fil ? 'true' : 'false');
+      }
+      resetSpeakingUi = function () { setState('compose'); refreshTranslate(); syncChips(); };
+
+      TalkSpeaking.init({
+        onChange: refreshTranslate,
+        onMicError: function () {
+          openModal('error', {
+            heading: 'Microphone not available',
+            message: 'I cannot hear anything.',
+            buttonLabel: 'Type instead'
+          });
+        }
+      });
+
+      input.addEventListener('input', refreshTranslate);
+      chipEn.addEventListener('click', function () { TalkSpeaking.setLanguage('en-US'); syncChips(); });
+      chipFil.addEventListener('click', function () { TalkSpeaking.setLanguage('fil-PH'); syncChips(); });
+
+      // Translate is the ONLY trigger (no auto-play on speech end or a typing pause).
+      translateBtn.addEventListener('click', function () {
+        if (translateBtn.disabled) return;
+        input.blur();                       // lowers the virtual keyboard if it is up
+        setState('preview');
+        sendBtn.disabled = input.value.trim() === '';
+        // js/sign-player.js's normalizeSpeechText does not strip '?' (nor does script.js's), so
+        // the '?' formatGrammar adds to a spoken sentence would become part of the last token
+        // ("you?") and break matching. Pass the text without '?' — the input keeps it for Send.
+        speakingPlayer.play(input.value.replace(/[?]/g, ''));
+      });
+      editBtn.addEventListener('click', function () {
+        speakingPlayer.cancel();
+        resetSpeakingUi();                  // back to compose, text kept
+      });
+      // Registered AFTER the untouched Send handler above, so it runs after it: the message
+      // is already in the confirm card; cancel the preview and return to an empty compose.
+      sendBtn.addEventListener('click', function () {
+        speakingPlayer.cancel();
+        resetSpeakingUi();
+      });
+    })();
+
     // ── Fix 2 (step 5): wire .status-pill's TYPING state for real ──
     // README defines TYPING as exactly "keyboard is open." js/virtual-
     // keyboard.js sets/clears body.keyboard-active from its own internal
@@ -1820,8 +1925,9 @@
     // present, null otherwise — cannot clobber some other intentional pill
     // state; if a future phase adds one, this observer will need to become
     // aware of it. LISTENING has no trigger yet: the signing camera now
-    // exists (js/talk-signing.js) but does not drive this pill, and there is
-    // no real microphone to listen to, so it is intentionally left undriven.
+    // exists (js/talk-signing.js) and so does the speaking mic
+    // (js/talk-speaking.js), but neither drives this pill, so it is
+    // intentionally left undriven.
     new MutationObserver(function () {
       setStatusPill(document.body.classList.contains('keyboard-active') ? 'typing' : null);
     }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
@@ -1839,8 +1945,8 @@
     // End Conversation: a real page load back to the dashboard, per
     // docs/system/DECISIONS.md ("End Conversation is a real page load back
     // to index.html, not a hide") — not a showScreen() call. Calls the
-    // onEndConversation() hook first (it releases the signing camera; speech
-    // teardown is a later phase's job), then navigates for real.
+    // onEndConversation() hook first (it releases the signing camera and the
+    // speaking mic), then navigates for real.
     document.getElementById('end-conversation-btn').addEventListener('click', function () {
       onEndConversation();
       location.href = 'index.html';
