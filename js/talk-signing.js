@@ -64,7 +64,12 @@
     $('chip-fsl').classList.toggle('active', fil);
     var on = window.showSkeleton !== false;
     var g = $('chip-guide');
-    g.textContent = 'Hand Guide: ' + (on ? 'On' : 'Off');
+    // Screen 03 controls redesign (docs/superpowers/specs/2026-09-21-
+    // signing-screen-controls-redesign-design.md): label stays the static
+    // short "Guide" — on/off now shows via .active (nav background) and
+    // the CSS-only state dot (.guide-toggle::before, green when active),
+    // not by rewriting the button's text on every sync.
+    g.textContent = 'Guide';
     g.classList.toggle('active', on);
     g.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
