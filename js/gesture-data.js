@@ -15,6 +15,8 @@
     label: "",
     frames: [],
     lastFrameAt: 0,
+    loopPaused: false,
+    loopGen: 0,
     frameIntervalMs: 90,
     video: null,
     toast: null,
@@ -354,6 +356,11 @@
 
   async function runHandLoop() {
     if (!state.hands || !state.video) return;
+    const gen = state.loopGen;
+    if (state.loopPaused) {
+      state.cameraLoop = null;
+      return;
+    }
     if (state.processingVideo) {
       state.cameraLoop = requestAnimationFrame(runHandLoop);
       return;
@@ -392,7 +399,44 @@
         console.warn("[gesture-data] MediaPipe frame skipped:", err);
       }
     }
+    // Paused or superseded (resumeHandLoop started a newer loop) while awaiting.
+    if (gen !== state.loopGen || state.loopPaused) return;
     state.cameraLoop = requestAnimationFrame(runHandLoop);
+  }
+
+  // Additive (signing-screen merge, docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md):
+  // "Stop the loop, not the object." pauseHandLoop() stops sending frames but keeps the
+  // Hands instance (and its ~15MB of WASM). resumeHandLoop() restarts frames on the same
+  // instance. Both drop the last landmarks so a stale hand from before a pause is never
+  // classified after resume.
+  function pauseHandLoop() {
+    state.loopPaused = true;
+    state.loopGen++;
+    if (state.cameraLoop) {
+      cancelAnimationFrame(state.cameraLoop);
+      state.cameraLoop = null;
+    }
+    state.latestLandmarks = null;
+  }
+
+  function resumeHandLoop() {
+    if (!state.hands || !state.video) return;
+    state.loopPaused = false;
+    state.loopGen++;
+    state.latestLandmarks = null;
+    runHandLoop();
+  }
+
+  // Creates the ONE Hands instance early (talk.html's loading queue) and forces its WASM +
+  // model to load now via initialize(), with the frame loop left paused until the camera
+  // is actually on. Reuses setupMediaPipe, so it goes through the same non-SIMD patch and
+  // is idempotent for the same video element (setupMediaPipe returns early).
+  async function preloadMediaPipe(video) {
+    const ok = await setupMediaPipe(video);
+    if (!ok || !state.hands) return false;
+    pauseHandLoop();
+    await state.hands.initialize();
+    return true;
   }
 
   function captureFrameIfRecording() {
@@ -613,6 +657,7 @@
   }
 
   function installHotkey() {
+    if (window.SK_DISABLE_GESTURE_HOTKEY) return;
     const isTranslateOnly = new URLSearchParams(location.search).get('screen') === 'translate';
     if (isTranslateOnly) return;
     document.addEventListener("keydown", (event) => {
@@ -689,6 +734,9 @@
     confirmAndSave,
     discardCapture,
     setupMediaPipe,
+    preloadMediaPipe,
+    pauseHandLoop,
+    resumeHandLoop,
     getLatestLandmarks,
     extractLandmarkFeatures,
     saveGestureSample,
