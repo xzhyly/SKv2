@@ -652,3 +652,22 @@ Appended one line per settled decision as the run proceeds.
 - **Nothing here touches `#translator-pane`.** Its header still links to
   `sign-to-text.html` (`index.html:653`); once that page is archived the link
   is dead. Remove, repoint, or retire `#translator-pane` too — owner's call.
+- **Final-review fixes (three, one commit): a single hand-loop guard instead
+  of a generation counter, an abandoned language switch, and the idle
+  countdown.** (1) `js/gesture-data.js` pause/resume now uses `sendInFlight`
+  plus the pending-rAF id, so `resumeHandLoop()` while a `hands.send()` is
+  still in flight — or while a loop is already running — starts nothing; the
+  reviewer found `state.processingVideo` (the file's apparent re-entrancy
+  guard) is never assigned, so the earlier generation counter alone could let
+  two sends overlap on the one `Hands` instance. Measured in real Chrome:
+  max concurrent sends 3–4 in the resume-while-running case before, 1 after;
+  a never-paused loop is unchanged (`gesture-training.html` still ~10 sends per
+  1.5 s). (2) `setLang()` in `js/talk-signing.js` now abandons quietly if the
+  user left (or left and came back) mid-switch — no error card on the wrong
+  screen — and on an abandoned *failed* switch still reverts `signLang` and
+  reloads the previous model, since the failed attempt had already emptied the
+  model. (3) `openModal()` in `talk.html` clears a running idle countdown when
+  any non-idle card opens over it, so a camera error can no longer be followed
+  by the conversation ending underneath it. Accepted, not fixed: while a
+  confirm/error card is open the idle timer only re-arms itself (existing
+  design), so an error card left unattended does not end the conversation.

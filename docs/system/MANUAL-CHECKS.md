@@ -231,7 +231,9 @@ during testing (`docs/system/DEBT.md` item 41).
       `DEBT.md` item 46): "Still there?" appears anyway.
 - [ ] Failure card: temporarily rename `models/vosk-model-small-en-us-0.15.tar.gz.zip`,
       hard-reload, open Sign Language (it still works), then Back and Speak or
-      Type. Expected: a "Microphone not available / Type instead" card, once.
+      Type. Expected: a "Microphone not available / Type instead" card, once. (The mic button on that screen is still the
+      canned stand-in this phase — it will still produce a made-up "You said"
+      bubble; only typing is real. That is the known state, not a new bug.)
       Rename the file back afterwards.
 - [ ] Failure card: with the camera unplugged or blocked, tap Start
       Translating. Expected: "Camera not available / Go back".
