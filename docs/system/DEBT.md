@@ -583,12 +583,24 @@ so a later session does not re-litigate them:
     recorded here so it's a choice made on purpose rather than a surprise
     found later.
 
-44. **Medium severity, open (owner decision): `index.html:653`'s
+44. **RESOLVED 2026-09-21 (commit `c94d62c`).** Was: **Medium severity, open (owner decision): `index.html:653`'s
     `#translator-pane` header links to `sign-to-text.html`, which is now
     archived.** The link ("Translate Sign to Text") is dead as of the archive
     commit. Deliberately not touched by the signing-screen merge (spec: out of
     scope). Options — remove the link, repoint it at `talk.html`, or retire
     `#translator-pane` too; none was picked.
+
+    **Resolution:** the third option — `#translator-pane` was retired. Its real
+    functionality (Vosk speech, the word-by-word sign player) moved into
+    `talk.html`'s Speak or Type screen (`js/talk-speaking.js`, `js/sign-player.js`)
+    and the pane, its inline style/script, the `vosk.js`/`script.js`/
+    `virtual-keyboard.js` tags and the hidden `#welcome-btn` were removed from
+    `index.html`; `js/script.js` is archived (`archive/script.js`,
+    `archive/TEXT-TO-SIGN-PANE.md`). Verified after the commit: a grep of
+    `index.html` for `translator-pane|sign-to-text|screen=voice|welcome-btn|tts-|script.js|vosk|virtual-keyboard`
+    finds nothing, and a repo-wide grep (excluding `archive/`, `docs/`) finds
+    none of `screen=voice`, `sign-to-text.html`, `welcome-btn`, `setTtsLanguage`,
+    `handleRecognizedText` outside comments and the dead CSS in item 60.
 
 45. **Medium severity, open: neither gesture set has a `stop` label.** The
     loaded k-NN has `start` (49 frames) in both ESL (120 labels) and FSL (90
@@ -643,7 +655,7 @@ so a later session does not re-litigate them:
     Type disables the mic (as `#translator-pane` did) rather than loading a
     Filipino model; typing and the Filipino sign folder work.
 
-54. **Medium severity, open (found, not fixed): tapping `#speaking-input` raises
+54. **High severity, open (found, not fixed): tapping `#speaking-input` raises
     the on-screen keyboard and immediately hides it.** Traced in real Chrome:
     `mousedown → #speaking-input`, `focusin → #speaking-input` (the keyboard
     raises and the layout shifts — the mic row is hidden while it is up),
@@ -656,7 +668,13 @@ so a later session does not re-litigate them:
     Pi's touchscreen, typing on Speak or Type does not work by tapping. Likely
     fix (not attempted — shared file, out of this phase's scope): remember the
     target of the last `pointerdown` and ignore a `click` that belongs to a tap
-    that started on the active input.
+    that started on the active input. Raised from Medium after the final review:
+    on a touchscreen this is the only text-entry path for the Filipino chip
+    (mic disabled by design) and for the mic-failure card's "Type instead", so both
+    are dead ends if it reproduces on the Pi; recommended as the immediate next
+    fix (retiring `#translator-pane` also removed one of the three pages that load
+    `js/virtual-keyboard.js` with a text input, shrinking the blast radius to
+    `gesture-training.html` and `talk.html`).
 
 55. **Low severity, open: `assets/signs/en|fil/fallback.png` are generated
     placeholders** (a grey "?" tile, 360×360, added with the text-to-sign merge).
@@ -684,6 +702,17 @@ so a later session does not re-litigate them:
     settles — milliseconds on localhost); the last clip that ends normally stays
     attached to the frame until the next `play()` or `cancel()`
     (`talk.html` cancels on Edit/Send/leave).
+
+60. **Low severity, open: `css/style.css` still carries dead `#translator-pane`
+    rules** (`:69`, `:261`, `:541`). `style.css` is linked only by `index.html`,
+    which no longer has that element. Left in place after the retirement:
+    trimming it risks the dashboard's `@media` blocks in the same file for no
+    visible gain.
+
+61. **Low severity, open: a message consisting only of `?` cannot be sent from
+    Speak or Type.** Translate strips `?` before playing (`normalizeSpeechText`
+    does not), so it stays disabled for a `?`-only input, and Send now lives only
+    in the preview panel. Before the text-to-sign merge, `?` + Send worked.
 
 ## Dead code
 

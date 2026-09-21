@@ -33,7 +33,7 @@ and listing all 300+ leaf files individually would not add ownership information
 
 | File | Lines | Owns |
 |---|---|---|
-| [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3) |
+| [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3). **Dashboard only since 2026-09-21** — `#translator-pane` and its scripts were retired; the line count is now 93 |
 | [archive/sign-to-text.html](../../archive/sign-to-text.html) | 120 | **Archived 2026-09-21** (merged into `talk.html`; see `archive/SIGN-TO-TEXT.md`) — was the sign-to-text screen shell |
 | [gesture-training.html](../../gesture-training.html) | 380 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26) |
 | [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
@@ -52,7 +52,7 @@ and listing all 300+ leaf files individually would not add ownership information
 
 | File | Lines | Owns |
 |---|---|---|
-| [js/script.js](../../js/script.js) | 1094 | Loaded by `index.html`; index/dashboard screen logic, posts to `save_gesture.php` |
+| [archive/script.js](../../archive/script.js) | 1094 | **Archived 2026-09-21** (commit `c94d62c`) with index.html's `#translator-pane`; its pipeline was ported to `js/sign-player.js` / `js/talk-speaking.js` (see `archive/TEXT-TO-SIGN-PANE.md`) |
 | [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `talk.html` via `js/talk-loader.js` since 2026-09-21 (was `sign-to-text.html`); k-NN/label/sentence logic |
 | [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1360 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26) |
 | [js/gesture-data.js](../../js/gesture-data.js) | 708 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed) |
@@ -175,7 +175,7 @@ bundle that contained it were deleted in Phase 1 as dead code — see
 
 Per-page script load order (in document order, from each HTML file's `<script src>` tags):
 
-- **index.html**: `js/vosk.js` → `js/script.js?v=5` → `js/virtual-keyboard.js`
+- **index.html**: no scripts since 2026-09-21 (was `js/vosk.js` → `js/script.js?v=5` → `js/virtual-keyboard.js`; `js/vosk.js` is now loaded by `js/talk-loader.js` for `talk.html`)
 - **camera-translator.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/db-local.js` → `js/virtual-keyboard.js`
 - **sign-to-text.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/sign-to-text-ui.js`
 - **gesture-training.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/gesture-training-ui.js` → `js/virtual-keyboard.js`

@@ -391,6 +391,11 @@ below. None of that ran.
 
 ## Part 2: Dashboard, Training & Admin Screens
 
+> **Update 2026-09-21:** `index.html` is now a pure dashboard. `#translator-pane` (the text/voice-to-sign screen,
+> `?screen=voice`) and `js/script.js` were retired into `talk.html`'s Speak or Type screen (Part 3b; archived at
+> `archive/script.js`, see `archive/TEXT-TO-SIGN-PANE.md`). Anything below that describes that pane, its `?screen=voice`
+> entry point or `js/script.js` describes the code as it was until then.
+
 ### 1. Owns these files
 
 - `index.html`
@@ -758,7 +763,7 @@ which is pre-existing.
 `js/talk-speaking.js` (`window.TalkSpeaking` — Vosk capture), `assets/signs/en/fallback.png` +
 `assets/signs/fil/fallback.png` (neutral grey "?" placeholder tiles, 360×360; the pipeline's last step
 requested them but they never existed). Both scripts are plain `<script src>` tags before the inline script.
-`js/script.js` is not loaded by `talk.html` and is not edited; it is retired with `#translator-pane`.
+`js/script.js` was never loaded by `talk.html` and was not edited; it was archived (`archive/script.js`) together with `#translator-pane` in commit `c94d62c` — the `script.js:NNN` citations in the new files refer to `archive/script.js`.
 
 **Sign pipeline (`js/sign-player.js`).** A port of a copy, not a shared module (`script.js` cannot be loaded
 into `talk.html`: `:13`/`:441` dereference `index.html`-only ids). The asset maps, `normalizeSpeechText`,
@@ -799,8 +804,8 @@ Note: digits have clips (`assets/signs/en/5.webm` exists), so a single digit is 
 - `scrollWidth` is 1024/1024 in compose, compose + keyboard, preview (playing), preview on turn 2+.
 
 **Speech (`js/talk-speaking.js`).** Tap the mic to start, tap again to stop; the transcript (final + partial) is
-written live into `#speaking-input` with an `input` event each time (so Translate gating and the idle timer stay
-in sync). Ready hook: `TalkLoader.voskModel !== null` (set by the queue before the `vosk-model` item is marked
+written into `#speaking-input`, with an `input` event whenever the text actually changes (so Translate gating and the
+idle timer stay in sync; empty repeat partials from the recogniser are ignored — found in the final review). Ready hook: `TalkLoader.voskModel !== null` (set by the queue before the `vosk-model` item is marked
 done; the loader gained no new API). On stop the last partial is appended and `formatGrammar` applied; Translate
 strips `?` before playing (`normalizeSpeechText` does not). Filipino disables the mic ("Voice input disabled in
 Filipino", as `script.js:467-485`); typing still works and plays from `assets/signs/fil/`. The kiosk USB mic is

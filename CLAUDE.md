@@ -69,7 +69,9 @@ the mic) filling the text field, an explicit **Translate** button, and an in-pla
 word-by-word sign-video preview (`js/sign-player.js`, a port of `js/script.js`'s
 pipeline) before the unchanged Send → confirm → Add to Conversation flow; the
 preview is never stored in the thread. No DB logging happens from `talk.html`.
-Open it at `/SKR/talk.html`.
+Open it at `/SKR/talk.html`. `index.html` is now a **pure dashboard**: the old
+`#translator-pane` (`?screen=voice`) and `js/script.js` were retired into this screen
+and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).
 
 ## Where to read for what
 

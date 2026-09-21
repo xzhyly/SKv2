@@ -16,7 +16,7 @@ here.
       arm's length, standing. Can you read the card captions ("Practise FSL",
       "Talk with someone")? 17px renders at 2.5 mm on this panel. If you have
       to work at it, raise the caption to 19px and re-check.
-- [ ] `index.html?screen=voice` — just load it — mic button, EN/Filipino
+- [ ] ~~`index.html?screen=voice`~~ (superseded, see the note under "Voice screen keyboard") — just load it — mic button, EN/Filipino
       toggle, mic dropdown, and text input all visible without scrolling.
 - [ ] `reports.html` — enter PIN `2026`, stay on ESL Signs tab — stat cards
       and all 3 tabs fully visible; scroll inside the table area — every row
@@ -71,6 +71,8 @@ Network → **Disable cache** ticked. `js/virtual-keyboard.js` and
 cache once after deploying.
 
 ## Voice screen keyboard (`index.html?screen=voice`)
+
+*Superseded 2026-09-21: `#translator-pane` and its `?screen=voice` entry point were retired (commit `c94d62c`); `?screen=voice` now loads the plain dashboard. The keyboard on the Speak or Type screen is checked in the "Text-to-sign merge" section at the end.*
 
 - [ ] Tap the text box. Expected: the keyboard opens; the microphone button,
       "Tap to Speak", the English/Filipino toggle and "— OR —" disappear
