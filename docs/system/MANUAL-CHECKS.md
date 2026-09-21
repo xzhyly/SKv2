@@ -237,3 +237,50 @@ during testing (`docs/system/DEBT.md` item 41).
       Rename the file back afterwards.
 - [ ] Failure card: with the camera unplugged or blocked, tap Start
       Translating. Expected: "Camera not available / Go back".
+
+## Text-to-sign merge — the real Speak or Type screen (2026-09-21)
+
+`talk.html`'s Speak or Type screen now has a real microphone (Vosk) and a word-by-word sign-video preview
+(`js/talk-speaking.js`, `js/sign-player.js`); the fake mic stand-in is gone. Automation (real Chrome, a
+synthesized-speech WAV as the fake microphone, CDP) measured timing, the fallback chain, gating, layout and
+idempotency — see `docs/system/UI.md` Part 3b. Everything below needs a person, real audio hardware, and ideally
+the Pi. **Hard-reload first** (Ctrl+Shift+R, or clear Chromium's cache once on the Pi): `talk.html` and `js/` carry
+no version string (`docs/system/DEBT.md` item 41).
+
+- [ ] **Real speech on this machine's microphone.** Load `http://localhost/SKR/talk.html`, wait for the loading
+      queue, tap Speak or Type, tap the mic, say "hello, how are you", tap the mic again. Expected: the words
+      appear in the text field as you speak, and after you stop the field reads about "Hello, how are you." (the
+      English model is small — note what it actually wrote and where it went wrong; a couple of wrong words is the
+      model, not a bug). The browser's microphone indicator goes **off** as soon as you stop.
+- [ ] **Translate.** With that text (or any typed text) tap **Translate**. Expected: the mic/chips/text rows are
+      replaced in place by the sign frame, and the words play one after another with the current word shown
+      under the frame. Nothing plays until you tap Translate, and Translate stays greyed while the field is empty
+      or the mic is still recording.
+- [ ] **The sign video is legible at kiosk viewing distance.** Stand where a person at the kiosk stands (arm's
+      length) and watch a whole sentence: can you read the hand shapes? The clips are small (words are 360×202,
+      letters 360×640, shown inside a 560×260 frame — `DEBT.md` item 57), so this is the check that matters. Note
+      the fingerspelled letters too (type "xyz").
+- [ ] **Edit and Send.** In the preview tap **Edit**: back to the text field with your text intact and playback
+      stopped. Translate again, then tap **Send** while it is still playing: the confirm card shows exactly the
+      text, nothing plays behind it, and after Add to Conversation the thread shows the **text only** — no video,
+      no image.
+- [ ] **Leaving stops everything.** Start a preview, tap the header **Back** (from a conversation that already
+      has a message): the video stops at once. Start the mic, then tap Back: the microphone indicator goes off.
+- [ ] **Filipino does not crash anything.** Tap the **Filipino** chip. Expected: the mic greys out and reads
+      "Voice input disabled in Filipino" (the speech model is English-only by design — `DEBT.md` item 53), typing
+      still works, and Translate plays clips from the Filipino folder (try "kamusta"). An unknown Filipino word
+      (try "xyz") plays **nothing** — Filipino has no fingerspelling clips (`DEBT.md` item 56); that is the known
+      state. Tap **English** and the mic comes back.
+- [ ] **A word with no sign.** Type a single symbol such as `@` and Translate: a grey "?" tile shows for about a
+      second (the placeholder `fallback.png`, `DEBT.md` item 55).
+- [ ] **The Pi's USB microphone.** On the Pi, with the USB mic plugged in (label contains "AB13X" or "USB
+      Audio"), tap the mic twice on the first visit (the first tap grants permission, after which the label is
+      readable). Expected: the USB mic is used from then on without anyone choosing it. The old mic dropdown is
+      not ported; if the wrong mic is used, that is what to report.
+- [ ] **Tapping the text field raises the keyboard and it STAYS up (known issue, `DEBT.md` item 54).** Tap the
+      text field with a finger. Expected: the on-screen keyboard rises, the chips and mic disappear, and it stays.
+      Automation reproduced the opposite (it rises and is hidden again by the same tap) with a real mouse click
+      and with emulated touch; on the real touchscreen this decides whether typing works at all, so please
+      confirm it first.
+- [ ] **Many turns.** Alternate Sign and Speak or Type for 15+ turns, sometimes previewing, sometimes editing,
+      sometimes leaving mid-preview. Watch Chromium's memory (`top` / Task Manager). Expected: it plateaus.

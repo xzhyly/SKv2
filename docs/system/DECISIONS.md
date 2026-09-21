@@ -689,3 +689,84 @@ One line per settled decision, appended as the run proceeds.
   reaches the thread that the speaker did not agree to; storing media in the
   thread would also grow DOM/memory per turn on a Pi that already reloads the
   page to clean up, and the thread is capped at ~30 bubbles for the same reason.
+- **The sign pipeline is ported as a copy into `js/sign-player.js`, not extracted
+  into a module shared with `js/script.js`.** Reason: `script.js` cannot be
+  loaded into `talk.html` at all (`:13` and `:441` call `addEventListener` on
+  `index.html`-only ids with no null-guard; ~13 top-level `const`s pollute the
+  global scope), so "sharing" would mean refactoring a page scheduled for
+  deletion while its `#translator-pane` must keep working until verified; and
+  after retirement `script.js` has no consumer, so a shared module would have
+  exactly one user. The copy becomes the sole implementation when `script.js` is
+  archived. The maps, `normalizeSpeechText`, `formatGrammar` and
+  `fetchAndRegisterCustomGestures` are byte-identical (diff-verified); the
+  matching/fallback logic and its constants are unchanged.
+- **Five departures from `script.js` are allowed and no others:** the language
+  is an argument, not read from `#lang-select`; the container and word label are
+  injected, not module-scope; a cancellation token plus abortable waits (Edit /
+  Send / leaving must stop playback); every `<video>` is released (the original
+  never releases its probe); and the fallback `<img>` is built with DOM APIs.
+  Reason for the last one: the original interpolated the label into
+  `innerHTML` (`script.js:997`), and on this public kiosk the label derives from
+  typed text.
+- **Neutral `fallback.png` placeholders were added to `assets/signs/en/` and
+  `/fil/` (owner-approved, commit `ca8b8c9`).** Reason: the pipeline's last step
+  requested `<assetBase>fallback.png` (`script.js:938`), which never existed
+  anywhere in the repo, so it silently showed nothing and the spec's "…then
+  `fallback.png`" chain could not be tested as written. A grey "?" tile,
+  replaceable with real art; no logic change.
+- **Filipino fingerspelling stays verbatim and logged, with no English fallback
+  (owner-approved).** `assets/signs/fil/` has 89 clips and none of a–z, so an
+  unknown Filipino word plays nothing (measured: 128 ms, empty frame). Falling
+  back to the English alphabet would change behaviour the spec said to carry
+  over unchanged; recorded as `DEBT.md` item 56.
+- **EN/Filipino chips sit above the mic on the compose state (owner-approved).**
+  `talk.html` had no language toggle since the one on "Who speaks first?" was
+  removed, but the spec says the chips carry over. Default English, kept for the
+  conversation, hidden together with the mic while the keyboard is up. Filipino
+  keeps the pane's behaviour: **mic disabled**, typing still works from
+  `assets/signs/fil/`. Vosk stays English-only (`DEBT.md` item 53).
+- **Compose is `[input | Translate]`; Send moves into the preview panel and is
+  enabled immediately; Edit returns to compose with the text kept
+  (owner-approved).** Reason: the spec puts a Translate step before Send, and
+  making Send wait for a sentence to finish playing would be ~4 s per word.
+  Send is the *same element and click handler* — only its position changed —
+  so Send → confirm → Add to Conversation is byte-for-byte unchanged.
+- **Translate is disabled while a mic capture is starting or running, not just
+  while capturing.** Found in review: with text in the field, tapping the mic and
+  then Translate before the mic opened put the preview up, and the microphone then
+  went live under it with no indicator and overwrote the text Send would confirm.
+  `TalkSpeaking.isBusy()` (`starting || capturing`) now drives the gate, and
+  focusing the input, switching to Filipino, or leaving discards a pending start.
+- **The mic writes into `#speaking-input`; on stop `formatGrammar` is applied and
+  Translate strips `?` before playing.** Reason: Send/confirm need a plain string
+  in that input, and a formatted sentence ("Hello, how are you?") reads properly
+  in the bubble; but `normalizeSpeechText` (here and in `script.js`) does not
+  strip `?`, so "you?" would break phrase matching and fingerspell a question mark.
+- **The pane's auto-translate on mic stop (`script.js:715-717`) is dropped;
+  Translate is the only trigger.** The pane's mic-picker dropdown (13 px text,
+  below the touch floor) is not ported; the USB mic auto-selection
+  (`ab13x` / `usb audio`, `script.js:1050-1063`) is, because its only consumer of
+  `selectedMicId` writes lived in `script.js` and would otherwise vanish with it.
+- **One Vosk listener pair per model, filtered by `recognizerId`.** The bundled
+  `vosk.js` attaches `recognizer.on()` to the model's event target with no
+  removal and no id filter, so a listener per capture (what `script.js` does)
+  multiplies the transcript — measured 1, 2, 3, 4 listeners and the phrase 4×
+  then 8× over four captures on the code as first written. `remove()` exists and
+  is called on teardown; `script.js:261` never frees its recognizers.
+- **`SignPlayer.registerCustomGestures()` runs on first entry to Speak or Type**
+  (one `save_gesture.php?no_sync=1` fetch; measured 2 in a cold-cache page load
+  together with the queue's own). It registers DB gesture labels so multi-word
+  labels group as phrases, as `script.js:878` did at page load.
+- **Recorded, not fixed here: tapping `#speaking-input` raises the on-screen
+  keyboard and immediately hides it.** `mousedown` lands on the input,
+  `focusin` raises the keyboard and the layout shifts (the mic row hides), so
+  `mouseup`/`click` land on `#screen-speaking`, and `js/virtual-keyboard.js`'s
+  `handleDocClick` treats that as "clicked outside" and hides it (traced in real
+  Chrome: `mousedown → speaking-input, focusin → speaking-input, mouseup →
+  screen-speaking, click → screen-speaking`; same with emulated touch). It
+  predates this phase (present on the previous `talk.html`), lives in a shared
+  file, and every earlier check raised the keyboard with `.focus()`. `DEBT.md`
+  item 54; needs a real-touch confirmation on the Pi.
+- **The retirement of `#translator-pane` is its own final commit, after
+  end-to-end verification**, and resolves `DEBT.md` item 44 by removing the
+  pane the dead link lived in.

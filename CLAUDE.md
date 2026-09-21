@@ -63,9 +63,13 @@ stack and then the Vosk speech model once per page load and gates the Guide /
 "Getting ready…" screens on the whole queue; `talk.html?devqueue` shows a
 diagnostic overlay for it (off otherwise). Leaving the signing screen stops the
 camera tracks (hardware released) but keeps the loaded model and the single
-MediaPipe instance. The **speak side is still fake**: the mic button is a
-canned stand-in (the Vosk model loads but nothing captures speech), and no DB
-logging happens from `talk.html`. Open it at `/SKR/talk.html`.
+MediaPipe instance. The **speak side is real too** (2026-09-21): Speak or Type has
+a real Vosk microphone (`js/talk-speaking.js`, English-only model; Filipino disables
+the mic) filling the text field, an explicit **Translate** button, and an in-place
+word-by-word sign-video preview (`js/sign-player.js`, a port of `js/script.js`'s
+pipeline) before the unchanged Send → confirm → Add to Conversation flow; the
+preview is never stored in the thread. No DB logging happens from `talk.html`.
+Open it at `/SKR/talk.html`.
 
 ## Where to read for what
 

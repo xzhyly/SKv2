@@ -638,7 +638,52 @@ so a later session does not re-litigate them:
     `vosk-model-small-en-us-0.15` exists in `models/`; README's "one model
     chosen on screen 02" and the operator-setting default recorded in
     `DECISIONS.md` are unbuilt. The queue now loads it (41 MB) for every
-    conversation, including ones that only type.
+    conversation, including ones that only type. **Still English-only after the
+    text-to-sign merge, by design of that phase:** the Filipino chip on Speak or
+    Type disables the mic (as `#translator-pane` did) rather than loading a
+    Filipino model; typing and the Filipino sign folder work.
+
+54. **Medium severity, open (found, not fixed): tapping `#speaking-input` raises
+    the on-screen keyboard and immediately hides it.** Traced in real Chrome:
+    `mousedown → #speaking-input`, `focusin → #speaking-input` (the keyboard
+    raises and the layout shifts — the mic row is hidden while it is up),
+    `mouseup → #screen-speaking`, `click → #screen-speaking`;
+    `js/virtual-keyboard.js`'s `handleDocClick` (`:90-97`) sees a click whose
+    target is not the input and calls `hideKeyboard()`, which also blurs the
+    input. Same result with emulated touch. Predates the text-to-sign merge
+    (present on the previous `talk.html`); every earlier check raised the keyboard
+    with `.focus()`, so a real tap was never exercised. If it reproduces on the
+    Pi's touchscreen, typing on Speak or Type does not work by tapping. Likely
+    fix (not attempted — shared file, out of this phase's scope): remember the
+    target of the last `pointerdown` and ignore a `click` that belongs to a tap
+    that started on the active input.
+
+55. **Low severity, open: `assets/signs/en|fil/fallback.png` are generated
+    placeholders** (a grey "?" tile, 360×360, added with the text-to-sign merge).
+    The pipeline's last step always requested them; they did not exist. Replace with
+    real art if desired.
+
+56. **Low severity, open: Filipino has no fingerspelling clips.**
+    `assets/signs/fil/` holds 89 clips and none of a–z, so an unknown Filipino
+    word plays nothing (measured: 128 ms, empty frame). Owner decision:
+    left as the original pipeline behaves rather than falling back to the English
+    alphabet.
+
+57. **Low severity, open: the sign clips are small.** Words are 360×202,
+    letters 360×640 (measured with `ffmpeg -i`), displayed inside a 560×260 frame
+    with `object-fit: contain`. Legibility at kiosk viewing distance is a manual
+    check, not an automated one.
+
+58. **Low severity, open: `ScriptProcessorNode` is carried into
+    `js/talk-speaking.js`** exactly as in `script.js` (item 33's deprecation
+    warning applies to the new file; `AudioWorklet` is the replacement).
+
+59. **Low severity, open: small `js/sign-player.js` gaps found in review.**
+    The one wait that cannot be aborted is the existence probe in
+    `displaySignWithFallback` (a `play()` promise can stay pending until the probe
+    settles — milliseconds on localhost); the last clip that ends normally stays
+    attached to the frame until the next `play()` or `cancel()`
+    (`talk.html` cancels on Edit/Send/leave).
 
 ## Dead code
 

@@ -752,6 +752,72 @@ Exactly one visible orange element per state (Guide: `guide-start-btn`; live:
 only other orange match is the parked, off-stage virtual keyboard's HIDE key,
 which is pre-existing.
 
+### 3b. Text-to-sign merge — the real Speak or Type screen (spec: `docs/superpowers/specs/2026-09-21-text-to-sign-merge-design.md`)
+
+**New files:** `js/sign-player.js` (`window.SignPlayer` — DOM-agnostic port of `js/script.js`'s sign pipeline),
+`js/talk-speaking.js` (`window.TalkSpeaking` — Vosk capture), `assets/signs/en/fallback.png` +
+`assets/signs/fil/fallback.png` (neutral grey "?" placeholder tiles, 360×360; the pipeline's last step
+requested them but they never existed). Both scripts are plain `<script src>` tags before the inline script.
+`js/script.js` is not loaded by `talk.html` and is not edited; it is retired with `#translator-pane`.
+
+**Sign pipeline (`js/sign-player.js`).** A port of a copy, not a shared module (`script.js` cannot be loaded
+into `talk.html`: `:13`/`:441` dereference `index.html`-only ids). The asset maps, `normalizeSpeechText`,
+`formatGrammar`, `rebuildKnownPhrases` and `fetchAndRegisterCustomGestures` are byte-for-byte copies (verified
+by diff); `findLongestKnownPhrase`, `displaySignWithFallback`, `displayMedia` and `playSequence` are the same
+logic and constants. Departures: the language is an argument (not `#lang-select`), container/label are injected,
+a cancellation token, every `<video>` released, and the fallback `<img>` is built with DOM APIs (the original
+interpolated the typed label into `innerHTML`). Chain: probe `assets/signs/<lang>/<word>.webm` → static map →
+per-letter fingerspelling → `fallback.png` (single unmatched character) — a 2000 ms hold follows a static-map
+success only. **Measured through the real UI** (headless Chrome, 1024×600; Translate click → sequence done;
+clip durations from the repo's `ffmpeg.exe`):
+
+| Language / text | Path taken | Measured | Expected from clips |
+|---|---|---|---|
+| en `hello` | custom `hello.webm` | 2043 ms | 2.00 s |
+| en `thank you` | probe `thank_you.webm` (absent) → map → `nice_to_meet_you.webm` + 2000 ms hold | 4856 ms | 2.80 + 2.00 = 4.80 s |
+| en `xyz` | probe `xyz.webm` (absent) → fingerspell X, Y, Z | 8565 ms (labels at 36, 2682, 5523 ms) | 2.60 + 2.80 + 3.00 = 8.40 s |
+| en `@` | no clip, no map entry, length 1 → `fallback.png` | 1266 ms | 1200 ms + probes |
+| fil `kamusta` | custom `fil/kamusta.webm` | 2046 ms | 2.00 s |
+| fil `xyz` | fingerspell → **no letter clips exist in `assets/signs/fil/`** | 128 ms, nothing displayed | — (known gap, `DEBT.md`) |
+| fil `@` | `fil/fallback.png` | 1279 ms | 1200 ms + probes |
+
+Note: digits have clips (`assets/signs/en/5.webm` exists), so a single digit is *not* an unmatched character.
+
+**Screen states** (`#screen-speaking[data-speaking]`, all in the same column; `#screen-speaking` stays
+`[0,0,1024,600]` in every state — measured):
+- `compose` — English/Filipino chips (200×60, at x=306 and 518, y=178 on turn 1), the mic (110×110), and
+  `[input 700×64 | Translate 180×64]`. **Translate** is that state's one orange element and is disabled while the
+  input is empty, whitespace-only, contains only `?`, **or a mic capture is starting/running** (`TalkSpeaking.isBusy()`).
+  Enter in the input does nothing. Chips and mic hide together while the on-screen keyboard is up
+  (input row at y=106…170, keyboard top y=360); they return to identical boxes afterwards (measured).
+- `preview` — replaces the chips/mic/input rows in place: sign frame 560×260 (`--navy` backdrop), the current word
+  (28 px bold), and `[Edit 271×64 | Send 269×64]`. **Send** (the same `#speaking-send` element and click handler as
+  before, only moved) is the one orange element and is enabled immediately; Send and Edit cancel playback.
+  On turn 2+ (96 px strip) compose spans y=226…561 and preview y=202…584 — both inside 186…600.
+- The thread never receives the clip: after Send → confirm → Add, `#thread` contains 0 `video`/`img`/`audio`
+  nodes and the bubble is text only (`from:'hearing'`).
+- `scrollWidth` is 1024/1024 in compose, compose + keyboard, preview (playing), preview on turn 2+.
+
+**Speech (`js/talk-speaking.js`).** Tap the mic to start, tap again to stop; the transcript (final + partial) is
+written live into `#speaking-input` with an `input` event each time (so Translate gating and the idle timer stay
+in sync). Ready hook: `TalkLoader.voskModel !== null` (set by the queue before the `vosk-model` item is marked
+done; the loader gained no new API). On stop the last partial is appended and `formatGrammar` applied; Translate
+strips `?` before playing (`normalizeSpeechText` does not). Filipino disables the mic ("Voice input disabled in
+Filipino", as `script.js:467-485`); typing still works and plays from `assets/signs/fil/`. The kiosk USB mic is
+auto-selected (`ab13x` / `usb audio`, `script.js:1050-1063`); the pane's mic-picker dropdown is not ported.
+Leaving the screen, focusing the input while a start is pending, or switching to Filipino discards/stops capture and
+releases the hardware. **Bundled-Vosk facts found while porting:** `recognizer.on()` attaches to the *model's* event
+target with no removal and no `recognizerId` filter, so per-capture listeners (what `script.js` does) multiply the
+transcript — the module registers one listener pair per model, filtered by `recognizerId`; `KaldiRecognizer.remove()`
+exists and is called (`script.js:261` leaks one worker-side recognizer per start). **Measured:** one 41 MB model
+fetch and one `vosk.js` fetch per page load (Apache log); 1 mic tap → 1 `getUserMedia`; after stop 0 live audio
+tracks and 0 unclosed `AudioContext`s (of 1); 10 start→stop cycles → 0 extra model loads; a synthesized-speech WAV
+("hello how are you", looped) transcribed as `hello how are you hello how are you hello how are you`, previewed as
+HELLO → HOW ARE YOU → HELLO → HOW ARE YOU → … (the phrase matcher groups "how are you").
+Errors reuse the existing error card: mic denied → "Microphone not available / Type instead".
+`SignPlayer.registerCustomGestures()` adds one `save_gesture.php?no_sync=1` fetch on first entry (measured 2 in a cold-cache page
+load, together with the queue's own).
+
 ### 1. Owns these files
 
 - `talk.html` — the entire feature: markup, one inline `<style>` block, one
