@@ -559,7 +559,7 @@
 
   /* ── Screen 03 — Signing (docs/ui-target/README.md "03") ── */
   .camera-box{
-    width:560px;height:300px;
+    width:760px;height:300px;
     margin-top:16px;
     border-radius:12px;
     /* #16192a is README's own literal spec for the camera view's dark
@@ -584,9 +584,12 @@
   .signing-caption-pill span{
     color:var(--surface);font-size:20px;font-weight:700;
   }
+  .signing-controls-row{
+    display:flex;align-items:center;gap:16px;
+    width:760px;margin-top:14px;
+  }
   .stop-signing-btn{
-    width:560px;height:68px;
-    margin-top:14px;
+    flex:1;height:68px;
     border:none;border-radius:12px;
     background:var(--orange);
     color:var(--surface);
@@ -650,8 +653,42 @@
   .guide-start-btn:disabled{opacity:0.5;cursor:not-allowed}
 
   .signing-live{display:flex;flex-direction:column;align-items:center}
-  .signing-row{display:flex;align-items:flex-start;gap:16px}
-  .signing-side{width:200px;display:flex;flex-direction:column;gap:12px;margin-top:16px}
+  /* Screen 03 controls redesign (docs/superpowers/specs/2026-09-21-
+     signing-screen-controls-redesign-design.md): the camera's old two
+     200px .signing-side flanking columns are gone — .signing-row now
+     wraps .camera-box alone, and the EN/FIL + Guide controls moved into
+     .signing-controls-row below (next to #stop-signing-btn, see that
+     rule's block further down). .mode-chip below is left untouched:
+     #screen-speaking's EN/Filipino chips (chip-lang-en/fil) still use it
+     and are out of this redesign's scope. */
+  .signing-row{display:flex;justify-content:center}
+  .lang-toggle{
+    width:140px;height:60px;
+    display:flex;
+    border:1px solid var(--border);border-radius:12px;
+    overflow:hidden;
+  }
+  .lang-seg{
+    flex:1;border:none;
+    background:var(--surface);color:var(--muted);
+    font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;
+  }
+  .lang-seg.active{background:var(--navy);color:var(--surface)}
+  .lang-seg:disabled{opacity:0.5;cursor:not-allowed}
+  .guide-toggle{
+    width:100px;height:60px;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid var(--border);border-radius:12px;
+    background:var(--surface);color:var(--muted);
+    font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;
+  }
+  .guide-toggle::before{
+    content:'';width:8px;height:8px;border-radius:50%;
+    background:var(--muted-light);flex-shrink:0;
+  }
+  .guide-toggle.active{background:var(--navy);border-color:var(--navy);color:var(--surface)}
+  .guide-toggle.active::before{background:var(--green)}
+  .guide-toggle:disabled{opacity:0.5;cursor:not-allowed}
   .mode-chip{
     width:200px;height:60px;
     border:1px solid var(--border);border-radius:12px;
@@ -1064,13 +1101,15 @@
       <button type="button" class="guide-start-btn" id="guide-start-btn" disabled>Start Translating &rarr;</button>
     </div>
 
-    <!-- Live camera view. -->
+    <!-- Live camera view. Screen 03 controls redesign
+         (docs/superpowers/specs/2026-09-21-signing-screen-controls-redesign-design.md):
+         the camera used to sit between two 200px .signing-side columns
+         (ESL/FSL left, Hand Guide right); those are gone — .camera-box now
+         has the row to itself, and the same three controls (same ids, same
+         click wiring in js/talk-signing.js) moved into
+         .signing-controls-row below, next to Translate. -->
     <div class="signing-live" id="signing-live">
       <div class="signing-row">
-        <div class="signing-side">
-          <button type="button" class="mode-chip active" id="chip-esl">ESL Mode</button>
-          <button type="button" class="mode-chip" id="chip-fsl">FSL Mode</button>
-        </div>
         <div class="camera-box" id="camera-box">
           <video id="signing-video" class="camera-video" autoplay playsinline muted></video>
           <canvas id="tlCanvas1" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; transform:scaleX(-1);"></canvas>
@@ -1078,16 +1117,20 @@
           <div class="signing-caption-pill"><span id="signing-caption">Show your sign</span></div>
           <div class="signing-cam-overlay" id="signing-cam-overlay"><span id="signing-cam-overlay-text">Starting camera…</span></div>
         </div>
-        <div class="signing-side">
-          <button type="button" class="mode-chip active" id="chip-guide" aria-pressed="true">Hand Guide: On</button>
-        </div>
       </div>
-      <!-- Real control (js/talk-signing.js): "Translate" starts the 3 s
-           countdown, "Stop & Add to Conversation" ends the recording and
-           hands the recognised sentence to openModal('confirm', ...) — never
-           straight to appendBubble(). Its click handler lives in
-           TalkSigning.init(), not in this file's <script>. -->
-      <button type="button" class="stop-signing-btn" id="stop-signing-btn">Translate</button>
+      <div class="signing-controls-row">
+        <div class="lang-toggle" role="group" aria-label="Language">
+          <button type="button" class="lang-seg active" id="chip-esl">EN</button>
+          <button type="button" class="lang-seg" id="chip-fsl">FIL</button>
+        </div>
+        <!-- Real control (js/talk-signing.js): "Translate" starts the 3 s
+             countdown, "Stop & Add to Conversation" ends the recording and
+             hands the recognised sentence to openModal('confirm', ...) — never
+             straight to appendBubble(). Its click handler lives in
+             TalkSigning.init(), not in this file's <script>. -->
+        <button type="button" class="stop-signing-btn" id="stop-signing-btn">Translate</button>
+        <button type="button" class="guide-toggle active" id="chip-guide" aria-pressed="true">Guide</button>
+      </div>
     </div>
   </div>
 
