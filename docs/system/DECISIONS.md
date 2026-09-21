@@ -671,3 +671,21 @@ Appended one line per settled decision as the run proceeds.
   by the conversation ending underneath it. Accepted, not fixed: while a
   confirm/error card is open the idle timer only re-arms itself (existing
   design), so an error card left unattended does not end the conversation.
+
+## Decisions made during the text-to-sign merge (2026-09-21)
+
+Spec: `docs/superpowers/specs/2026-09-21-text-to-sign-merge-design.md`.
+One line per settled decision, appended as the run proceeds.
+
+- **Translate stays an explicit button, not auto-play.** Reason: owner-decided
+  in the spec. `#translator-pane` already used an explicit Translate button;
+  triggering on speech-end or a typing pause risks firing early on a slow
+  talker or typist, and a sign video that starts by itself mid-sentence is
+  worse than one that waits to be asked for.
+- **The sign-video preview is pre-send only and is never stored in, or
+  replayed from, the thread — only the text goes into the bubble, through the
+  existing, unmodified Send → confirm card → Add to Conversation flow.**
+  Reason: owner-decided in the spec. The confirm card exists so nothing
+  reaches the thread that the speaker did not agree to; storing media in the
+  thread would also grow DOM/memory per turn on a Pi that already reloads the
+  page to clean up, and the thread is capped at ~30 bubbles for the same reason.
