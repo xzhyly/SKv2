@@ -14,7 +14,7 @@
     'js/gesture-data.js',
     'js/sign-to-text-ui.js'
   ];
-  // Same file index.html's voice screen loads (js/script.js:201-203), resolved against this page.
+  // Same file index.html's voice screen loads (archive/script.js:201-203), resolved against this page.
   var VOSK_MODEL_URL = new URL('models/vosk-model-small-en-us-0.15.tar.gz.zip', location.href).href;
 
   function loadScript(src) {

@@ -1,12 +1,12 @@
 // js/talk-speaking.js
 // Real speech capture for talk.html's Speak-or-Type screen: Vosk (already loaded by
-// js/talk-loader.js) → live transcript in #speaking-input. Logic ported from js/script.js's
+// js/talk-loader.js) → live transcript in #speaking-input. Logic ported from archive/script.js's
 // VoskSpeechRecognition + mic toggle (line refs in comments). Contract: leave() stops every
 // audio track, closes the AudioContext, removes the recognizer (js/vosk.js: KaldiRecognizer.remove()
 // frees it in the worker; measured) and never touches the loaded model (TalkLoader.voskModel) — the
 // model is a page-lifetime resource.
 //
-// Deviation from js/script.js:263-286 (measured, see the task report): js/vosk.js implements
+// Deviation from archive/script.js:263-286 (measured, see the task report): js/vosk.js implements
 // KaldiRecognizer.on() as model.addEventListener(...) with NO removal and NO recognizerId filter, so
 // every capture would leave two listeners on the model that all later captures also trigger (text
 // written N times after N captures). Instead this module registers ONE result/partialresult listener
@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  var MIC_KEY = 'selectedMicId';          // js/script.js:238, 1050-1072
+  var MIC_KEY = 'selectedMicId';          // archive/script.js:238, 1050-1072
   var cb = {};
   var lang = 'en-US';
   var active = false;
@@ -46,9 +46,9 @@
     micBtn.disabled = fil || unavailable;
     micBtn.classList.toggle('listening', capturing);
     micBtn.setAttribute('aria-pressed', capturing ? 'true' : 'false');
-    if (fil) setLabel('Voice input disabled in Filipino');       // js/script.js:479
+    if (fil) setLabel('Voice input disabled in Filipino');       // archive/script.js:479
     else if (unavailable) setLabel('Microphone not available');
-    else setLabel(capturing ? 'Tap to Stop' : 'Tap to Speak');    // js/script.js:584-586
+    else setLabel(capturing ? 'Tap to Stop' : 'Tap to Speak');    // archive/script.js:584-586
     // The visible label is the button's accessible name too: keep the two in step.
     if (micLabel) micBtn.setAttribute('aria-label', micLabel.textContent);
   }
@@ -64,7 +64,7 @@
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
-  // js/script.js:1050-1063: keep the saved mic if it still exists, else prefer the kiosk's
+  // archive/script.js:1050-1063: keep the saved mic if it still exists, else prefer the kiosk's
   // USB mic (label contains "ab13x" or "usb audio"). Labels are only readable after mic
   // permission has been granted, so this also runs after a successful capture start.
   function autoSelectMic() {
@@ -137,18 +137,18 @@
   function onVoskEvent(ev) {
     var message = ev.detail;
     if (!capturing || !recognizer || !message || message.recognizerId !== recognizer.id) return;
-    if (message.event === 'result') {                      // js/script.js:263-274
+    if (message.event === 'result') {                      // archive/script.js:263-274
       var text = message.result && message.result.text;
       if (text) {
         finalText += (finalText ? ' ' : '') + text;
         partialText = '';
         renderTranscript();
       }
-    } else if (message.event === 'partialresult') {        // js/script.js:276-286
+    } else if (message.event === 'partialresult') {        // archive/script.js:276-286
       // The worker posts a partialresult for every audio chunk it does not finalise, silence
       // included (~7-12 a second). Re-rendering each one would wipe typed text the moment the mic
       // opens and, through the bubbling 'input' event, re-arm talk.html's idle timer forever
-      // (js/script.js:276-286 guards this with `&& text`): only react when the partial changed.
+      // (archive/script.js:276-286 guards this with `&& text`): only react when the partial changed.
       var partial = (message.result && message.result.partial) || '';
       if (partial === partialText) return;
       partialText = partial;
@@ -186,7 +186,7 @@
       finalText = '';
       partialText = '';
       processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      processor.onaudioprocess = function (event) {         // js/script.js:288-297
+      processor.onaudioprocess = function (event) {         // archive/script.js:288-297
         if (recognizer && capturing) {
           try { recognizer.acceptWaveform(event.inputBuffer); } catch (err) { console.error('[talk-speaking] acceptWaveform failed:', err); }
         }
@@ -213,7 +213,7 @@
     }
   }
 
-  // Finalise: append the last partial (js/script.js:688-691), tidy the text with formatGrammar,
+  // Finalise: append the last partial (archive/script.js:688-691), tidy the text with formatGrammar,
   // release the hardware. A late 'result' after this is ignored (capturing === false).
   function stopCapture() {
     if (!capturing) return;
@@ -286,7 +286,7 @@
   function setLanguage(next) {
     if (next === lang) return;
     lang = next;
-    if (lang === 'fil-PH') {                              // js/script.js:469-471
+    if (lang === 'fil-PH') {                              // archive/script.js:469-471
       if (capturing) stopCapture();
       discardPendingStart();                              // a getUserMedia still in flight: no voice input in Filipino
     }

@@ -1,14 +1,14 @@
 // js/sign-player.js
-// DOM-agnostic port of js/script.js's text-to-sign pipeline for talk.html's Speak-or-Type
-// preview (docs/superpowers/specs/2026-09-21-text-to-sign-merge-design.md). js/script.js
+// DOM-agnostic port of archive/script.js's text-to-sign pipeline for talk.html's Speak-or-Type
+// preview (docs/superpowers/specs/2026-09-21-text-to-sign-merge-design.md). archive/script.js
 // cannot be loaded into talk.html (it dereferences index.html-only ids at load, script.js:13
-// and :441), and it is retired once #translator-pane is, so this is a port of a copy, not a
-// shared module. Sections marked VERBATIM are unchanged from js/script.js (line ranges given);
+// and :441), and it was retired (archived) together with index.html's #translator-pane, so this is a port of a copy, not a
+// shared module. Sections marked VERBATIM are unchanged from archive/script.js (line ranges given);
 // the only departures are listed in docs/superpowers/plans/2026-09-21-text-to-sign-merge.md.
 (function () {
   'use strict';
 
-  // ── VERBATIM js/script.js:19-141 ──
+  // ── VERBATIM archive/script.js:19-141 ──
 const signAssetMapEn = {
     "i dont know": "dont_know.webm",
     "dont know": "dont_know.webm",
@@ -133,7 +133,7 @@ for (const letter of "abcdefghijklmnopqrstuvwxyz") {
     signAssetMapFil[letter] = `${letter}.webm`;
 }
 
-  // ── VERBATIM js/script.js:838-849 ──
+  // ── VERBATIM archive/script.js:838-849 ──
 let knownPhrasesEn = [];
 let knownPhrasesFil = [];
 
@@ -147,13 +147,13 @@ function rebuildKnownPhrases() {
 }
 rebuildKnownPhrases();
 
-  // js/script.js:144-159 with the language passed in (script.js reads #lang-select).
+  // archive/script.js:144-159 with the language passed in (script.js reads #lang-select).
   function isFilipino(lang) { return lang === 'fil-PH'; }
   function getSignAssetBase(lang) { return isFilipino(lang) ? 'assets/signs/fil/' : 'assets/signs/en/'; }
   function getActiveSignMap(lang) { return isFilipino(lang) ? signAssetMapFil : signAssetMapEn; }
   function getActiveKnownPhrases(lang) { return isFilipino(lang) ? knownPhrasesFil : knownPhrasesEn; }
 
-  // ── VERBATIM js/script.js:944-950 ──
+  // ── VERBATIM archive/script.js:944-950 ──
 function normalizeSpeechText(text) {
     return String(text)
         .toLowerCase()
@@ -162,7 +162,7 @@ function normalizeSpeechText(text) {
         .trim();
 }
 
-  // js/script.js:952-963, only change: the language is an argument.
+  // archive/script.js:952-963, only change: the language is an argument.
   function findLongestKnownPhrase(words, startIndex, lang) {
     const phrases = getActiveKnownPhrases(lang);
     for (const phrase of phrases) {
@@ -176,7 +176,7 @@ function normalizeSpeechText(text) {
     return null;
   }
 
-  // ── VERBATIM js/script.js:357-413 ──
+  // ── VERBATIM archive/script.js:357-413 ──
 function formatGrammar(text) {
     if (!text) return "";
     
@@ -235,10 +235,10 @@ function formatGrammar(text) {
     return result.trim();
 }
 
-  // js/script.js:851-878: the function body is VERBATIM; talk.html is always served over
+  // archive/script.js:851-878: the function body is VERBATIM; talk.html is always served over
   // http, so script.js:834-836's file:// branch is dropped and the endpoint is the relative path.
   const SAVE_ENDPOINT = "php/api/save_gesture.php";
-  // ── VERBATIM js/script.js:851-876 ──
+  // ── VERBATIM archive/script.js:851-876 ──
 async function fetchAndRegisterCustomGestures() {
     try {
         const response = await fetch(SAVE_ENDPOINT + "?no_sync=1");
@@ -306,7 +306,7 @@ async function fetchAndRegisterCustomGestures() {
       });
     }
 
-    // js/script.js:965-1010
+    // archive/script.js:965-1010
     function displayMedia(path, label, duration) {
       duration = duration || 0;
       return new Promise(function (resolve) {
@@ -368,7 +368,7 @@ async function fetchAndRegisterCustomGestures() {
       });
     }
 
-    // js/script.js:906-942
+    // archive/script.js:906-942
     async function displaySignWithFallback(item, myToken) {
       const lang = getLanguage();
       const normalizedItem = normalizeSpeechText(item);
@@ -417,7 +417,7 @@ async function fetchAndRegisterCustomGestures() {
       }
     }
 
-    // js/script.js:881-904
+    // archive/script.js:881-904
     async function playSequence(text, myToken) {
       const cleanText = normalizeSpeechText(text);
       if (!cleanText) {
