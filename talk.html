@@ -500,7 +500,10 @@
      whose computed background-color resolves to var(--orange) (or its
      pressed variant, unused here):
        - #screen-who-first : .icon-tile.orange (the "Speak or Type" tile)
-       - #screen-signing   : #stop-signing-btn ("Stop & Add to Conversation")
+       - #screen-signing   : one per sub-state — #guide-start-btn in
+         data-signing="guide", #stop-signing-btn in data-signing="live"
+         (the other sub-state's container is display:none, so exactly one
+         is ever visible)
        - #screen-speaking  : #speaking-send ("Send" — stays orange even
          disabled, see its :disabled rule below; opacity, not a colour swap,
          is what "pale" means here, so the background-color audit still
@@ -566,9 +569,6 @@
     display:flex;align-items:center;justify-content:center;
     overflow:hidden;
   }
-  .hand-skeleton{
-    width:180px;height:180px;
-  }
   .signing-caption-pill{
     position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
     padding:8px 22px;
@@ -594,6 +594,102 @@
   .stop-signing-btn:active{
     background:#ea6a0a;
   }
+
+  /* ── Screen 03 sub-states (signing-screen merge) ── */
+  #screen-signing[data-signing="guide"] .signing-live{display:none}
+  #screen-signing[data-signing="live"] .signing-guide{display:none}
+
+  .signing-guide{
+    width:660px;flex:1 1 auto;min-height:0;
+    margin:12px 0 16px;padding:20px 32px;
+    display:flex;flex-direction:column;align-items:center;gap:12px;
+    background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    text-align:center;
+  }
+  .signing-guide > *{flex-shrink:0}
+  .guide-badge{
+    padding:4px 18px;border-radius:99px;
+    background:var(--bg);color:var(--muted);
+    font-size:16px;font-weight:700;letter-spacing:1px;
+  }
+  .guide-title{font-size:28px;font-weight:700;color:var(--navy);line-height:1.25}
+  .guide-desc{font-size:16px;color:var(--muted);line-height:1.5}
+  .guide-list{
+    list-style:none;width:100%;text-align:left;
+    display:flex;flex-direction:column;gap:14px;
+    flex-shrink:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable;
+  }
+  /* Scroll cue: while more steps sit below the visible area the bottom edge fades out. */
+  .guide-list.has-more{
+    -webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+    mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);
+  }
+  .guide-list::-webkit-scrollbar{width:6px}
+  .guide-list::-webkit-scrollbar-track{background:var(--border)}
+  .guide-list::-webkit-scrollbar-thumb{background:var(--muted-light);border-radius:99px}
+  .guide-item{display:flex;align-items:flex-start;gap:14px;font-size:16px;color:var(--navy);line-height:1.5}
+  .guide-num{
+    width:32px;height:32px;border-radius:50%;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--navy);color:var(--surface);font-size:16px;font-weight:700;
+  }
+  .guide-item-content{flex:1}
+  .guide-item-title{font-weight:700}
+  .guide-item-sub{font-size:16px;color:var(--muted);margin-top:4px;line-height:1.45}
+  .guide-loading{font-size:16px;color:var(--muted);font-weight:600}
+  .guide-start-btn{
+    width:100%;height:60px;border:none;border-radius:12px;
+    background:var(--orange);color:var(--surface);
+    font-family:inherit;font-size:18px;font-weight:700;cursor:pointer;
+    transition:background 0.08s;
+  }
+  .guide-start-btn:active{background:#ea6a0a}
+  .guide-start-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  .signing-live{display:flex;flex-direction:column;align-items:center}
+  .signing-row{display:flex;align-items:flex-start;gap:16px}
+  .signing-side{width:200px;display:flex;flex-direction:column;gap:12px;margin-top:16px}
+  .mode-chip{
+    width:200px;height:60px;
+    border:1px solid var(--border);border-radius:12px;
+    background:var(--surface);color:var(--muted);
+    font-family:inherit;font-size:16px;font-weight:700;cursor:pointer;
+    transition:transform 0.08s, border-color 0.08s;
+  }
+  .mode-chip.active{background:var(--navy);border-color:var(--navy);color:var(--surface)}
+  .mode-chip:active{transform:scale(0.97)}
+  .mode-chip:disabled{opacity:0.5;cursor:not-allowed}
+  .camera-video{width:100%;height:100%;object-fit:contain;transform:scaleX(-1);display:none}
+  .camera-video.active{display:block}
+  /* Recording frame: an outline paints above the video (a box-shadow would hide under it).
+     Green = live, per README's colour rules. */
+  .camera-box.recording{outline:4px solid var(--green);outline-offset:-4px}
+  .signing-caption-pill{z-index:3}
+  .signing-draft{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    max-width:520px;padding:6px 16px;border-radius:99px;
+    background:rgba(0,0,0,0.7);color:var(--surface);
+    font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    display:none;z-index:3;
+  }
+  .signing-draft.show{display:block}
+  /* rgba(22,25,42,…) is README's #16192a camera backdrop, translucent. */
+  .signing-cam-overlay{
+    position:absolute;inset:0;z-index:5;
+    display:none;align-items:center;justify-content:center;
+    background:rgba(22,25,42,0.92);
+    color:var(--surface);font-size:18px;font-weight:700;
+  }
+  .signing-cam-overlay.show{display:flex}
+  .stop-signing-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* Speak screen waiting state (data-wait="1" until the whole queue has settled). */
+  .speaking-wait{display:none;flex-direction:column;align-items:center;gap:8px;text-align:center}
+  .speaking-wait-title{font-size:32px;font-weight:700;color:var(--navy)}
+  .speaking-wait-sub{font-size:18px;color:var(--muted)}
+  #screen-speaking[data-wait="1"] .speaking-wait{display:flex}
+  #screen-speaking[data-wait="1"] .speaking-mic-row,
+  #screen-speaking[data-wait="1"] .speaking-input-row{display:none}
 
   /* ── Screen 04 — Speak or type (docs/ui-target/README.md "04") ──
      js/virtual-keyboard.js is now wired (Fix 2 — an earlier task dispatch
@@ -893,47 +989,83 @@
 
   <!-- Screen 03 — docs/ui-target/README.md "03 — Signing". The collapsed
        #thread strip above already applies via this container's own
-       data-screen="signing" CSS (Task 2); nothing here needs to touch it. -->
-  <div class="screen" id="screen-signing">
-    <div class="camera-box">
-      <!-- Static hand-skeleton illustration only — no real MediaPipe
-           drawing (that's a later, real-integration phase). -->
-      <svg class="hand-skeleton" viewBox="0 0 200 220" aria-hidden="true">
-        <g fill="none" stroke="var(--surface)" stroke-width="3" stroke-linecap="round" opacity="0.85">
-          <line x1="100" y1="140" x2="60" y2="60"/>
-          <line x1="100" y1="140" x2="80" y2="40"/>
-          <line x1="100" y1="140" x2="100" y2="30"/>
-          <line x1="100" y1="140" x2="120" y2="40"/>
-          <line x1="100" y1="140" x2="138" y2="70"/>
-          <polygon points="60,140 100,150 140,140 130,190 70,190" stroke="none" fill="var(--surface)" opacity="0.25"/>
-        </g>
-        <g fill="var(--surface)">
-          <circle cx="100" cy="140" r="5"/>
-          <circle cx="60" cy="60" r="5"/>
-          <circle cx="80" cy="40" r="5"/>
-          <circle cx="100" cy="30" r="5"/>
-          <circle cx="120" cy="40" r="5"/>
-          <circle cx="138" cy="70" r="5"/>
-        </g>
-      </svg>
-      <!-- Live recognition caption — README "03": not decoration, tells the
-           signer what the system is reading as they sign. Static placeholder
-           word for this fake-data phase; Task 5 wires the real value. -->
-      <div class="signing-caption-pill"><span id="signing-caption">HELLO</span></div>
+       data-screen="signing" CSS (Task 2); nothing here needs to touch it.
+       data-signing selects the sub-state: "guide" (first entry to Sign this
+       conversation only) or "live" (camera view). -->
+  <div class="screen" id="screen-signing" data-signing="guide">
+    <!-- Guide — first entry to Sign this conversation only (spec "Guide / waiting screens"). -->
+    <div class="signing-guide" id="signing-guide">
+      <div class="guide-badge">Guide</div>
+      <h2 class="guide-title">Sign to Text Guide</h2>
+      <p class="guide-desc">Maligayang pagdating sa real-time sign translator! Narito ang dalawang paraan upang magsalin:</p>
+      <ul class="guide-list">
+        <li class="guide-item">
+          <span class="guide-num">1</span>
+          <div class="guide-item-content">
+            <strong class="guide-item-title">Simulan ang Pagsasalin (Start):</strong>
+            <div class="guide-item-sub">&bull; <em>Awtomatiko:</em> Senyasan ang camera ng <strong>"start"</strong> para simulan ang 3s countdown.</div>
+            <div class="guide-item-sub">&bull; <em>Manwal:</em> O i-click ang <strong>"TRANSLATE"</strong> button.</div>
+          </div>
+        </li>
+        <li class="guide-item">
+          <span class="guide-num">2</span>
+          <div class="guide-item-content">
+            <strong class="guide-item-title">I-senyas ang mga Salita (Sign Words):</strong>
+            <div class="guide-item-sub">Gawin ang iyong mga custom gestures (hal. hello, thank you) nang may maikling sandali (pause) upang maipon ang mga salita.</div>
+          </div>
+        </li>
+        <li class="guide-item">
+          <span class="guide-num">3</span>
+          <div class="guide-item-content">
+            <strong class="guide-item-title">I-stop at Basahin (Stop):</strong>
+            <div class="guide-item-sub">&bull; <em>Awtomatiko:</em> Senyasan ang <strong>"stop"</strong> para tapusin, pakinggan, at i-save ang pangungusap.</div>
+            <div class="guide-item-sub">&bull; <em>Manwal:</em> O i-click ang <strong>"STOP &amp; TRANSLATE"</strong> button.</div>
+          </div>
+        </li>
+      </ul>
+      <div class="guide-loading" id="guide-loading" role="status"><span id="guide-loading-text">Getting ready…</span></div>
+      <button type="button" class="guide-start-btn" id="guide-start-btn" disabled>Start Translating &rarr;</button>
     </div>
-    <!-- Stands in for the classifier's confirm step, per
-         docs/system/DECISIONS.md's "two fake buttons" note — wired (Task 5)
-         to openModal('confirm', ...) with a canned result, never straight to
-         appendBubble(). See the click handler near the bottom of this
-         file's <script>. -->
-    <button type="button" class="stop-signing-btn" id="stop-signing-btn">Stop &amp; Add to Conversation</button>
+
+    <!-- Live camera view. -->
+    <div class="signing-live" id="signing-live">
+      <div class="signing-row">
+        <div class="signing-side">
+          <button type="button" class="mode-chip active" id="chip-esl">ESL Mode</button>
+          <button type="button" class="mode-chip" id="chip-fsl">FSL Mode</button>
+        </div>
+        <div class="camera-box" id="camera-box">
+          <video id="signing-video" class="camera-video" autoplay playsinline muted></video>
+          <canvas id="tlCanvas1" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; transform:scaleX(-1);"></canvas>
+          <div class="signing-draft" id="signing-draft"></div>
+          <div class="signing-caption-pill"><span id="signing-caption">Show your sign</span></div>
+          <div class="signing-cam-overlay" id="signing-cam-overlay"><span id="signing-cam-overlay-text">Starting camera…</span></div>
+        </div>
+        <div class="signing-side">
+          <button type="button" class="mode-chip active" id="chip-guide" aria-pressed="true">Hand Guide: On</button>
+        </div>
+      </div>
+      <!-- Stands in for the classifier's confirm step, per
+           docs/system/DECISIONS.md's "two fake buttons" note — wired (Task 5)
+           to openModal('confirm', ...) with a canned result, never straight to
+           appendBubble(). See the click handler near the bottom of this
+           file's <script>. (Real camera logic replaces this handler in a
+           later task.) -->
+      <button type="button" class="stop-signing-btn" id="stop-signing-btn">Translate</button>
+    </div>
   </div>
 
   <!-- Screen 04 — docs/ui-target/README.md "04 — Speak or type". Keyboard
        (js/virtual-keyboard.js) is out of scope for this task — see the
        .speaking-input-row CSS comment above for how the layout leaves room
        for it. -->
-  <div class="screen" id="screen-speaking">
+  <div class="screen" id="screen-speaking" data-wait="1">
+    <!-- Waiting state — shown instead of the mic/input rows until the full
+         loading queue has settled (kept in sync by refreshGates() below). -->
+    <div class="speaking-wait" id="speaking-wait" role="status">
+      <div class="speaking-wait-title">Getting ready…</div>
+      <div class="speaking-wait-sub">This only takes a moment.</div>
+    </div>
     <!-- Fake mic button (Task 5) — stands in for real speech capture, which
          doesn't exist this phase (docs/system/DECISIONS.md's "two fake
          buttons" note). Wired below to openModal('confirm', ...) with a
@@ -984,6 +1116,8 @@
   </div><!-- #stage -->
 
   <script src="js/virtual-keyboard.js" defer></script>
+  <script src="js/talk-loader.js"></script>
+  <script src="js/talk-signing.js"></script>
   <script>
     'use strict';
 
@@ -1047,12 +1181,8 @@
 
     var VALID_SCREENS = ['who-first', 'signing', 'speaking', 'thread'];
 
-    // Empty hooks — a later phase attaches camera start/MediaPipe setup here.
-    function onEnterSigning() {}
-    // Empty hook — a later phase attaches camera stop/frame-loop teardown here.
-    function onLeaveSigning() {}
-    // Empty hook — a later phase attaches Vosk model start/mic capture here.
-    function onEnterSpeaking() {}
+    // onEnterSigning/onLeaveSigning/onEnterSpeaking are defined further down,
+    // after closeModal() (they use the loading-queue gate + openModal()).
     // Empty hook — a later phase attaches Vosk stop/mic teardown here.
     function onLeaveSpeaking() {}
     // Empty hook — a later phase attaches full teardown then location.href
@@ -1370,6 +1500,74 @@
       }
     }
 
+    // ── Signing-screen merge: loading gate ──
+    // Guide shows on the FIRST entry to Sign this conversation (until "Start Translating" is
+    // tapped once); after that Sign goes straight to the live camera. The proceed control is
+    // blocked until the FULL queue (both stacks) has settled.
+    var signingGuideSeen = false;
+    var micWarned = false;
+
+    function setSigningSubstate(name) {
+      document.getElementById('screen-signing').setAttribute('data-signing', name);
+    }
+    function stackFailed(stack) {
+      return TalkLoader.getItems().some(function (i) { return i.stack === stack && i.status === 'failed'; });
+    }
+    function maybeWarnMic(entering) {
+      if (micWarned || !TalkLoader.isSettled() || !stackFailed('speech')) return;
+      if (!entering && document.body.dataset.screen !== 'speaking') return;
+      micWarned = true;
+      openModal('error', {
+        heading: 'Microphone not available',
+        message: 'I cannot hear anything.',
+        buttonLabel: 'Type instead'
+      });
+    }
+    function refreshGates() {
+      var p = TalkLoader.getProgress();
+      var text = document.getElementById('guide-loading-text');
+      var btn = document.getElementById('guide-start-btn');
+      if (!p.settled) {
+        text.textContent = 'Getting ready… ' + p.finished + ' of ' + p.total;
+        btn.disabled = true;
+      } else if (stackFailed('sign')) {
+        text.textContent = 'Signing is not available right now.';
+        btn.disabled = true;
+      } else {
+        text.textContent = 'Ready';
+        btn.disabled = false;
+      }
+      document.getElementById('screen-speaking').setAttribute('data-wait', p.settled ? '0' : '1');
+      maybeWarnMic(false);
+    }
+    TalkLoader.onChange(refreshGates);
+    refreshGates();
+
+    document.getElementById('guide-start-btn').addEventListener('click', function () {
+      if (!TalkLoader.isSettled() || stackFailed('sign')) return;
+      signingGuideSeen = true;
+      setSigningSubstate('live');
+      if (window.TalkSigning) TalkSigning.enter();
+    });
+
+    function onEnterSigning() {
+      if (!signingGuideSeen) {
+        setSigningSubstate('guide');
+        refreshGates();
+        return;
+      }
+      setSigningSubstate('live');
+      if (window.TalkSigning) TalkSigning.enter();
+    }
+    function onLeaveSigning() {
+      if (window.TalkSigning) TalkSigning.leave();
+    }
+    // Speak or Type gets no guide (spec: intentional asymmetry) — only the data-wait
+    // "Getting ready…" state kept in sync by refreshGates() above.
+    function onEnterSpeaking() {
+      maybeWarnMic(true);
+    }
+
     // ── Task 4: The persistent thread — appendBubble() ──
     // #thread-list starts empty (Task 2/3's placeholder bubble-rows are
     // gone); appendBubble() below is the only way bubbles get into it, from
@@ -1659,6 +1857,20 @@
     document.addEventListener('input', resetIdleTimer);
 
     startIdleTimer();
+
+    // Guide scroll cue (ported from sign-to-text.html): mark the step list while part of it
+    // is below its visible area. Layout only.
+    (function () {
+      var list = document.querySelector('.guide-list');
+      function update() {
+        list.classList.toggle('has-more', list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+      }
+      list.addEventListener('scroll', update, { passive: true });
+      var ro = new ResizeObserver(update);
+      ro.observe(list);
+      list.querySelectorAll('.guide-item').forEach(function (item) { ro.observe(item); });
+      update();
+    })();
   </script>
 </body>
 </html>
