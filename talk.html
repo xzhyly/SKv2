@@ -1477,6 +1477,14 @@
         throw new Error('openModal: invalid modal kind "' + kind + '"');
       }
 
+      // An error/confirm card rendered over an open idle card overwrites its DOM but would leave
+      // the idle countdown interval running; at 0 it calls onEndConversation() and navigates to
+      // index.html while the user is still reading the new card. Stop it before re-rendering.
+      if (kind !== 'idle' && idleCountdownIntervalId !== null) {
+        clearInterval(idleCountdownIntervalId);
+        idleCountdownIntervalId = null;
+      }
+
       document.getElementById('modal').setAttribute('data-modal-kind', kind);
       if (kind === 'confirm') {
         renderConfirmModal(opts);

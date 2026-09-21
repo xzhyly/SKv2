@@ -16,7 +16,7 @@
     frames: [],
     lastFrameAt: 0,
     loopPaused: false,
-    loopGen: 0,
+    sendInFlight: false,
     frameIntervalMs: 90,
     video: null,
     toast: null,
@@ -356,11 +356,14 @@
 
   async function runHandLoop() {
     if (!state.hands || !state.video) return;
-    const gen = state.loopGen;
     if (state.loopPaused) {
       state.cameraLoop = null;
       return;
     }
+    // Entered via rAF (or directly): the id left in cameraLoop is stale, so clear it. That keeps
+    // resumeHandLoop()'s "is a rAF pending?" test accurate; this iteration re-sets it before
+    // returning to the event loop, except while awaiting a send (sendInFlight covers that).
+    state.cameraLoop = null;
     if (state.processingVideo) {
       state.cameraLoop = requestAnimationFrame(runHandLoop);
       return;
@@ -394,13 +397,20 @@
         offscreenCtx.drawImage(state.video, dx, dy, dWidth, dHeight);
 
         // Send canvas (rather than raw video) to bypass Chromium mailbox crashes
+        state.sendInFlight = true;
         await state.hands.send({ image: offscreenCanvas });
       } catch (err) {
         console.warn("[gesture-data] MediaPipe frame skipped:", err);
+      } finally {
+        state.sendInFlight = false;
       }
     }
-    // Paused or superseded (resumeHandLoop started a newer loop) while awaiting.
-    if (gen !== state.loopGen || state.loopPaused) return;
+    // Paused while awaiting: stop here. resumeHandLoop() while a send is still in flight does
+    // not start a second loop; this iteration sees loopPaused === false and carries on.
+    if (state.loopPaused) {
+      state.cameraLoop = null;
+      return;
+    }
     state.cameraLoop = requestAnimationFrame(runHandLoop);
   }
 
@@ -411,7 +421,6 @@
   // classified after resume.
   function pauseHandLoop() {
     state.loopPaused = true;
-    state.loopGen++;
     if (state.cameraLoop) {
       cancelAnimationFrame(state.cameraLoop);
       state.cameraLoop = null;
@@ -422,9 +431,10 @@
   function resumeHandLoop() {
     if (!state.hands || !state.video) return;
     state.loopPaused = false;
-    state.loopGen++;
     state.latestLandmarks = null;
-    runHandLoop();
+    // Idempotent: a pending rAF or an in-flight send means a loop is already alive and will
+    // carry on by itself; only start one when nothing is running.
+    if (!state.cameraLoop && !state.sendInFlight) runHandLoop();
   }
 
   // Creates the ONE Hands instance early (talk.html's loading queue) and forces its WASM +

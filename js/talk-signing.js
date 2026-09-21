@@ -223,20 +223,36 @@
 
   async function setLang(next) {
     if (!active || switching || next === signLang) return;
+    var myGen = gen;
     var prev = signLang;
     switching = true;
-    endSession();
-    setOverlay(true, 'AI is switching language…');
-    signLang = next;
-    syncChips();
-    var ok = await loadModel();
-    if (!ok) {
-      signLang = prev;
+    try {
+      endSession();
+      setOverlay(true, 'AI is switching language…');
+      signLang = next;
       syncChips();
-      await loadModel();
-      if (cb.onModelError) cb.onModelError();
+      var ok = await loadModel();
+      // If the user left (or left and re-entered) while the model was loading, the switch is
+      // abandoned quietly: no error card and no overlay change (leave()/enter() own the overlay).
+      // A failed load is still reverted, so signLang and the loaded model never disagree; only
+      // the card is skipped. Then just refresh the orange button, which enter() may have
+      // rendered disabled while `switching` was true.
+      if (!active || myGen !== gen) {
+        if (!ok) { signLang = prev; syncChips(); await loadModel(); }
+        switching = false;
+        if (active) renderButton();
+        return;
+      }
+      if (!ok) {
+        signLang = prev;
+        syncChips();
+        await loadModel();
+        if (!active || myGen !== gen) { switching = false; if (active) renderButton(); return; }
+        if (cb.onModelError) cb.onModelError();
+      }
+    } finally {
+      switching = false;   // every exit path, including a throw from loadModel/callbacks
     }
-    switching = false;
     setOverlay(false);
     renderButton();
   }
