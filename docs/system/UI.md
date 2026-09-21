@@ -149,6 +149,12 @@ numbers for each fix are in the survey document.
 > *code says*, written before this was discovered — not behavior that has ever
 > run. `sign-to-text.html` is unaffected and is the only live screen in this
 > section.
+>
+> **Update 2026-09-21: `sign-to-text.html` is now archived too**
+> (`archive/sign-to-text.html`, see `archive/SIGN-TO-TEXT.md`) — its camera UI
+> was merged into `talk.html`'s signing screen (Part 3a). Everything below that
+> describes it describes the page as it ran until then; the recognition logic
+> it used (`js/sign-to-text-ui.js`) is still live, loaded by `talk.html`.
 
 ### 1. Owns these files
 

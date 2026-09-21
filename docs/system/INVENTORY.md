@@ -34,7 +34,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | File | Lines | Owns |
 |---|---|---|
 | [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3) |
-| [sign-to-text.html](../../sign-to-text.html) | 120 | Sign-to-text screen shell, loads `js/sign-to-text-ui.js` |
+| [archive/sign-to-text.html](../../archive/sign-to-text.html) | 120 | **Archived 2026-09-21** (merged into `talk.html`; see `archive/SIGN-TO-TEXT.md`) — was the sign-to-text screen shell |
 | [gesture-training.html](../../gesture-training.html) | 380 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26) |
 | [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
 | [learn-signs.html](../../learn-signs.html) | 93 | Learner reference screen, linked from index.html |
@@ -53,7 +53,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | File | Lines | Owns |
 |---|---|---|
 | [js/script.js](../../js/script.js) | 1094 | Loaded by `index.html`; index/dashboard screen logic, posts to `save_gesture.php` |
-| [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `sign-to-text.html`; sign-to-text screen logic |
+| [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `talk.html` via `js/talk-loader.js` since 2026-09-21 (was `sign-to-text.html`); k-NN/label/sentence logic |
 | [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1360 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26) |
 | [js/gesture-data.js](../../js/gesture-data.js) | 708 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed) |
 | [js/db-api.js](../../js/db-api.js) | 148 | Loaded by camera-translator.html/diagnostic.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
@@ -100,7 +100,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [css/style.css](../../css/style.css) | 596 | Loaded by index.html; base/dashboard styling |
 | [css/virtual-keyboard.css](../../css/virtual-keyboard.css) | 101 | Loaded by index.html/camera-translator.html/gesture-training.html; keyboard widget styling |
 | [css/gesture-training.css](../../css/gesture-training.css) | 1012 | Loaded by gesture-training.html |
-| [css/sign-to-text.css](../../css/sign-to-text.css) | 338 | Loaded by sign-to-text.html |
+| [css/sign-to-text.css](../../css/sign-to-text.css) | 338 | Orphaned since `sign-to-text.html` was archived 2026-09-21 (`DEBT.md` item 50) |
 | [css/fonts.css](../../css/fonts.css) | 10 | Added Phase 2; loaded by index.html, camera-translator.html, gesture-training.html, sign-to-text.html, reports.html, learn-signs.html — self-hosted Inter `@font-face` |
 
 ### `db-schema/`
