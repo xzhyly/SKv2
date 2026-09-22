@@ -51,6 +51,18 @@ function get_ffmpeg_path() {
     return null;
 }
 
+// The label's existing display clip, if any: assets/signs/<en|fil>/<label>.mp4, else .webm (the
+// raw fallback, and the format the shipped stock clips use). Returns the project-relative path.
+function find_label_video($assetsSignsDir, $label, $subFolder) {
+    foreach (['mp4', 'webm'] as $ext) {
+        $file = $assetsSignsDir . DIRECTORY_SEPARATOR . $label . '.' . $ext;
+        if (is_file($file) && filesize($file) > 0) {
+            return 'assets/signs/' . $subFolder . '/' . $label . '.' . $ext;
+        }
+    }
+    return null;
+}
+
 function column_exists($conn, $table, $column) {
     $table = mysqli_real_escape_string($conn, $table);
     $column = mysqli_real_escape_string($conn, $column);
@@ -479,6 +491,10 @@ if ($resolvedLabelDir === false || strpos($resolvedLabelDir, $targetDatasetRoot)
     fail('Invalid gesture label path');
 }
 
+// Samples this label already has for this sign set — taken BEFORE the new file is written; the
+// video rule below keys on it (a label's first sample always refreshes its clip).
+$priorSampleCount = count(glob($resolvedLabelDir . DIRECTORY_SEPARATOR . 'sample_*.json') ?: []);
+
 $filename = 'sample_' . round(microtime(true) * 1000) . '_' . bin2hex(random_bytes(3)) . '.json';
 $path     = $resolvedLabelDir . DIRECTORY_SEPARATOR . $filename;
 
@@ -498,6 +514,9 @@ if ($encoded === false || file_put_contents($path, $encoded, LOCK_EX) === false)
 
 // Save recorded video to assets/signs/<label>.mp4 (or fallback to .webm if ffmpeg is missing)
 $videoAssetRelative = $body['video_path'] ?? null;
+$videoSkipped    = false;
+$videoTranscoded = false;
+$videoExisting   = null;
 if (!empty($videoBase64)) {
     $base64Data = preg_replace('/^data:[^;]+;base64,/', '', $videoBase64);
     $videoBytes = base64_decode($base64Data, true);
@@ -510,7 +529,15 @@ if (!empty($videoBase64)) {
             $assetsSignsDir = realpath($assetsSignsDir);
         }
 
-        $ffmpeg = get_ffmpeg_path();
+        $existingVideo = find_label_video($assetsSignsDir, $label, $subFolder);
+        // Keep the existing clip for samples 2+. Landmarks were already saved above and are never skipped.
+        $skipVideo = ($existingVideo !== null && $priorSampleCount > 0);
+        if ($skipVideo) {
+            $videoSkipped  = true;
+            $videoExisting = $existingVideo;
+        }
+
+        $ffmpeg = $skipVideo ? null : get_ffmpeg_path();   // no `ffmpeg -version` process spawn on a skipped save
         if ($ffmpeg) {
             $tempRawPath = $assetsSignsDir . DIRECTORY_SEPARATOR . $label . '_temp_raw.webm';
             file_put_contents($tempRawPath, $videoBytes, LOCK_EX);
@@ -522,6 +549,7 @@ if (!empty($videoBase64)) {
             $cmd = "$ffmpeg -i " . escapeshellarg($tempRawPath) . " -vf \"scale=360:-2\" -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3.0 -r 25 -an -b:v 300k " . escapeshellarg($videoPath) . " -y 2>&1";
             $output = [];
             $retval = 0;
+            $videoTranscoded = true;                        // set immediately before the exec that actually runs
             exec($cmd, $output, $retval);
 
             if (file_exists($tempRawPath)) {
@@ -540,8 +568,8 @@ if (!empty($videoBase64)) {
             }
         }
 
-        // Fallback to saving raw webm if ffmpeg failed or is missing
-        if (empty($videoAssetRelative)) {
+        // Fallback to saving raw webm if ffmpeg failed or is missing (never on a skipped save)
+        if (!$skipVideo && empty($videoAssetRelative)) {
             $videoFilename = $label . '.webm';
             $videoPath = $assetsSignsDir . DIRECTORY_SEPARATOR . $videoFilename;
             file_put_contents($videoPath, $videoBytes, LOCK_EX);
@@ -582,4 +610,8 @@ echo json_encode([
     'dbDatasetTable'   => $dbDataset['table'],
     'dbDatasetId'      => $dbDataset['id'],
     'dbRecordingId'    => $dbRecordingId,
+    'labelSampleCount' => $priorSampleCount + 1,
+    'videoSkipped'     => $videoSkipped,
+    'videoTranscoded'  => $videoTranscoded,
+    'videoExisting'    => $videoExisting,
 ]);
