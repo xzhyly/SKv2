@@ -655,8 +655,10 @@
       .filter((row) => Array.isArray(row) && row.length === 126);
   }
 
-  async function loadGestureDatasetForTraining(noSync = false) {
-    const gestures = await loadSavedGestureDataset(noSync);
+  // Pure transform: gestures (as returned by loadSavedGestureDataset) -> flat feature rows.
+  // Split out so a caller that already has a fetched `gestures` object (the post-save reload
+  // path in gesture-training-ui.js) can skip a second network round-trip.
+  function recordingsToTrainingRows(gestures) {
     const rows = [];
     Object.keys(gestures).forEach((label) => {
       gestures[label].forEach((sample) => {
@@ -667,6 +669,11 @@
       });
     });
     return rows;
+  }
+
+  async function loadGestureDatasetForTraining(noSync = false) {
+    const gestures = await loadSavedGestureDataset(noSync);
+    return recordingsToTrainingRows(gestures);
   }
 
   function installHotkey() {
@@ -756,6 +763,7 @@
     loadSavedGestureDataset,
     loadGestureDatasetForTraining,
     recordingToFeatureRows,
+    recordingsToTrainingRows,
     cleanLabel,
   };
 

@@ -251,12 +251,12 @@ function refreshSampleCountLine() {
 }
 
 // ── DATASET DISPLAY IN STEP 1 (Table with Delete buttons) ──
-async function renderSavedDataset() {
+async function renderSavedDataset(prefetchedGestures) {
   const tableWrap = document.getElementById('gestureDatasetTableWrap');
   const datasetCount = document.getElementById('datasetCount');
   if (!tableWrap) return;
   try {
-    const gestures = await GestureDataRecorder.loadSavedGestureDataset();
+    const gestures = prefetchedGestures || await GestureDataRecorder.loadSavedGestureDataset();
     rebuildSampleInfo(gestures); refreshSampleCountLine();
     const labels = Object.keys(gestures);
     datasetCount.textContent = `${labels.length} categories`;
@@ -405,14 +405,16 @@ function loadKnnFromCache(targetLang) {
 
 let lastLoadedLanguage = null;
 
-async function mergeSavedGestureSamples() {
+async function mergeSavedGestureSamples(prefetchedGestures) {
   const langRadio = document.querySelector('input[name="gestureDatasetType"]:checked');
   const targetLang = (langRadio ? langRadio.value : 'ESL').toUpperCase();
 
-  if (savedGestureSamplesMerged && lastLoadedLanguage === targetLang) return;
-  if (typeof window.loadGestureDatasetForTraining !== 'function') return;
+  if (!prefetchedGestures && savedGestureSamplesMerged && lastLoadedLanguage === targetLang) return;
+  if (!prefetchedGestures && typeof window.loadGestureDatasetForTraining !== 'function') return;
   try {
-    const rows = await window.loadGestureDatasetForTraining();
+    const rows = prefetchedGestures
+      ? window.GestureDataRecorder.recordingsToTrainingRows(prefetchedGestures)
+      : await window.loadGestureDatasetForTraining();
     // Reset trainData so we don't duplicate on reload
     for (const key in trainData) {
       if (key !== 'start' && key !== 'stop') delete trainData[key];
@@ -1060,8 +1062,19 @@ document.getElementById('wordInput').addEventListener('keydown',e=>{if(e.key==='
 
 window.reloadDataset = async () => {
   savedGestureSamplesMerged = false;
-  await mergeSavedGestureSamples();
-  renderSavedDataset();
+  let gestures = null;
+  try {
+    // no_sync: the save that triggered this reload already wrote disk and the gesture_recordings
+    // row directly (save_gesture.php's POST branch calls save_gesture_recording_to_db, not
+    // sync_disk_to_db), so re-walking every label folder here is redundant (finding 10).
+    // DOMContentLoaded, below, keeps the full synced fetch: disk could have been touched outside
+    // the app between page loads, and that path is not on the per-save critical path.
+    gestures = await GestureDataRecorder.loadSavedGestureDataset(true);
+  } catch (err) {
+    console.warn('[reloadDataset] shared fetch failed, falling back to independent full reloads:', err);
+  }
+  await mergeSavedGestureSamples(gestures || undefined);
+  renderSavedDataset(gestures || undefined);
   updateUI();
 };
 
