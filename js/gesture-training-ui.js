@@ -200,6 +200,56 @@ function updateUI() {
   }).join('');
 }
 
+// ── Step 1: per-word sample tally ──
+// Soft, never-blocking recording target. knnPredict scores a label by the mean of its top-5 cosine
+// similarities over ALL its frames (knnPredict below), so 5 takes is the smallest count at which
+// each of those 5 neighbours can come from a different take. A suggestion, not a gate.
+const SAMPLE_TARGET = 5;
+const savedSampleInfo = { ESL: {}, FSL: {} };   // sign set -> label -> { samples, frames }
+let justSavedNote = '';
+
+function selectedSignSet() {
+  const r = document.querySelector('input[name="gestureDatasetType"]:checked');
+  return r && r.value.toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+}
+function currentLabelClean() {
+  const el = document.getElementById('gestureLabelInput');
+  return el ? GestureDataRecorder.cleanLabel(el.value) : '';
+}
+function sampleInfoFor(label, set) {
+  return (label && savedSampleInfo[set][label]) || { samples: 0, frames: 0 };
+}
+function rebuildSampleInfo(gestures) {
+  savedSampleInfo.ESL = {}; savedSampleInfo.FSL = {};
+  Object.keys(gestures).forEach(label => gestures[label].forEach(s => {
+    const set = String(s.signLanguage || 'ESL').toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+    const e = savedSampleInfo[set][label] || (savedSampleInfo[set][label] = { samples: 0, frames: 0 });
+    e.samples += 1; e.frames += s.frameCount || 0;
+  }));
+}
+function noteSampleSaved(res) {
+  const set = String(res.signLanguage || 'ESL').toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+  const e = savedSampleInfo[set][res.label] || (savedSampleInfo[set][res.label] = { samples: 0, frames: 0 });
+  e.samples = res.labelSampleCount || e.samples + 1;   // server count is authoritative
+  e.frames += res.frameCount || 0;                     // exact again after the next dataset reload
+  justSavedNote = 'Saved. Run Train AI (Step 2) again to use it.';
+}
+function refreshSampleCountLine() {
+  const line = document.getElementById('sampleCountLine');
+  const startBtn = document.getElementById('startGestureDataBtn');
+  if (!line) return;
+  const label = currentLabelClean();
+  const { samples, frames } = sampleInfoFor(label, selectedSignSet());
+  if (startBtn) startBtn.textContent = samples > 0 ? 'Record another sample' : 'Start Capture';
+  line.classList.toggle('done', samples >= SAMPLE_TARGET);
+  if (!label) { line.textContent = ''; return; }
+  let text;
+  if (samples === 0) text = `“${label}” is a new word — no samples yet. Aim for ${SAMPLE_TARGET}.`;
+  else if (samples < SAMPLE_TARGET) text = `“${label}” — ${samples} sample${samples === 1 ? '' : 's'} saved (${frames} frames). Record another — aim for ${SAMPLE_TARGET}.`;
+  else text = `“${label}” — ${samples} samples saved (${frames} frames). ✓ Target reached; more are optional.`;
+  line.textContent = justSavedNote ? `${text} ${justSavedNote}` : text;
+}
+
 // ── DATASET DISPLAY IN STEP 1 (Table with Delete buttons) ──
 async function renderSavedDataset() {
   const tableWrap = document.getElementById('gestureDatasetTableWrap');
@@ -207,6 +257,7 @@ async function renderSavedDataset() {
   if (!tableWrap) return;
   try {
     const gestures = await GestureDataRecorder.loadSavedGestureDataset();
+    rebuildSampleInfo(gestures); refreshSampleCountLine();
     const labels = Object.keys(gestures);
     datasetCount.textContent = `${labels.length} categories`;
     if (labels.length === 0) {
@@ -253,6 +304,7 @@ async function deleteGesture(label) {
     if (json.success) {
       showToast(`🗑️ Deleted gesture "${label}"`);
       delete trainData[label];
+      delete savedSampleInfo.ESL[label]; delete savedSampleInfo.FSL[label]; refreshSampleCountLine();
       renderSavedDataset();
       updateUI();
     } else {
@@ -1015,6 +1067,14 @@ window.reloadDataset = async () => {
 
 // Startup triggers:
 window.addEventListener('DOMContentLoaded', async () => {
+  const lblIn = document.getElementById('gestureLabelInput');
+  const clearNote = () => { justSavedNote = ''; refreshSampleCountLine(); };
+  if (lblIn) lblIn.addEventListener('input', clearNote);
+  document.querySelectorAll('input[name="gestureDatasetType"]').forEach(r => r.addEventListener('change', clearNote));
+  const startB = document.getElementById('startGestureDataBtn');
+  if (startB) startB.addEventListener('click', () => { justSavedNote = ''; });
+  refreshSampleCountLine();
+
   showStepInstruction(1);
 
   // Try restoring cached KNN model so Step 3 works without re-training
@@ -1330,6 +1390,8 @@ window.onGestureCaptureCancelled = () => {
 
 window.onGestureCaptureReady = (label, signLanguage) => {
   currentCaptureMeta = { label, signLanguage };
+  const prev = document.getElementById('previewSampleLine');
+  if (prev) prev.textContent = `This will be sample ${sampleInfoFor(label, String(signLanguage).toUpperCase() === 'FSL' ? 'FSL' : 'ESL').samples + 1} of “${label}”.`;
 };
 
 // Wire confirm and retry preview controls immediately
@@ -1341,7 +1403,9 @@ if (saveBtn) {
     if (window.GestureDataRecorder && typeof window.GestureDataRecorder.confirmAndSave === 'function') {
       const res = await window.GestureDataRecorder.confirmAndSave();
       if (res && res.success) {
+        noteSampleSaved(res);
         resetCaptureUI();
+        refreshSampleCountLine();
       }
     }
   });

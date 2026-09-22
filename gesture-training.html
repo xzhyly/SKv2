@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Train Gestures ✿ Sining Kamay</title>
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.5">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.6">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
   <script src="js/lib/tf.min.js" defer></script>
   <script src="js/lib/mediapipe/hands.js" defer></script>
@@ -206,6 +206,7 @@
               <label class="tr-flbl">Gesture Name</label>
               <input id="gestureLabelInput" data-gesture-label type="text" class="tr-input" placeholder="Gesture name, e.g. hello" autocomplete="off" aria-label="Gesture name">
             </div>
+            <div id="sampleCountLine" class="tr-sample-line" role="status" aria-live="polite"></div>
             <div class="tr-fgrp" style="margin-top:2px">
               <label class="tr-flbl">Sign Set</label>
               <div class="tr-sign-toggle">
@@ -253,6 +254,7 @@
         <!-- Preview Controls (shown during preview) -->
         <div id="step1PreviewControls" class="tr-preview-panel">
           <div class="tr-preview-title">📹 Confirm Gesture Recording</div>
+          <div id="previewSampleLine" class="tr-sample-line"></div>
           <div class="tr-preview-video-container">
             <video id="capturePreviewVideo" class="tr-preview-video" autoplay loop muted playsinline></video>
           </div>

@@ -1008,5 +1008,10 @@ video#videoFeed{width:100%;height:100%;object-fit:contain;border-radius:12px;tra
   background-color: #a0aec0 !important;
 }
 
+/* Step 1: live sample count for the current word */
+.tr-sample-line{font-size:12px;font-weight:700;color:var(--navy);min-height:16px;line-height:1.35}
+.tr-sample-line:empty{display:none}
+.tr-sample-line.done{color:var(--green)}
+
 
 

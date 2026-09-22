@@ -525,6 +525,7 @@
   }
 
   async function confirmAndSave() {
+    const savedLabel = state.label, savedLang = state.signLanguage;
     if (state.frames.length === 0 || !state.label) {
       notify("No gesture data captured to save.");
       return { success: false };
@@ -578,7 +579,9 @@
         state.label  = "";
         window.currentPreviewBlob = null;
         window.currentPreviewPath = null;
-        return { success: true, videoAsset: result.videoAsset };
+        return { success: true, videoAsset: result.videoAsset, label: savedLabel, signLanguage: savedLang,
+                 frameCount: result.frameCount, labelSampleCount: result.labelSampleCount,
+                 videoSkipped: !!result.videoSkipped };
       } else {
         notify("Gesture save failed.");
         setRecorderUi({ message: "Gesture save failed" });
@@ -753,6 +756,7 @@
     loadSavedGestureDataset,
     loadGestureDatasetForTraining,
     recordingToFeatureRows,
+    cleanLabel,
   };
 
   window.extractLandmarkFeatures = extractLandmarkFeatures;
