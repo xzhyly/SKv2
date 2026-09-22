@@ -178,6 +178,12 @@ so a later session does not re-litigate them:
     development section in `docs/system/HARDWARE_BOOT.md`), this can be
     verified directly on a development machine instead.
 
+    **Note (2026-09-22, gesture-training multi-sample phase):** not
+    resolved — this phase does not change `trainModel()` or the epochs
+    label; Step 1 now tells the operator to run Train AI again after a save,
+    which is consistent with this item's own finding that Train is a cache
+    merge, not a real training run.
+
 15. **`error_reporting(0)` / `display_errors=0` disabled repo-wide for one file.**
     `php/api/bulk_importer_api.php:3-4` — intended to keep warnings out of JSON
     responses, but also hides genuine bugs in that file, not just formatting
@@ -305,6 +311,12 @@ so a later session does not re-litigate them:
     shape, is recorded in `docs/system/BULK_IMPORTER_NOTES.md` as design input
     for its eventual replacement. Camera-based gesture capture (the other,
     still-present half of the training screen) is unaffected.
+
+    **Note (2026-09-22, gesture-training multi-sample phase):** not folded
+    in; this phase does not restore upload. It does change what a re-record
+    does to the label's existing clip: samples 2+ of a word that already has
+    a video now keep the first take's clip instead of re-encoding a new one
+    on every save (see `DECISIONS.md`, "the transcode rule").
 
 27. **Low severity, cleanup during the UI revision: `Nunito` is now
     unreachable dead weight in font stacks.** `camera-translator.html:19,40`,
@@ -713,6 +725,56 @@ so a later session does not re-litigate them:
     Speak or Type.** Translate strips `?` before playing (`normalizeSpeechText`
     does not), so it stays disabled for a `?`-only input, and Send now lives only
     in the preview panel. Before the text-to-sign merge, `?` + Send worked.
+
+62. **Low severity, open: the `.mp4` `save_gesture.php` writes is not the clip
+    `talk.html` plays.** Found and corrected during planning for the
+    gesture-training multi-sample phase (2026-09-22) — `js/sign-player.js:
+    255,378,411` (the only sign-video player in the app) only ever probes
+    `<label>.webm` and never references `.mp4`; the only reader of the
+    `.mp4` this endpoint writes is `php/api/reports.php:30-53` (Reports →
+    ESL/FSL Signs → View Asset). `assets/signs/en/` holds 120 `.webm` files
+    and 0 `.mp4` files (measured). The multi-sample phase's own spec
+    originally stated the two were the same clip; that line was wrong and
+    was corrected inline in the spec rather than left standing (see
+    `docs/superpowers/specs/2026-09-22-gesture-training-multi-sample-design.md`,
+    "Correction (plan phase, 2026-09-22)"). Not fixed here — revisit before
+    building any "choose the display take" control (`DECISIONS.md`, Extra B).
+
+63. **Medium severity, MITIGATED not eliminated: the post-save reload in
+    `gesture-training.html` still costs real time.** Before (gesture-training
+    multi-sample phase, finding 6, measured pre-fix): every save awaited
+    `reloadDataset()`, which ran two independent full-dataset GETs, each with
+    a server-side `sync_disk_to_db` walk (`mergeSavedGestureSamples()` and
+    `renderSavedDataset()` each doing their own fetch) — measured 2 fetches,
+    ~5.6 MB each, 2,271–3,919 ms awaited per save (curl `?no_sync=1` alone:
+    1.15–1.29 s). After (Task 5, commit `1690cae`): `window.reloadDataset`
+    (`js/gesture-training-ui.js:1063`) fetches the dataset once via
+    `no_sync=1` and shares it with both consumers — measured
+    `{ms: 4515, fetches: 1, bytesEach: [5601800]}` against a measured
+    `{ms: 5326, fetches: 2, bytesEach: [5601800, 5601800]}` before. That is a
+    real but modest ~15% wall-clock improvement (5326→4515 ms), **not** the
+    dramatic cut the fetch-count drop (2→1) alone might suggest: most of the
+    remaining ~4.5 s is client-side `JSON.parse`/object-building of a still
+    ~5.6 MB payload, not network transfer or the server-side sync step that
+    was cut. **Not eliminated:** `DOMContentLoaded`'s startup load still runs
+    both full synced fetches, unchanged, by design (`DECISIONS.md`) — loading
+    the page cold with a large dataset still costs several seconds. The
+    dominant remaining cost is payload size (~26 KB per sample kept, ~209
+    labels' worth of full landmark-frame data returned on every reload,
+    finding 6) — explicitly out of scope for this phase (see the plan's
+    Scope section) and not addressed here.
+
+64. **Low severity, open: `delete_gesture` leaves the label's display clip
+    behind.** `php/api/save_gesture.php:401-438`'s `delete_gesture` action
+    removes the label's `sample_*.json` files and its `gesture_recordings`/
+    `gestures` DB rows, but never removes `assets/signs/<en|fil>/<label>.mp4`
+    or `.webm`. Deleting a word and never re-recording it leaves an orphaned
+    clip on disk forever. (Deleting and then re-recording is a smaller
+    version of the same gap: the multi-sample phase's transcode rule forces
+    a fresh transcode on the first sample after a delete — see
+    `DECISIONS.md`, "the transcode rule" — so the clip does get overwritten
+    in that case; it just isn't removed by the delete itself.) Not fixed in
+    this phase.
 
 ## Dead code
 

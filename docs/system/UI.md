@@ -462,13 +462,67 @@ below. None of that ran.
   code.
 - Countdown before gesture recording: 3-2-1 at **1000ms** per tick
   (gesture-training-ui.js:1219-1233).
+- **Step 1 (Add Data), multi-sample recording (2026-09-22 gesture-training
+  multi-sample phase):** a live per-word sample-count line
+  (`#sampleCountLine`, gesture-training.html:209) and a matching preview-panel
+  line (`#previewSampleLine`, gesture-training.html:257) are driven by
+  `refreshSampleCountLine()` (gesture-training-ui.js:237); the count comes
+  from a per-(sign set, label) tally kept in `savedSampleInfo`, rebuilt from
+  the dataset on every load/reload and updated in place from each save's
+  response. `SAMPLE_TARGET = 5` (gesture-training-ui.js:207), and the line
+  moves through three states as the count grows: "is a new word — no samples
+  yet," "N sample(s) saved … aim for 5," and "✓ Target reached; more are
+  optional" once the `.done` threshold check (gesture-training-ui.js:244,
+  ternary at :247-248) is met. The Start button relabels itself "Record
+  another sample" once the word already has ≥1 saved sample (was always
+  "Start Capture"). Styling: `.tr-sample-line`
+  (css/gesture-training.css:1012-1014); this shipped alongside a CSS
+  cache-bust bump from `v=1.0.5` to `css/gesture-training.css?v=1.0.6`
+  (gesture-training.html:8; see the cache-busting bullet below).
+- **The soft target of 5 is not arbitrary.** `knnPredict` scores a label as
+  the mean of its top `min(5, N)` cosine similarities across *all* of that
+  label's saved frames, i.e. K=5 (gesture-training-ui.js:310, same K cited
+  above). One take alone already fills K=5 with near-duplicate frames (~90ms
+  apart within a take, gesture-data.js), so 5 samples is the smallest count
+  at which each of the 5 neighbours *can* come from a different take — a
+  code-derived number, not a guess. The pool-size bias this implies (a word
+  recorded far more than others gets a systematically higher top-5 mean) is
+  real by construction but its magnitude has not been measured
+  (`docs/system/DEBT.md`; see also `docs/system/MANUAL-CHECKS.md`'s
+  gesture-training section).
+- **`php/api/save_gesture.php`'s save-a-sample response gained four
+  additive fields, same phase:** `labelSampleCount` (int — samples saved for
+  this label+sign set after this save), `videoSkipped` / `videoTranscoded`
+  (bool), `videoExisting` (string|null — the path of the clip that was kept
+  when the transcode was skipped). The server now skips the ffmpeg transcode
+  for a label's 2nd+ sample when the label already has a video (`.mp4` or
+  `.webm`, `find_label_video()`, save_gesture.php:56) and has at least one
+  prior sample (`$priorSampleCount`, computed at save_gesture.php:496 —
+  before the new sample file is written); the skip decision is at
+  save_gesture.php:534, the three status defaults at :517-519,
+  `$videoTranscoded = true` is set immediately before the `exec()` call at
+  :552, and the four response fields are added at :613-616. Landmark data
+  still saves on every sample, unconditionally, regardless of the video
+  decision.
+- **The post-save reload path shares one fetch instead of two, same phase.**
+  `window.reloadDataset` (gesture-training-ui.js:1063) now fetches the
+  dataset once via `GestureDataRecorder.loadSavedGestureDataset(true)`
+  (`no_sync=1`) and passes that one result to both `mergeSavedGestureSamples()`
+  (:408) and `renderSavedDataset()` (:254), instead of each of those two
+  functions independently running its own full, `sync_disk_to_db`-triggering
+  fetch. Both functions keep an unchanged full-fetch fallback when called
+  with no argument, which is what `trainModel()` and the page's
+  `DOMContentLoaded` startup handler still do — the startup load still runs
+  two full synced fetches, by design (`docs/system/DECISIONS.md`).
 - Admin PIN for both gesture-training.html and reports.html is hardcoded
   client-side: `CORRECT_PIN = '2026'` (gesture-training-ui.js:23; reports.html:443,
   inline duplicate implementation).
-- Cache-busting/version query strings: `js/script.js?v=5` (index.html:750),
-  `css/gesture-training.css?v=1.0.5` and `css/virtual-keyboard.css?v=1.0.5`
-  (gesture-training.html:8-9). No version string on `css/style.css`,
-  `js/gesture-training-ui.js`, or `js/vosk.js`.
+- Cache-busting/version query strings: `js/script.js?v=5` (index.html:750,
+  before `js/script.js` was archived — see the Part 2 update note at the top
+  of this section), `css/gesture-training.css?v=1.0.6` (bumped from `v=1.0.5`
+  by the 2026-09-22 gesture-training multi-sample phase) and
+  `css/virtual-keyboard.css?v=1.0.5` (gesture-training.html:8-9). No version
+  string on `css/style.css`, `js/gesture-training-ui.js`, or `js/vosk.js`.
 - Save-gesture endpoint path branches on protocol: when
   `location.protocol === "file:"` it hardcodes `http://localhost` + (`/SKR` if the
   pathname contains `/SKR`, else `/Sining_kamay`) + `/php/api/save_gesture.php`

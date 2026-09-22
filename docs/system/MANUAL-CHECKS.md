@@ -97,6 +97,77 @@ cache once after deploying.
       Words box, type a word, tap **Add**. Expected: the word is added as a
       chip, the keyboard closes, nothing else happens.
 
+## Gesture training multi-sample (2026-09-22)
+
+`docs/superpowers/plans/2026-09-22-gesture-training-multi-sample.md` (commits
+`491b4fa`, `5f9918d`, `e825111`, `1690cae`). Everything below needs the real
+Pi — every number in the plan and in `docs/system/DECISIONS.md`/`DEBT.md`
+item 63 for this phase was measured on the dev machine (AMD Ryzen 5 2400G),
+which is not the Pi's CPU; treat all dev-machine numbers quoted here as a
+baseline for comparison, not a substitute for the Pi's own numbers.
+
+- [ ] **Per-save wait, before vs. after, on the Pi.** Record 5+ samples of
+      one word back to back and note the perceived per-save wait. Ideally do
+      this once on the commit before this phase (`ce46fff`) and once on the
+      current `HEAD`, for a like-for-like comparison — this phase's own dev
+      machine measurements (for context only, not the Pi's numbers):
+      ffmpeg runs per 5-take session, 5 → 1 (`measure-session.mjs`, Task 1
+      baseline vs. Task 2 fix); post-save reload, 2 synced dataset fetches →
+      1 unsynced fetch, `{ms: 5326, fetches: 2}` → `{ms: 4515, fetches: 1}`
+      (Task 5, measured with `performance.getEntriesByType('resource')` in
+      Chrome — see `docs/system/DEBT.md` item 63 for the full before/after
+      and the honest caveat that this is only a ~15% wall-clock win, not a
+      halving, because most of the remaining time is client-side JSON
+      parsing of a still-~5.6 MB payload).
+- [ ] **The word's display clip is still a real, playable file after several
+      re-recordings.** Record a word 3-5 times, then open
+      `assets/signs/en/<word>.mp4` (or `.webm`, whichever exists) directly,
+      and separately check it via Reports → ESL/FSL Signs → View Asset.
+      Expected: a normal, playable clip of the first take — not blank,
+      corrupt, or the file it was on sample 1 unexpectedly overwritten by a
+      later, worse take (only the first take is ever kept, by design; see
+      `docs/system/DECISIONS.md`, "Display-take policy is A").
+- [ ] **Subjective Predict (Step 3) accuracy, one recording vs. several,
+      after pressing Train AI again.** Record one word once, another word
+      5-8 times, press **Train AI** (Step 2) again (required — see
+      `docs/system/DECISIONS.md`, the `localStorage.removeItem` note), then
+      use Predict (Step 3) on both. Note, subjectively, whether the
+      many-times word is recognised more reliably under hand jitter than the
+      once-recorded word. Separately, with one word recorded 8× sitting
+      beside several others recorded once each, watch for any single word
+      that "steals" predictions it shouldn't win — this is the pool-size bias
+      finding 1 predicts by construction (a label with many more frames in
+      its pool has a systematically higher top-5 cosine mean), but its
+      magnitude has never been measured. This whole item is unmeasured
+      before this check; write down what you actually observe, don't assume
+      the bias is either negligible or severe.
+- [ ] **Pi ffmpeg facts (exact commands — record the raw output verbatim):**
+      ```
+      which ffmpeg
+      ffmpeg -version | head -1
+      ffmpeg -hide_banner -encoders | grep -E "libx264|v4l2m2m"
+      ```
+      If ffmpeg is installed, also time an actual transcode with the exact
+      flags `save_gesture.php` uses:
+      ```
+      time ffmpeg -i <a 320x240 sample>.webm -vf scale=360:-2 -c:v libx264 \
+        -pix_fmt yuv420p -profile:v baseline -level 3.0 -r 25 -an -b:v 300k \
+        out.mp4 -y
+      ```
+      and, only if `h264_v4l2m2m` appeared in the `-encoders` grep above (the
+      Pi 4's hardware H.264 encoder), the same command with
+      `-c:v h264_v4l2m2m -b:v 300k` in place of the `libx264` flags (drop
+      `-profile:v`/`-level` first and see whether it even accepts them).
+      Record the times as the real Pi baseline — none of the ffmpeg timings
+      in this phase's plan or docs (257.6/273.9/356.5 ms synthetic-input
+      min/median/max over 7 runs; 219.9–325 ms for the stock clips) are Pi
+      numbers; they are dev-machine numbers only. Hardware encoding is **not
+      adopted** in this phase regardless of what this check finds — after the
+      transcode-skip fix, only a word's first-ever sample is transcoded at
+      all, which shrinks the payoff of switching encoders further. Whether
+      ffmpeg is installed on the Pi at all, and whether its build was
+      compiled with `v4l2m2m` support, is unknown until this check is run.
+
 ## Sign-to-text guide (`sign-to-text.html`)
 
 - [ ] Load the page. Expected: the Guide badge, title, description and

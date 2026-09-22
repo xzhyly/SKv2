@@ -796,3 +796,80 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   been touched outside the app between page loads, so a real disk→DB
   reconciliation is warranted at cold start; it is not warranted immediately
   after a save this same request just wrote to disk and DB directly.
+- **The transcode rule skips ffmpeg for a label's sample 2+ only when that
+  label already has a video, and always re-transcodes when it has none
+  (`$priorSampleCount == 0`), even right after a delete.** Reason: finding 4
+  — `delete_gesture` (`save_gesture.php:401-438`) removes only the label's
+  JSON samples and DB rows, never its `<label>.mp4`/`.webm` clip; a plain
+  "skip if it already has a video" rule would leave that stale clip in place
+  forever after a delete-and-re-record. The rule's second clause (transcode
+  when the label has no prior sample) exists specifically to refresh the
+  clip the moment a label starts over.
+- **Display-take policy is A — first take wins — not the opt-in "use this
+  take as the display clip" control; Extra B is declined outright, not held
+  for a later pass.** Reason (recommendations section of the spec): (a) it
+  is the only variant that removes the per-save ffmpeg cost outright — any
+  scheme that keeps re-encoding until the operator picks a favourite take
+  still pays the cost this phase exists to cut; (b) finding 3 (the `.mp4`
+  this endpoint writes is read only by `reports.php`'s View Asset, never by
+  `talk.html`/`js/sign-player.js`) removes the practical reason to build a
+  picker now — a control for choosing a display take that nothing in the
+  live app plays back has no payoff yet; (c) a bad first take is already
+  recoverable today via Delete + re-record, which the clause above makes
+  refresh the clip. Revisit once `DEBT.md` item 62 (the mp4/webm mismatch)
+  is settled — this is a decline, not a "not yet."
+- **Soft target is 5 samples per word — not the spec's original "5–8" framing
+  and not 8.** Reason: finding 1 — `knnPredict` scores a label as the mean of
+  its top `min(5, N)` cosine similarities over all of that label's saved
+  frames (`SAMPLE_TARGET = 5`, `gesture-training-ui.js:207`; K=5 in
+  `knnPredict`, `:310`). One take already fills K=5 with near-duplicate
+  frames (~90 ms apart within a take), so 5 takes is the smallest count at
+  which each of the 5 neighbours *can* come from a different take — a
+  code-derived number, not a guess. 8 has no basis anywhere in the code and
+  was never adopted.
+- **`js/gesture-data.js:566`'s `localStorage.removeItem(labelsKey)` after
+  every save is load-bearing and was deliberately left untouched.** Reason:
+  finding 2 — `trainModel()` only adds labels missing from the cached label
+  list; without this removal, a word's newer samples would never reach the
+  in-memory model until that cache expired some other way. Because this is
+  true, Step 1's status line now says so out loud:
+  `noteSampleSaved()`'s note reads "Saved. Run Train AI (Step 2) again to
+  use it." after every save (`gesture-training-ui.js`) — the UI states a
+  requirement the code has always had, rather than leaving it silent.
+- **"Has a video," for the transcode-skip rule, means `<label>.mp4` OR
+  `<label>.webm` — not `.mp4` only.** Reason: findings 3 and 4 — the raw-`ffmpeg`-missing
+  fallback writes `.webm`, and every one of the 120 pre-existing stock clips
+  in `assets/signs/en/` is a `.webm` with zero `.mp4` files measured
+  alongside them; a `.mp4`-only check would re-transcode all 120 of those
+  legacy words on their very next new sample. `find_label_video()`
+  (`save_gesture.php:56`) checks `.mp4` then `.webm`, in that order.
+- **The post-save reload path (`window.reloadDataset`,
+  `gesture-training-ui.js:1063`) shares one `no_sync=1` fetch between
+  `mergeSavedGestureSamples()` and `renderSavedDataset()`; `DOMContentLoaded`'s
+  startup load keeps both of its full synced fetches, unchanged.** Reason
+  (Task 5, finding 10): the save that triggers a post-save reload already
+  wrote disk and the `gesture_recordings` DB row directly
+  (`save_gesture_recording_to_db`, not `sync_disk_to_db`), so re-walking
+  every label folder at that specific moment is redundant work. At page
+  load, by contrast, disk could have been touched outside the running app
+  since the last load (Reports/View Asset, hand-editing gesture data,
+  deletions run some other way), so a real disk→DB reconciliation is
+  warranted there and was deliberately left alone rather than also cut.
+- **The test harness (`tests/multi-sample/harness.mjs`,
+  `ffmpeg-stub/ffmpeg.bat`, `save-endpoint.test.mjs`, `measure-session.mjs`)
+  and the reload-regression script (`tests/multi-sample/reload-regression.page.js`)
+  are committed under `tests/multi-sample/`, not thrown away after use.**
+  Reason (Extra D, owner-approved): both the ffmpeg-skip behaviour and the
+  1-fetch reload behaviour are exactly the kind of thing a later, unrelated
+  change could silently regress; keeping a runnable harness and a
+  paste-into-console regression script in the repo gives the next person who
+  touches `save_gesture.php` or `reloadDataset()` a re-runnable check instead
+  of having to reconstruct one from scratch.
+- **The spec's claim that the `.mp4` this endpoint writes is "the same clip
+  the sign-video player reads" was wrong, and was corrected inline in the
+  spec during planning rather than left standing.** Reason:
+  `js/sign-player.js:255,378,411` (the only sign-video player in the app)
+  only ever probes `<label>.webm` and never references `.mp4`; the only
+  reader of the `.mp4` this endpoint writes is `php/api/reports.php:30-53`
+  (Reports → View Asset). See the spec's own "Correction (plan phase,
+  2026-09-22)" note and `DEBT.md` item 62.
