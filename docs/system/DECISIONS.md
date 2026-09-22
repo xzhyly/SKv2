@@ -770,3 +770,29 @@ One line per settled decision, appended as the run proceeds.
 - **The retirement of `#translator-pane` is its own final commit, after
   end-to-end verification**, and resolves `DEBT.md` item 44 by removing the
   pane the dead link lived in.
+
+## Decisions made during the gesture-training multi-sample phase (2026-09-22)
+
+Spec: `docs/superpowers/specs/2026-09-22-gesture-training-multi-sample-design.md`.
+One line per settled decision, appended as the run proceeds. (This file's
+title says `talk.html`; this section is about `gesture-training.html`.)
+
+- **Multi-sample recording already worked in the data model (`gestures[label]`
+  is an array, `gesture_recordings` does a plain INSERT per save) — this phase is
+  a UX/surfacing fix plus a redundant-encode fix, not new storage plumbing.**
+  Reason: the spec traced it end to end with file:line citations
+  (`js/gesture-data.js:658-661`, `php/api/save_gesture.php:195-208`); nothing in
+  the stack limits a word to one sample, so no schema or storage change is
+  warranted.
+- **Option C (cutting the post-save `reloadDataset()` cost) was promoted from
+  a held-back extra into the base plan as Task 5, not shipped as a follow-up.**
+  Reason: the owner's read of the plan's own numbers — ffmpeg skip saves
+  220–455 ms/save (Task 2), the reload cost it does nothing about was
+  measured at 2.0–3.9 s/save (two full synced dataset fetches, one of them
+  not even awaited by its caller) — showed that Task 2 alone would not
+  produce the "feels faster" outcome the phase exists for.
+- **The reload fix is scoped to the post-save path only; `DOMContentLoaded`'s
+  startup load keeps its two full synced fetches.** Reason: disk could have
+  been touched outside the app between page loads, so a real disk→DB
+  reconciliation is warranted at cold start; it is not warranted immediately
+  after a save this same request just wrote to disk and DB directly.
