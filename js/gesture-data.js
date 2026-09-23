@@ -21,6 +21,7 @@
     video: null,
     toast: null,
     ui: {},
+    savedCategories: { ESL: {}, FSL: {} }, // last loadSavedGestureDataset()'s json.categories
   };
 
   function notify(message) {
@@ -547,8 +548,11 @@
       }
     }
 
+    const checkedCategory = document.querySelector('input[name="gestureCategory"]:checked');
+    const category = checkedCategory ? checkedCategory.value : null;
+
     try {
-      const result = await saveGestureSample(state.label, state.frames, state.signLanguage, videoBase64, videoPath);
+      const result = await saveGestureSample(state.label, state.frames, state.signLanguage, videoBase64, videoPath, category);
       if (result.success) {
         notify(`🎉 Saved ${state.frames.length} frames for "${state.label}".`);
         setRecorderUi({ message: `Saved "${state.label}"` });
@@ -581,7 +585,7 @@
         window.currentPreviewPath = null;
         return { success: true, videoAsset: result.videoAsset, label: savedLabel, signLanguage: savedLang,
                  frameCount: result.frameCount, labelSampleCount: result.labelSampleCount,
-                 videoSkipped: !!result.videoSkipped };
+                 videoSkipped: !!result.videoSkipped, category: result.category };
       } else {
         notify("Gesture save failed.");
         setRecorderUi({ message: "Gesture save failed" });
@@ -605,7 +609,7 @@
     notify("Gesture capture discarded.");
   }
 
-  async function saveGestureSample(label, frames, signLanguage = "ESL", videoBase64 = null, videoPath = null) {
+  async function saveGestureSample(label, frames, signLanguage = "ESL", videoBase64 = null, videoPath = null, category = null) {
     const payload = {
       label:         cleanLabel(label),
       sign_language: signLanguage === "FSL" ? "FSL" : "ESL",
@@ -616,6 +620,9 @@
     }
     if (videoPath) {
       payload.video_path = videoPath;
+    }
+    if (category) {
+      payload.category = category;
     }
     const res = await fetch(SAVE_ENDPOINT, {
       method: "POST",
@@ -645,7 +652,12 @@
     if (!res.ok || !json.success) {
       throw new Error(json.error || `HTTP ${res.status}`);
     }
+    state.savedCategories = json.categories || { ESL: {}, FSL: {} };
     return json.gestures || {};
+  }
+
+  function getSavedCategories() {
+    return state.savedCategories;
   }
 
   function recordingToFeatureRows(sample) {
@@ -761,6 +773,7 @@
     extractLandmarkFeatures,
     saveGestureSample,
     loadSavedGestureDataset,
+    getSavedCategories,
     loadGestureDatasetForTraining,
     recordingToFeatureRows,
     recordingsToTrainingRows,

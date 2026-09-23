@@ -394,6 +394,35 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
     );
 }
 
+// Builds {"ESL": {label: category, ...}, "FSL": {label: category, ...}} for every (label,
+// sign_language) pair that appears among the given $gestures samples. Reads the DB in ONE query
+// (gesture_category() as heuristic fallback for labels with no row, or if the SELECT itself
+// fails) -- the dataset list must never fail because of categories.
+function build_categories_map($conn, $gestures) {
+    $dbCategory = []; // "ESL\x00label" -> category
+    $result = @mysqli_query($conn, 'SELECT word, sign_language, category FROM gestures');
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) {
+            $set = strtoupper((string)($row['sign_language'] ?? 'ESL')) === 'FSL' ? 'FSL' : 'ESL';
+            $dbCategory[$set . "\x00" . $row['word']] = $row['category'];
+        }
+    }
+
+    $categories = ['ESL' => [], 'FSL' => []];
+    foreach ($gestures as $label => $samples) {
+        $sets = [];
+        foreach ($samples as $sample) {
+            $set = strtoupper((string)($sample['signLanguage'] ?? 'ESL')) === 'FSL' ? 'FSL' : 'ESL';
+            $sets[$set] = true;
+        }
+        foreach (array_keys($sets) as $set) {
+            $key = $set . "\x00" . $label;
+            $categories[$set][$label] = $dbCategory[$key] ?? gesture_category($label);
+        }
+    }
+    return $categories;
+}
+
 function list_samples($defaultRoot) {
     global $conn;
     // Skip sync when no_sync is set (used by sign-to-text and voice pages for fast startup)
@@ -401,6 +430,9 @@ function list_samples($defaultRoot) {
         // Disk is source of truth: sync disk → DB (adds new, deletes stale phantom rows)
         sync_disk_to_db($conn, $defaultRoot);
     }
+    // A no_sync load on an unmigrated DB (category column not yet added) still needs the column
+    // to exist before build_categories_map()'s SELECT below.
+    ensure_gestures_columns($conn);
 
     $folders = [
         'saved_gestures',
@@ -416,11 +448,11 @@ function list_samples($defaultRoot) {
         foreach (glob($dirPath . '/*', GLOB_ONLYDIR) ?: [] as $labelDir) {
             $label = basename($labelDir);
             $files = glob($labelDir . '/sample_*.json') ?: [];
-            
+
             if (!isset($gestures[$label])) {
                 $gestures[$label] = [];
             }
-            
+
             foreach ($files as $file) {
                 $json = json_decode(file_get_contents($file), true);
                 if (is_array($json)) {
@@ -441,6 +473,7 @@ function list_samples($defaultRoot) {
         'success' => true,
         'datasetRoot' => 'saved_gestures',
         'gestures' => $gestures,
+        'categories' => build_categories_map($conn, $gestures),
     ]);
     exit;
 }
