@@ -157,6 +157,7 @@ a{text-decoration:none}
 .tr-input:focus{border-color:var(--navy)}
 
 .tr-sign-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tr-type-toggle{grid-template-columns:1fr 1fr 1fr 1fr}
 .tr-sign-opt{
   height:40px;display:flex;align-items:center;justify-content:center;
   border-radius:8px;border:1.5px solid var(--border);

@@ -11,6 +11,7 @@
   <script src="js/lib/mediapipe/hands.js" defer></script>
   <script src="js/db-api.js" defer></script>
   <script src="js/gesture-data.js" defer></script>
+  <script src="js/gesture-category.js" defer></script>
   <script src="js/camera-helper.js" defer></script>
   <script src="js/speech-synthesis.js" defer></script>
   <script src="js/db-local.js" defer></script>
@@ -212,6 +213,15 @@
               <div class="tr-sign-toggle">
                 <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="ESL" data-gesture-language checked> ESL</label>
                 <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="FSL" data-gesture-language> FSL</label>
+              </div>
+            </div>
+            <div class="tr-fgrp" style="margin-top:2px">
+              <label class="tr-flbl">Type</label>
+              <div class="tr-sign-toggle tr-type-toggle">
+                <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="word" checked> Word</label>
+                <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="letter"> Letter</label>
+                <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="number"> Number</label>
+                <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="phrase"> Phrase</label>
               </div>
             </div>
             <div class="tr-cap-btns" style="margin-top:2px">

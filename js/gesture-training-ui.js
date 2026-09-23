@@ -216,6 +216,22 @@ function currentLabelClean() {
   const el = document.getElementById('gestureLabelInput');
   return el ? GestureDataRecorder.cleanLabel(el.value) : '';
 }
+// Sets the checked Type (gestureCategory) radio to the stored category for the current
+// (label, sign set) if one was saved, else the heuristic's guess; empty label -> 'word'.
+// Only called from the Gesture Name input / Sign Set change handlers and renderSavedDataset() --
+// a manual tap on a Type option must survive until the name or sign set changes again.
+function autoSelectCategory() {
+  const label = currentLabelClean();
+  let category = 'word';
+  if (label) {
+    const set = selectedSignSet();
+    const saved = GestureDataRecorder.getSavedCategories();
+    const stored = saved && saved[set] && saved[set][label];
+    category = stored || GestureCategory.guess(label);
+  }
+  const radio = document.querySelector(`input[name="gestureCategory"][value="${category}"]`);
+  if (radio) radio.checked = true;
+}
 function sampleInfoFor(label, set) {
   return (label && savedSampleInfo[set][label]) || { samples: 0, frames: 0 };
 }
@@ -285,6 +301,8 @@ async function renderSavedDataset(prefetchedGestures) {
     tableWrap.innerHTML = html;
   } catch(err) {
     tableWrap.innerHTML = `<p style="font-size:11px; color:#ef4444; text-align:center; padding:10px;">Error loading dataset: ${err.message}</p>`;
+  } finally {
+    autoSelectCategory();
   }
 }
 
@@ -1083,7 +1101,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   const lblIn = document.getElementById('gestureLabelInput');
   const clearNote = () => { justSavedNote = ''; refreshSampleCountLine(); };
   if (lblIn) lblIn.addEventListener('input', clearNote);
+  if (lblIn) lblIn.addEventListener('input', autoSelectCategory);
   document.querySelectorAll('input[name="gestureDatasetType"]').forEach(r => r.addEventListener('change', clearNote));
+  document.querySelectorAll('input[name="gestureDatasetType"]').forEach(r => r.addEventListener('change', autoSelectCategory));
   const startB = document.getElementById('startGestureDataBtn');
   if (startB) startB.addEventListener('click', () => { justSavedNote = ''; });
   refreshSampleCountLine();
