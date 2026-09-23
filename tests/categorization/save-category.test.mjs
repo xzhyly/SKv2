@@ -1,10 +1,10 @@
 // Live-DB tests (via php-cgi, same harness as tests/multi-sample) for the category column added
 // to `gestures` by this task: the ALTER/backfill in ensure_gestures_columns(), the upsert behaviour
 // in save_gesture_word_to_db(), the POST save path's category handling, and disk-sync interaction.
-import test, { beforeEach, after } from 'node:test';
+import test, { before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { callEndpoint, fixtureFrames, repo } from '../multi-sample/harness.mjs';
-import { query, exec } from './db.mjs';
+import { query, exec, callPhp } from './db.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -13,10 +13,28 @@ import path from 'node:path';
 const HTTP_LABELS = [
   'zz_cat_word1', 'zz_cat_letter1', 'zz_cat_number1', 'zz_cat_phrase1',
   'zz_cat_probe', 'zz_cat_bogus', 'zz_cat_retag', 'zz_cat_syncmanual', 'zz_cat_syncheuristic',
-  'zz_cat_bf_trigger',
 ];
-// Labels inserted directly via SQL for the backfill test (never touch disk).
-const BACKFILL_LABELS = ['zz_cat_bf_one', 'zz_cat_bf_two', 'zz_cat_bf_three'];
+
+// Scratch table for the backfill test below -- never the real `gestures` table. Dropped before,
+// after (and in a finally inside the test) so a failed run never leaves it behind.
+const SCRATCH_TABLE = 'zz_cat_bf_gestures';
+function dropScratchTable() {
+  exec(`DROP TABLE IF EXISTS \`${SCRATCH_TABLE}\``);
+}
+
+// Guard against this suite ever touching a real (non-zz_) label's category again -- see the
+// CRITICAL finding this file was rewritten for: a previous version of the backfill test above
+// dropped and re-added the `category` column on the live `gestures` table, silently reverting any
+// manual re-tag the owner had made. Snapshot every real row before the suite runs and assert it is
+// byte-for-byte identical after, so a regression like that fails loudly instead of silently.
+let realRowsBefore;
+before(() => {
+  realRowsBefore = query("SELECT word, sign_language, category FROM gestures WHERE word NOT LIKE 'zz%' ORDER BY sign_language, word");
+});
+after(() => {
+  const realRowsAfter = query("SELECT word, sign_language, category FROM gestures WHERE word NOT LIKE 'zz%' ORDER BY sign_language, word");
+  assert.deepEqual(realRowsAfter, realRowsBefore, 'no real gesture row\'s category may change from running this suite');
+});
 
 function cleanupLabel(label) {
   callEndpoint({ body: { action: 'delete_gesture', label }, stub: false });
@@ -27,10 +45,7 @@ function cleanupLabel(label) {
 
 function cleanupAll() {
   for (const l of HTTP_LABELS) cleanupLabel(l);
-  if (BACKFILL_LABELS.length) {
-    const list = BACKFILL_LABELS.map(l => `'${l}'`).join(',');
-    exec(`DELETE FROM gestures WHERE word IN (${list})`);
-  }
+  dropScratchTable();
 }
 
 function post(label, extra = {}) {
@@ -119,32 +134,67 @@ test('a full disk sync recreates a deleted gestures row with the heuristic categ
   assert.equal(row.category, 'phrase');
 });
 
+// Calls ensure_gestures_columns($conn, $table) once via PHP CLI against the live DB. Never
+// requires save_gesture.php itself (which runs request-handling code at top level) -- only
+// php/connect.php (for $conn) and php/api/gesture_category.php (which now holds
+// ensure_gestures_columns()/backfill_gesture_categories(), pulled out specifically so this is
+// possible). Defines a throwing fail() so a genuine failure surfaces as a thrown Node error
+// instead of the real fail()'s http_response_code()/exit (undefined outside a web request).
+function ensureGesturesColumns(table) {
+  const gestureCategoryPhp = path.join(repo, 'php', 'api', 'gesture_category.php');
+  const code = `
+    function fail($message, $code = 400) { throw new Exception('fail(' . $code . '): ' . $message); }
+    require ${JSON.stringify(gestureCategoryPhp)};
+    ensure_gestures_columns($conn, ${JSON.stringify(table)});
+    echo json_encode(['ok' => true]);
+  `;
+  return callPhp(path.join(repo, 'php', 'connect.php'), code);
+}
+
 test('backfill_gesture_categories sets every existing row to its heuristic category when the column is (re-)added', () => {
-  // Simulate the pre-migration state: no category column, plain rows for our probes.
-  const hadColumn = query("SHOW COLUMNS FROM gestures LIKE 'category'").length > 0;
-  if (hadColumn) {
-    exec('ALTER TABLE gestures DROP COLUMN category');
+  dropScratchTable();
+  try {
+    // Pre-migration shape: no `category` column yet, one row per heuristic outcome.
+    exec(`
+      CREATE TABLE \`${SCRATCH_TABLE}\` (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        word VARCHAR(255) NOT NULL,
+        sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY (word, sign_language)
+      )
+    `);
+    const seed = [
+      ['hello', 'word'],
+      ['a', 'letter'],
+      ['seven', 'number'],
+      ['isa', 'number'],
+      ['how_are_you', 'phrase'],
+      ['42', 'number'],
+    ];
+    for (const [word] of seed) {
+      exec(`INSERT INTO \`${SCRATCH_TABLE}\` (word, sign_language) VALUES ('${word}', 'ESL')`);
+    }
+
+    ensureGesturesColumns(SCRATCH_TABLE);
+
+    const cols = query(`SHOW COLUMNS FROM \`${SCRATCH_TABLE}\` LIKE 'category'`);
+    assert.equal(cols.length, 1, 'category column should have been added');
+    assert.match(cols[0].Type, /^enum\(/i);
+    assert.equal(cols[0].Default, 'word');
+
+    for (const [word, expected] of seed) {
+      const rows = query(`SELECT category FROM \`${SCRATCH_TABLE}\` WHERE word = '${word}'`);
+      assert.equal(rows[0].category, expected, `backfilled category for '${word}'`);
+    }
+
+    // Manually re-tag one row (simulating the owner's own re-tag), then call ensure again: the
+    // column already exists, so this must NOT re-run the backfill and revert the manual tag.
+    exec(`UPDATE \`${SCRATCH_TABLE}\` SET category = 'phrase' WHERE word = 'hello'`);
+    ensureGesturesColumns(SCRATCH_TABLE);
+    const helloRow = query(`SELECT category FROM \`${SCRATCH_TABLE}\` WHERE word = 'hello'`);
+    assert.equal(helloRow[0].category, 'phrase', 'a second ensure call must not re-run the backfill');
+  } finally {
+    dropScratchTable();
   }
-
-  for (const label of BACKFILL_LABELS) {
-    exec(`INSERT INTO gestures (word, sign_language) VALUES ('${label}', 'ESL')`);
-  }
-
-  // Any save that runs save_gesture_word_to_db() calls ensure_gestures_columns() first; it will
-  // detect the missing column, add it, and backfill every pre-existing row (our probes included)
-  // in that same call -- before the trigger label's own row is inserted.
-  post('zz_cat_bf_trigger');
-
-  for (const label of BACKFILL_LABELS) {
-    const row = gestureRow(label);
-    assert.ok(row, `backfilled row for ${label} should exist`);
-    // All BACKFILL_LABELS contain "_" (from the zz_ prefix), so the heuristic is "phrase" for
-    // every one of them here -- still a non-"word" result, which is what backfill must produce
-    // instead of leaving the column's DEFAULT 'word'.
-    assert.equal(row.category, 'phrase', `backfilled category for ${label}`);
-  }
-
-  const cols = query("SHOW COLUMNS FROM gestures LIKE 'category'");
-  assert.equal(cols.length, 1, 'category column should exist after this test');
-  assert.match(cols[0].Type, /^enum\(/i);
 });

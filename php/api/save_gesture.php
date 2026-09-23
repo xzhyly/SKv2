@@ -64,54 +64,9 @@ function find_label_video($assetsSignsDir, $label, $subFolder) {
     return null;
 }
 
-function column_exists($conn, $table, $column) {
-    $table = mysqli_real_escape_string($conn, $table);
-    $column = mysqli_real_escape_string($conn, $column);
-    $result = mysqli_query($conn, "SHOW COLUMNS FROM `$table` LIKE '$column'");
-    return $result && mysqli_num_rows($result) > 0;
-}
-
-function ensure_gestures_columns($conn) {
-    if (!column_exists($conn, 'gestures', 'sign_language')) {
-        if (!mysqli_query($conn, "ALTER TABLE gestures ADD COLUMN sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL' AFTER word")) {
-            fail('DB gestures alter failed: ' . mysqli_error($conn), 500);
-        }
-    }
-    if (!column_exists($conn, 'gestures', 'category')) {
-        if (!mysqli_query($conn, "ALTER TABLE gestures ADD COLUMN category ENUM('word','letter','number','phrase') NOT NULL DEFAULT 'word' AFTER sign_language")) {
-            fail('DB gestures alter failed: ' . mysqli_error($conn), 500);
-        }
-        // Only runs in the same call that added the column -- never again, so it can never
-        // overwrite a category someone has since tagged by hand.
-        backfill_gesture_categories($conn);
-    }
-}
-
-// Sets every existing gestures row's category to its heuristic value. Only ever called right
-// after the category column is added (see ensure_gestures_columns above); rows whose heuristic
-// result is already 'word' (the column DEFAULT) don't need an UPDATE.
-function backfill_gesture_categories($conn) {
-    $result = mysqli_query($conn, 'SELECT id, word FROM gestures');
-    if (!$result) {
-        fail('DB backfill select failed: ' . mysqli_error($conn), 500);
-    }
-    $stmt = mysqli_prepare($conn, 'UPDATE gestures SET category = ? WHERE id = ?');
-    if (!$stmt) {
-        fail('DB backfill prepare failed: ' . mysqli_error($conn), 500);
-    }
-    while ($row = mysqli_fetch_assoc($result)) {
-        $category = gesture_category($row['word']);
-        if ($category === 'word') {
-            continue; // matches the column DEFAULT already
-        }
-        $id = (int)$row['id'];
-        mysqli_stmt_bind_param($stmt, 'si', $category, $id);
-        if (!mysqli_stmt_execute($stmt)) {
-            fail('DB backfill update failed: ' . mysqli_stmt_error($stmt), 500);
-        }
-    }
-    mysqli_stmt_close($stmt);
-}
+// column_exists(), ensure_gestures_columns(), backfill_gesture_categories() live in
+// gesture_category.php (required above) so a CLI test script can exercise the migration against a
+// scratch table without executing this file's request-handling code.
 
 function save_gesture_word_to_db($label, $signLanguage, $category = null) {
     global $conn;
@@ -400,7 +355,11 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
 // fails) -- the dataset list must never fail because of categories.
 function build_categories_map($conn, $gestures) {
     $dbCategory = []; // "ESL\x00label" -> category
-    $result = @mysqli_query($conn, 'SELECT word, sign_language, category FROM gestures');
+    try {
+        $result = mysqli_query($conn, 'SELECT word, sign_language, category FROM gestures');
+    } catch (Throwable $e) {
+        $result = false; // fall through to the per-label heuristic below
+    }
     if ($result) {
         while ($row = mysqli_fetch_assoc($result)) {
             $set = strtoupper((string)($row['sign_language'] ?? 'ESL')) === 'FSL' ? 'FSL' : 'ESL';
