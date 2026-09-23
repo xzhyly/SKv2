@@ -873,3 +873,58 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   reader of the `.mp4` this endpoint writes is `php/api/reports.php:30-53`
   (Reports → View Asset). See the spec's own "Correction (plan phase,
   2026-09-22)" note and `DEBT.md` item 62.
+
+## Decisions made during the gesture-categorization phase (2026-09-23)
+
+- **Categorization is new — no existing code branches on
+  word/letter/number/phrase today. This phase adds the attribute and a UI
+  grouping; it does not change classification/training logic (`knnPredict`,
+  `trainModel`, `cosineSimilarity` untouched) and does not change how many
+  frames get captured per sample (that's a separate phase).** Reason: seeded
+  from the phase prompt; the confusion risk between similar-start phrase and
+  word signs is real but is a frame-budget/keyframe problem, scoped out.
+- **The "209 labels in the `gestures` table" premise was wrong; 209 is the
+  on-disk label-folder count (120 `saved_gestures/` + 89
+  `saved_gestures_fsl/`, no name in both). The live `gestures` and
+  `gesture_recordings` tables had 0 rows on 2026-09-23.** Reason: measured
+  with `SELECT COUNT(*)` through `php/connect.php`; `?no_sync=1`
+  (`list_samples()`, `save_gesture.php:335-381`) reads only disk. Consequence:
+  the heuristic must run on every `gestures` INSERT (the sync recreates rows
+  from disk), not only as a one-off backfill.
+- **New column `gestures.category ENUM('word','letter','number','phrase') NOT
+  NULL DEFAULT 'word'`; `gesture_recordings.gesture_type` is NOT repurposed.**
+  Reason: its only reader (`core_api.php:72`, `get_recordings`, which reads it
+  back *as the label*) is unreachable — its only caller `js/db-local.js` has
+  no callers (DEBT 6) — so repurposing would break nothing live, but it would
+  put a label-level attribute on a per-sample table (N copies, re-tag must
+  touch all), require changing three writers (`save_gesture.php:213`,
+  `core_api.php:63`, `scratch/trigger_sync.php:102`), and inherit a
+  `VARCHAR(100)` indexed for label lookup. ENUM gives DB-level validity; the
+  default is the safe fallback.
+- **Category is stored in the DB only — no per-label sidecar file on disk.**
+  Reason: owner decision (2026-09-23). Accepted cost: a manual re-tag does not
+  survive a DB wipe/re-import; the label then falls back to the heuristic, so
+  it is never left without a category.
+- **Auto-classification heuristic, first match wins: `number` (all digits, or
+  in a closed English zero–twenty/hundred/thousand + Filipino
+  isa–sampu/sampung/daan/libo list) → `letter` (exactly one `a-z` char) →
+  `phrase` (contains `_`) → `word` (default).** Reason: `clean_label()`
+  (`save_gesture.php:29-34`) turns spaces into `_`, so `_` is the multi-token
+  marker; no label is a digit string, so numbers only come from the word list.
+  Measured on the 209 on-disk labels: ESL word 67 / letter 26 / number 10 /
+  phrase 17; FSL word 50 / letter 0 / number 10 / phrase 29; total 117 / 26 /
+  20 / 46. Known borderline multi-token "phrases" (`hard_of_hearing`, `so_so`,
+  `take_care`, `dont_know`, `host_dad`, `higit_pa`, `tapos_na`,
+  `katapusan_ng_linggo`, `mahirap_makarinig`, `ganon_din`) and a single-token
+  "word" that means a phrase (`kamusta`) are left to the owner to re-tag.
+- **Sign set and category are independent dimensions.** Reason: `gestures` is
+  `UNIQUE(word, sign_language)`, so each (label, set) row carries its own
+  category; the only interaction is that the number-word list is bilingual,
+  and no list entry collides with a label in the other set.
+- **The re-tag path is the capture-time Type selector: saving a new sample
+  of an existing label with a different Type updates that label's category;
+  the disk→DB sync never overwrites a stored category.** Reason: no extra
+  screen; the sync has no category information to offer.
+- **Dataset table groups in the order Words · Phrases · Letters · Numbers,
+  alphabetical within a group; the "N categories" counter becomes "N
+  gestures".** Reason: "categories" would now mean something else.
