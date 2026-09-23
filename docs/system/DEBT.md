@@ -776,6 +776,52 @@ so a later session does not re-litigate them:
     in that case; it just isn't removed by the delete itself.) Not fixed in
     this phase.
 
+65. **Low severity, open: category is DB-only, so a DB wipe/re-import loses
+    manual re-tags.** `gestures.category` (`db-schema/database_setup.sql:89`)
+    has no on-disk counterpart; a fresh import or a full `gestures` table
+    wipe drops every hand-corrected category, and the next sync/save falls
+    back to `gesture_category()`'s heuristic (`php/api/gesture_category.php`)
+    for every label — never to `NULL`, since the column has `DEFAULT 'word'`
+    and the heuristic itself never returns null. Owner decision, 2026-09-23
+    (see `DECISIONS.md`, "Category is stored in the DB only").
+
+66. **Low severity, open: the categorization and multi-sample test suites
+    run against the live DB and disk and must run serially.**
+    `tests/categorization/*.test.mjs` and
+    `tests/multi-sample/save-endpoint.test.mjs` share the same live MySQL
+    database and `saved_gestures*/` folders as the running app; a parallel
+    `node --test` run was observed to flake once, a serial run
+    (`--test-concurrency=1`) was not. Run them with
+    `node --test --test-concurrency=1 tests/categorization/*.test.mjs
+    tests/multi-sample/save-endpoint.test.mjs` (31/31, measured 2026-09-23).
+
+67. **Low severity, open, pre-existing (not introduced by this phase):
+    `deleteGesture()` does not await `renderSavedDataset()`.** Several
+    deletes fired in quick succession programmatically (not by a single
+    user click) leave the dataset counter/table stale until the next
+    reload — observed 213 shown vs. 209 real rows during this phase's
+    verification. A single user-clicked delete is correct; only rapid
+    back-to-back deletes without a UI reload in between are affected.
+
+68. **Low severity, open (docs/environment): the local DB is a MySQL 8.0
+    Windows service, not XAMPP's bundled MariaDB.** Measured 2026-09-23:
+    the server is MySQL 8.0.44 (Windows service, datadir
+    `C:\ProgramData\MySQL\MySQL Server 8.0\Data\`), reachable only via
+    `php/connect.php` (PHP's mysqli, or PHP CLI with
+    `require 'php/connect.php'`). XAMPP's own `mysql.exe` client cannot
+    authenticate to it (`caching_sha2_password`, which XAMPP's older client
+    doesn't support) — a "just use XAMPP's MySQL client" instinct will fail
+    here. See also `CLAUDE.md`'s Run section, corrected by this phase.
+
+Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
+(item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead
+endpoints" list) was considered as a place to store the new category and
+deliberately not repurposed — its only reader is `core_api.php:72`
+(`get_recordings`, which reads it back *as the label*, not as a type), and
+that whole path is unreachable since `core_api.php`'s only caller
+(`js/db-local.js`) has no callers. See `DECISIONS.md` for the full reasoning
+(ENUM vs. `VARCHAR(100)`, one row per label vs. one row per sample).
+
 ## Dead code
 
 Phase 1 deleted the `js/main.js`/`js/dist/build.js`/`package.json` build

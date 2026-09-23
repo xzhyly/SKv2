@@ -357,3 +357,29 @@ no version string (`docs/system/DEBT.md` item 41).
       confirm it first.
 - [ ] **Many turns.** Alternate Sign and Speak or Type for 15+ turns, sometimes previewing, sometimes editing,
       sometimes leaving mid-preview. Watch Chromium's memory (`top` / Task Manager). Expected: it plateaus.
+
+## Gesture categorization — grouped dataset table (2026-09-23)
+
+Owner check for `gesture-training.html` Step 1 (see `docs/system/UI.md` and
+`docs/system/DECISIONS.md`, "Decisions made during the gesture-categorization
+phase").
+
+- [ ] **Is the grouped Step 1 dataset table easier to scan than the flat
+      list it replaces?** Open Step 1 → View Active Gesture Dataset with a
+      real dataset loaded (120+ ESL labels). Compare skimming for a specific
+      word against how the old single alphabetical list would have felt —
+      this is a judgment call, not a pass/fail.
+- [ ] **Type preselects for an existing label.** Type an existing label's
+      name (e.g. a known letter or phrase) into Gesture Name with Sign Set
+      matching where it's saved. Expected: the Type control jumps to that
+      label's stored category, not just the heuristic's guess (try a label
+      you know was manually re-tagged away from its heuristic guess, if one
+      exists).
+- [ ] **Re-tag via Type + Save.** Pick an existing label, manually tap a
+      different Type, and save a new sample. Expected: the label moves to
+      the new group in the dataset table after it reloads, and re-typing the
+      same label afterward preselects the new Type (not the old one).
+- [ ] **1024×600: Start Capture stays visible.** At the kiosk viewport, open
+      Step 1 with the Type row present. Expected: `#leftStep1` does not
+      scroll off-screen and the Start Capture button is fully visible
+      without scrolling, same as before the Type row was added.

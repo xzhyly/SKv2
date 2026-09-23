@@ -37,11 +37,13 @@ see `docs/system/DEBT.md`.
 Phase 2.5 (local development environment) is complete — the system runs
 locally via XAMPP:
 
-- **Stack:** XAMPP (Apache + MySQL/MariaDB).
+- **Stack:** XAMPP (Apache + PHP) in front of a separate MySQL 8.0 Windows
+  service — not XAMPP's own bundled MariaDB; XAMPP's `mysql.exe` client
+  cannot authenticate to it (see `docs/system/DEBT.md` item 68).
 - **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at this
   repo, so there is one copy of the files on disk — editing the repo edits
   what Apache serves, and vice versa. No file copying/syncing step.
-- **Database:** import `sining_kamay_db` into the local MySQL/MariaDB instance
+- **Database:** import `sining_kamay_db` into the local MySQL 8.0 instance
   (see `docs/system/BACKEND.md` for which `.sql` file to use — one of the
   tracked dumps needs encoding conversion first).
 - **URL:** http://localhost/SKR/
@@ -53,7 +55,11 @@ locally via XAMPP:
 Confirmed working locally: camera capture and sign-to-text translation, with
 the k-NN classifier loading all 120 ESL gestures and no console errors — first
 on `sign-to-text.html`, now (2026-09-21) inside `talk.html`'s signing screen;
-`sign-to-text.html` itself is archived (`archive/sign-to-text.html`).
+`sign-to-text.html` itself is archived (`archive/sign-to-text.html`). As of
+the 2026-09-23 gesture-categorization phase, every gesture-training label
+also carries a `word`/`letter`/`number`/`phrase` category (auto-guessed by a
+heuristic, manually re-taggable in `gesture-training.html`'s Step 1) — see
+`docs/system/UI.md` and `docs/system/DECISIONS.md`.
 
 `talk.html` is the "Let's Talk" two-way conversation screen (see
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing

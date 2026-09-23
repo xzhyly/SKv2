@@ -479,6 +479,34 @@ below. None of that ran.
   (css/gesture-training.css:1012-1014); this shipped alongside a CSS
   cache-bust bump from `v=1.0.5` to `css/gesture-training.css?v=1.0.6`
   (gesture-training.html:8; see the cache-busting bullet below).
+- **Step 1 gained a Type selector, and the dataset table/modal is now
+  grouped by it (gesture-categorization phase, 2026-09-23):** a 4-way
+  segmented control — Word / Letter / Number / Phrase
+  (`name="gestureCategory"`, gesture-training.html:217-224, `.tr-type-toggle`
+  four-column variant of `.tr-sign-toggle`, css/gesture-training.css:160) —
+  sits under Sign Set. `autoSelectCategory()` (gesture-training-ui.js:223-234)
+  checks the radio matching the current label+sign set's stored category
+  (from `GestureDataRecorder.getSavedCategories()`, gesture-data.js:655-657)
+  if one exists, else `GestureCategory.guess(label)` (js/gesture-category.js,
+  a pure heuristic mirrored from `php/api/gesture_category.php`'s
+  `gesture_category()`, parity-tested); it re-runs on the Gesture Name
+  `input` event and the Sign Set `change` event (gesture-training-ui.js:1127,
+  1129) and after every `renderSavedDataset()` (gesture-training-ui.js:328),
+  but a manual tap on a Type option is not overridden by those triggers
+  until the name or sign set actually changes. Saving a sample with a
+  different Type than the label currently has re-tags that label
+  (`js/gesture-data.js:552-555` reads the checked radio and passes it as
+  `category` in the save payload).
+  The Step 1 dataset table/modal (`renderSavedDataset()`,
+  gesture-training-ui.js:275-330) is now grouped into four sections — Words ·
+  Phrases · Letters · Numbers, in that order (`GROUP_ORDER`,
+  gesture-training-ui.js:298-303), each a header row with a count
+  (`"<Title> · N"`) and its rows sorted alphabetically by label within the
+  group. Grouping uses the same stored-category-else-heuristic lookup as the
+  Type selector. The dataset counter (`#datasetCount`, gesture-training.html:250)
+  changed from "N categories" to "N gestures" (gesture-training-ui.js:278) —
+  "categories" now means word/letter/number/phrase, so the old label would
+  have been ambiguous.
 - **The soft target of 5 is not arbitrary.** `knnPredict` scores a label as
   the mean of its top `min(5, N)` cosine similarities across *all* of that
   label's saved frames, i.e. K=5 (gesture-training-ui.js:310, same K cited

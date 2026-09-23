@@ -928,3 +928,11 @@ title says `talk.html`; this section is about `gesture-training.html`.)
 - **Dataset table groups in the order Words · Phrases · Letters · Numbers,
   alphabetical within a group; the "N categories" counter becomes "N
   gestures".** Reason: "categories" would now mean something else.
+- **Test suites touching the live DB are run with `--test-concurrency=1`.**
+  Reason: `tests/categorization/` and `tests/multi-sample` share the live DB
+  and disk; a parallel run was observed to flake once, a serial run was not.
+- **Task 4's delete-from-modal check was closed by a real click at 1024×600
+  after review flagged the direct-call proxy, rather than accepted as-is.**
+  Reason: the grouping change is exactly the layout risk that check exists
+  to catch — a proxy that calls `deleteGesture()` directly bypasses the
+  modal/table DOM the grouping restructured.
