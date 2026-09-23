@@ -275,11 +275,31 @@ async function renderSavedDataset(prefetchedGestures) {
     const gestures = prefetchedGestures || await GestureDataRecorder.loadSavedGestureDataset();
     rebuildSampleInfo(gestures); refreshSampleCountLine();
     const labels = Object.keys(gestures);
-    datasetCount.textContent = `${labels.length} categories`;
+    datasetCount.textContent = `${labels.length} gestures`;
     if (labels.length === 0) {
       tableWrap.innerHTML = '<p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center; padding:10px;">No saved gestures found.</p>';
       return;
     }
+    // Group by category: stored category wins, else the heuristic's guess.
+    const savedCategories = GestureDataRecorder.getSavedCategories();
+    const groups = { word: [], letter: [], number: [], phrase: [] };
+    labels.forEach(label => {
+      const samples = gestures[label];
+      const signSet = samples[0]?.signLanguage || 'ESL';
+      const set = String(signSet).toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+      const stored = savedCategories && savedCategories[set] && savedCategories[set][label];
+      const category = stored || GestureCategory.guess(label);
+      (groups[category] || groups.word).push({ label, signSet, count: samples.length });
+    });
+    Object.keys(groups).forEach(cat => groups[cat].sort((a, b) => a.label.localeCompare(b.label)));
+
+    const GROUP_ORDER = [
+      { key: 'word', title: 'Words' },
+      { key: 'phrase', title: 'Phrases' },
+      { key: 'letter', title: 'Letters' },
+      { key: 'number', title: 'Numbers' },
+    ];
+
     let html = '<table style="width:100%; border-collapse:collapse; font-size:11px; color:var(--text);">';
     html += '<tr style="background:var(--navy); color:#fff; font-weight:bold;">';
     html += '<th style="padding:6px 4px; text-align:left;">Label</th>';
@@ -287,15 +307,18 @@ async function renderSavedDataset(prefetchedGestures) {
     html += '<th style="padding:6px 4px; text-align:center;">Samples</th>';
     html += '<th style="padding:6px 4px; text-align:center;">Action</th>';
     html += '</tr>';
-    labels.forEach(label => {
-      const samples = gestures[label];
-      const signSet = samples[0]?.signLanguage || 'ESL';
-      html += `<tr style="border-bottom:1px solid var(--border);">`;
-      html += `<td style="padding:6px 5px; font-weight:700;">${label}</td>`;
-      html += `<td style="padding:6px 5px; text-align:center;">${signSet}</td>`;
-      html += `<td style="padding:6px 5px; text-align:center;">${samples.length}</td>`;
-      html += `<td style="padding:6px 5px; text-align:center;"><button type="button" onclick="deleteGesture('${label}')" style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:10px; font-weight:700; cursor:pointer;">Delete</button></td>`;
-      html += `</tr>`;
+    GROUP_ORDER.forEach(({ key, title }) => {
+      const rows = groups[key];
+      if (!rows.length) return;
+      html += `<tr><td colspan="4" style="padding:5px 6px; background:var(--bg); color:var(--navy); font-weight:800; border-top:2px solid var(--border); border-bottom:1px solid var(--border);"><span style="border-left:4px solid var(--orange); padding-left:6px;">${title} · <span style="color:var(--orange);">${rows.length}</span></span></td></tr>`;
+      rows.forEach(({ label, signSet, count }) => {
+        html += `<tr style="border-bottom:1px solid var(--border);">`;
+        html += `<td style="padding:6px 5px; font-weight:700;">${label}</td>`;
+        html += `<td style="padding:6px 5px; text-align:center;">${signSet}</td>`;
+        html += `<td style="padding:6px 5px; text-align:center;">${count}</td>`;
+        html += `<td style="padding:6px 5px; text-align:center;"><button type="button" onclick="deleteGesture('${label}')" style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:10px; font-weight:700; cursor:pointer;">Delete</button></td>`;
+        html += `</tr>`;
+      });
     });
     html += '</table>';
     tableWrap.innerHTML = html;
