@@ -794,6 +794,10 @@ so a later session does not re-litigate them:
     (`--test-concurrency=1`) was not. Run them with
     `node --test --test-concurrency=1 tests/categorization/*.test.mjs
     tests/multi-sample/save-endpoint.test.mjs` (31/31, measured 2026-09-23).
+    Since `a986a1d` no test alters the real `gestures` table, and
+    `save-category.test.mjs` asserts every non-`zz` row's category is
+    unchanged across the run (a guard against a repeat of the column-drop
+    found by the final review).
 
 67. **Low severity, open, pre-existing (not introduced by this phase):
     `deleteGesture()` does not await `renderSavedDataset()`.** Several
@@ -812,6 +816,31 @@ so a later session does not re-litigate them:
     authenticate to it (`caching_sha2_password`, which XAMPP's older client
     doesn't support) — a "just use XAMPP's MySQL client" instinct will fail
     here. See also `CLAUDE.md`'s Run section, corrected by this phase.
+
+69. **Low severity, open (dev-only path): the "G" hotkey label path skips
+    Type auto-select.** `js/gesture-data.js` `startRecording()` fills the
+    name input from `prompt()` without firing an `input` event, so the Type
+    radio keeps its previous value, which is then sent as an explicit
+    `category` and overwrites the label's stored tag. The kiosk has no
+    physical keyboard and `talk.html` disables the hotkey. Found by the
+    2026-09-23 final review; not fixed.
+
+70. **Low severity, open: the Type is read at confirm time, not capture
+    time.** `confirmAndSave()` reads the checked `gestureCategory` radio when
+    the preview is saved; if the operator edits the name or Sign Set between
+    Finish Capture and Save, auto-select re-evaluates for the edited pair
+    while the save still targets the captured label/set. Found by the
+    2026-09-23 final review; not fixed (the plan specified save-time
+    reading).
+
+71. **Low severity, latent: a label present in both ESL and FSL shows one
+    category, and `delete_gesture` deletes one `gestures` row.**
+    `renderSavedDataset()` takes the sign set from `samples[0]`, and
+    `save_gesture.php`'s `delete_gesture` selects `WHERE word = ? LIMIT 1`.
+    Both pre-existing; 0 labels overlap across sets today (measured
+    2026-09-23). `scratch/trigger_sync.php` also keeps its own stale copy of
+    `ensure_gestures_columns()` and inserts `gestures` rows without a
+    category (they get DEFAULT `word`, not the heuristic) — scratch-only.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

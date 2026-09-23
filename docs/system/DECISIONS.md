@@ -936,3 +936,20 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   Reason: the grouping change is exactly the layout risk that check exists
   to catch — a proxy that calls `deleteGesture()` directly bypasses the
   modal/table DOM the grouping restructured.
+- **No test may ALTER, DROP, or bulk-UPDATE the real `gestures` table; the
+  migration/backfill test runs against a scratch table
+  (`zz_cat_bf_gestures`), and `save-category.test.mjs` snapshots every
+  non-`zz` row's category in `before` and asserts it unchanged in `after`.**
+  Reason: the final whole-branch review found the original backfill test
+  dropped the live `category` column, which would silently revert every
+  manual re-tag on each suite run (category is DB-only). Fixed in
+  `a986a1d`; `ensure_gestures_columns()`/`backfill_gesture_categories()`
+  moved to `php/api/gesture_category.php` with an optional `$table`
+  parameter (default `'gestures'`) to make that possible. Live categories
+  were snapshotted before and after the fix run: byte-identical, 209 rows.
+- **`build_categories_map()` and `ensure_gestures_columns()` catch
+  `Throwable` around their queries.** Reason: from PHP 8.1 mysqli throws
+  `mysqli_sql_exception` by default and `@` no longer suppresses it; local
+  XAMPP is PHP 8.0.30 but the Pi's PHP version is not specified in the docs
+  (Raspberry Pi OS Bookworm ships 8.2), and the dataset list must never
+  fail because of categories.
