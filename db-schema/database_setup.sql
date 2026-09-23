@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS gestures (
   id INT AUTO_INCREMENT PRIMARY KEY,
   word VARCHAR(255) NOT NULL,
   sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL',
+  category ENUM('word','letter','number','phrase') NOT NULL DEFAULT 'word',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY (word, sign_language)
 );

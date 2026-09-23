@@ -5,6 +5,7 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 require_once __DIR__ . '/../connect.php';
+require_once __DIR__ . '/gesture_category.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -76,24 +77,63 @@ function ensure_gestures_columns($conn) {
             fail('DB gestures alter failed: ' . mysqli_error($conn), 500);
         }
     }
+    if (!column_exists($conn, 'gestures', 'category')) {
+        if (!mysqli_query($conn, "ALTER TABLE gestures ADD COLUMN category ENUM('word','letter','number','phrase') NOT NULL DEFAULT 'word' AFTER sign_language")) {
+            fail('DB gestures alter failed: ' . mysqli_error($conn), 500);
+        }
+        // Only runs in the same call that added the column -- never again, so it can never
+        // overwrite a category someone has since tagged by hand.
+        backfill_gesture_categories($conn);
+    }
 }
 
-function save_gesture_word_to_db($label, $signLanguage) {
+// Sets every existing gestures row's category to its heuristic value. Only ever called right
+// after the category column is added (see ensure_gestures_columns above); rows whose heuristic
+// result is already 'word' (the column DEFAULT) don't need an UPDATE.
+function backfill_gesture_categories($conn) {
+    $result = mysqli_query($conn, 'SELECT id, word FROM gestures');
+    if (!$result) {
+        fail('DB backfill select failed: ' . mysqli_error($conn), 500);
+    }
+    $stmt = mysqli_prepare($conn, 'UPDATE gestures SET category = ? WHERE id = ?');
+    if (!$stmt) {
+        fail('DB backfill prepare failed: ' . mysqli_error($conn), 500);
+    }
+    while ($row = mysqli_fetch_assoc($result)) {
+        $category = gesture_category($row['word']);
+        if ($category === 'word') {
+            continue; // matches the column DEFAULT already
+        }
+        $id = (int)$row['id'];
+        mysqli_stmt_bind_param($stmt, 'si', $category, $id);
+        if (!mysqli_stmt_execute($stmt)) {
+            fail('DB backfill update failed: ' . mysqli_stmt_error($stmt), 500);
+        }
+    }
+    mysqli_stmt_close($stmt);
+}
+
+function save_gesture_word_to_db($label, $signLanguage, $category = null) {
     global $conn;
     ensure_gestures_columns($conn);
 
+    $insertCategory = $category ?? gesture_category($label);
+
     // Atomic upsert — avoids race-condition duplicate key crashes.
     // ON DUPLICATE KEY UPDATE makes LAST_INSERT_ID() return the existing row id
-    // when there is a collision, so we always get back a valid id.
+    // when there is a collision, so we always get back a valid id. The stored category is only
+    // overwritten when the caller passed an explicit $category (a manual tag); a null $category
+    // (heuristic-only, e.g. from sync_disk_to_db) never touches an existing row's category.
     $stmt = mysqli_prepare(
         $conn,
-        'INSERT INTO gestures (word, sign_language) VALUES (?, ?)
-         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)'
+        'INSERT INTO gestures (word, sign_language, category) VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), category = IF(?, ?, category)'
     );
     if (!$stmt) {
         fail('DB prepare failed: ' . mysqli_error($conn), 500);
     }
-    mysqli_stmt_bind_param($stmt, 'ss', $label, $signLanguage);
+    $hasExplicitCategory = $category !== null ? 1 : 0;
+    mysqli_stmt_bind_param($stmt, 'sssis', $label, $signLanguage, $insertCategory, $hasExplicitCategory, $insertCategory);
     if (!mysqli_stmt_execute($stmt)) {
         fail('DB insert failed: ' . mysqli_stmt_error($stmt), 500);
     }
@@ -113,7 +153,17 @@ function save_gesture_word_to_db($label, $signLanguage) {
         $created = false;
     }
 
-    return ['id' => $id, 'created' => $created];
+    // Read back the category actually stored for this row (covers both the insert and the
+    // ON DUPLICATE KEY UPDATE branch without duplicating the IF(...) logic here).
+    $catSel = mysqli_prepare($conn, 'SELECT category FROM gestures WHERE id = ? LIMIT 1');
+    mysqli_stmt_bind_param($catSel, 'i', $id);
+    mysqli_stmt_execute($catSel);
+    $catRes = mysqli_stmt_get_result($catSel);
+    $catRow = mysqli_fetch_assoc($catRes);
+    $storedCategory = $catRow['category'] ?? $insertCategory;
+    mysqli_stmt_close($catSel);
+
+    return ['id' => $id, 'created' => $created, 'category' => $storedCategory];
 }
 
 function ensure_language_dataset_table($conn, $signLanguage) {
@@ -456,6 +506,7 @@ if (!in_array($signLanguage, ['ESL', 'FSL'], true)) {
 }
 $frames       = $body['frames']      ?? null;
 $videoBase64  = $body['video_base64'] ?? null;   // optional recorded video
+$category     = valid_gesture_category($body['category'] ?? null); // invalid/missing -> null
 
 if ($label === '') {
     fail('Gesture label is required');
@@ -585,7 +636,7 @@ if (!empty($videoBase64)) {
 }
 
 $relativePath  = $targetFolder . '/' . $label . '/' . $filename;
-$dbGesture     = save_gesture_word_to_db($label, $signLanguage);
+$dbGesture     = save_gesture_word_to_db($label, $signLanguage, $category);
 $dbDataset     = save_gesture_to_language_dataset($label, $signLanguage, $videoAssetRelative);
 $dbRecordingId = save_gesture_recording_to_db(
     $dbGesture['id'],
@@ -602,6 +653,7 @@ echo json_encode([
     'success'          => true,
     'label'            => $label,
     'signLanguage'     => $signLanguage,
+    'category'         => $dbGesture['category'],
     'file'             => $relativePath,
     'videoAsset'       => $videoAssetRelative,
     'frameCount'       => count($frames),
