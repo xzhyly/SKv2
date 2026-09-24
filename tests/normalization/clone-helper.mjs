@@ -18,6 +18,13 @@ export const MYSQLDUMP = process.env.SK_MYSQLDUMP || 'C:\\xampp\\mysql\\bin\\mys
 export const LIVE_DB = 'sining_kamay_db';
 export const MIGRATION_SCRIPT = path.join(repo, 'db-schema', 'migrations', '2026-09-24-normalize.php');
 
+// The live DB was cut over by Task 2 and no longer has the pre-migration shape these tests
+// exercise, so clones are restored from the pre-normalization backup dump instead of from
+// live. See docs/reports/2026-09-24-db-normalization-step1.md and Task 4's brief.
+export const SOURCE_DUMP = process.env.SK_NORMALIZATION_SOURCE_DUMP
+  || 'E:\\ACADSS\\IOT\\backups\\sining_kamay_db_before-normalization.sql';
+export const SOURCE_DUMP_EXISTS = fs.existsSync(SOURCE_DUMP);
+
 function run(cmd, args, opts = {}) {
   return spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...opts });
 }
@@ -32,22 +39,16 @@ export function dropDb(name) {
   mysqlCli(['-e', `DROP DATABASE IF EXISTS \`${name}\``]);
 }
 
-// Clones LIVE_DB into a freshly (re)created database named `name` via a real
-// mysqldump | mysql restore, through a temp file (piping was awkward to make
-// robust cross-platform with spawnSync).
+// Clones SOURCE_DUMP (the pre-normalization backup, NOT the live DB -- see above) into a
+// freshly (re)created database named `name` via a direct mysql restore.
 export function cloneLiveDb(name) {
+  if (!SOURCE_DUMP_EXISTS) {
+    throw new Error(`source dump not found: ${SOURCE_DUMP} (set SK_NORMALIZATION_SOURCE_DUMP)`);
+  }
   dropDb(name);
   mysqlCli(['-e', `CREATE DATABASE \`${name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci`]);
-  const tmpFile = path.join(os.tmpdir(), `sk-clone-${name}-${process.pid}-${Date.now()}.sql`);
-  const dump = run(MYSQLDUMP, ['-uroot', '--single-transaction', '--default-character-set=utf8mb4', LIVE_DB]);
-  if (dump.status !== 0) throw new Error(`mysqldump.exe failed: ${dump.stderr}`);
-  fs.writeFileSync(tmpFile, dump.stdout, 'utf8');
-  try {
-    const restore = run(MYSQL, ['-uroot', '--default-character-set=utf8mb4', name], { input: fs.readFileSync(tmpFile) });
-    if (restore.status !== 0) throw new Error(`mysql.exe restore failed: ${restore.stderr}${restore.stdout}`);
-  } finally {
-    fs.rmSync(tmpFile, { force: true });
-  }
+  const restore = run(MYSQL, ['-uroot', '--default-character-set=utf8mb4', name], { input: fs.readFileSync(SOURCE_DUMP) });
+  if (restore.status !== 0) throw new Error(`mysql.exe restore failed: ${restore.stderr}${restore.stdout}`);
 }
 
 // Runs arbitrary SQL against `dbName` (any database, not just the live one)

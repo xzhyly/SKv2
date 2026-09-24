@@ -1,21 +1,31 @@
 // Tests for the one-time DB-normalization migration
 // (db-schema/migrations/2026-09-24-normalize.php). Runs ONLY against
-// disposable clone databases (sining_kamay_db_migtest*) restored from a real
-// mysqldump of the live DB -- the live `sining_kamay_db` itself is never
-// altered. A before/after snapshot of the live DB's SHOW TABLES / SHOW CREATE
-// TABLE gestures asserts that at the end of this file, in a try/finally that
-// runs independently of (and after) clone cleanup so a failing assertion
-// earlier in the file can never skip either.
+// disposable clone databases (sining_kamay_db_migtest*) restored from the
+// pre-normalization backup dump (SOURCE_DUMP in clone-helper.mjs) -- the live
+// `sining_kamay_db` was already cut over by Task 2 and no longer has the
+// pre-migration shape these tests exercise, so it is never used as a clone
+// source and is never altered. A before/after snapshot of the live DB's SHOW
+// TABLES / SHOW CREATE TABLE gestures asserts that at the end of this file,
+// in a try/finally that runs independently of (and after) clone cleanup so a
+// failing assertion earlier in the file can never skip either.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   LIVE_DB, MIGRATION_SCRIPT, cloneLiveDb, dropDb, queryDb, runMigration, runUnderCgi,
   tmpSnapshotPath, postMigrationState, showCreateTable, normalizeDdl, tableList, columnExists,
+  SOURCE_DUMP, SOURCE_DUMP_EXISTS,
 } from './clone-helper.mjs';
 
 const CLONE = 'sining_kamay_db_migtest';
 const ALL_CLONES = new Set();
+
+// Tests that clone need the pre-normalization backup dump (the live DB was cut over by Task 2
+// and no longer has the pre-migration shape). Skip them with a clear message instead of failing
+// when that file isn't present, per Task 4's brief.
+const CLONE_SKIP = SOURCE_DUMP_EXISTS
+  ? false
+  : `pre-normalization backup dump not found at ${SOURCE_DUMP} (set SK_NORMALIZATION_SOURCE_DUMP to override)`;
 
 function clone(suffix) {
   const name = suffix ? `${CLONE}_${suffix}` : CLONE;
@@ -113,7 +123,7 @@ test('running the migration script under php-cgi (non-CLI) is refused with a 403
 // ── Full run on a clone ─────────────────────────────────────────────────────
 let referenceState; // captured from the first full, uninterrupted run; reused by the interruption tests
 
-test('full run on a clone: exits 0 and produces the exact target schema/data', () => {
+test('full run on a clone: exits 0 and produces the exact target schema/data', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('full', (db, snapshot) => {
     const preRecordingCounts = queryDb(db,
       "SELECT g.word AS label, g.sign_language, COUNT(*) AS c FROM gesture_recordings gr JOIN gestures g ON g.id = gr.gesture_id GROUP BY g.word, g.sign_language");
@@ -150,7 +160,7 @@ test('full run on a clone: exits 0 and produces the exact target schema/data', (
 });
 
 // ── Re-run is a no-op ───────────────────────────────────────────────────────
-test('re-running the migration on an already-migrated clone: exit 0, every step "already done", data unchanged', () => {
+test('re-running the migration on an already-migrated clone: exit 0, every step "already done", data unchanged', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('rerun', (db, snapshot) => {
     const first = runMigration(db, [], { snapshotPath: snapshot });
     assert.equal(first.status, 0, first.stderr);
@@ -174,7 +184,7 @@ test('re-running the migration on an already-migrated clone: exit 0, every step 
 });
 
 // ── Interruption / resume ───────────────────────────────────────────────────
-test('interrupting after any step N (1..9) and resuming reaches the same final state as an uninterrupted run', () => {
+test('interrupting after any step N (1..9) and resuming reaches the same final state as an uninterrupted run', { skip: CLONE_SKIP }, () => {
   assert.ok(referenceState, 'reference state must have been captured by the full-run test');
   for (let n = 1; n <= 9; n++) {
     withCloneAndSnapshot(`stop${n}`, (db, snapshot) => {
@@ -192,7 +202,7 @@ test('interrupting after any step N (1..9) and resuming reaches the same final s
 });
 
 // ── Failed precondition aborts before any drop (step 4) ─────────────────────
-test('an orphaned recording aborts at step 4 before esl_signs/fsl_signs are touched', () => {
+test('an orphaned recording aborts at step 4 before esl_signs/fsl_signs are touched', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('orphan', (db, snapshot) => {
     queryDb(db, `INSERT INTO gesture_recordings (gesture_id, sign_language, gesture_type, sample_count, sample_path, recorded_at)
                  VALUES (999999999, 'ESL', 'zz_orphan', 1, 'zz_orphan_probe.json', NOW())`);
@@ -234,7 +244,7 @@ const MUTATIONS = [
 ];
 
 for (const { tag, label, mutate } of MUTATIONS) {
-  test(`step 7 verify-before-drop catches it and aborts when ${label}`, () => {
+  test(`step 7 verify-before-drop catches it and aborts when ${label}`, { skip: CLONE_SKIP }, () => {
     withCloneAndSnapshot(`mut_${tag}`, (db, snapshot) => {
       const partial = runMigration(db, ['--stop-after=6'], { snapshotPath: snapshot });
       assert.equal(partial.status, 0, `--stop-after=6 should exit 0; stderr:\n${partial.stderr}`);
@@ -246,13 +256,34 @@ for (const { tag, label, mutate } of MUTATIONS) {
       assert.match(resumed.stderr, /step 7/i, `stderr should mention step 7; got:\n${resumed.stderr}`);
       assert.doesNotMatch(resumed.stdout, /step 8/i, 'step 8 must never start once step 7 finds a mismatch');
       assert.equal(tableList(db).includes('esl_signs'), true, 'esl_signs must still exist after the abort');
+      assert.equal(tableList(db).includes('fsl_signs'), true, 'fsl_signs must still exist after the abort');
       assert.equal(columnExists(db, 'gesture_recordings', 'gesture_type'), true, 'gesture_type must still exist after the abort');
     });
   });
 }
 
+// ── Step 8's own redundancy re-verify catches what step 7 cannot (review round 2) ──────────
+// gesture_recordings.label/sign_language in the snapshot come from the JOINed gestures row, not
+// from the raw gr.gesture_type/gr.sign_language columns being dropped, so mutating gesture_type
+// alone is invisible to step 7's snapshot comparison -- only step 8's own BINARY re-verify (just
+// before the DROP COLUMN) catches it. This isolates that precondition.
+test('step 8 redundancy precondition catches a stale gesture_type after --stop-after=6', { skip: CLONE_SKIP }, () => {
+  withCloneAndSnapshot('step8redundancy', (db, snapshot) => {
+    const partial = runMigration(db, ['--stop-after=6'], { snapshotPath: snapshot });
+    assert.equal(partial.status, 0, `--stop-after=6 should exit 0; stderr:\n${partial.stderr}`);
+
+    const id = pickOneId(db, 'gesture_recordings');
+    queryDb(db, `UPDATE gesture_recordings SET gesture_type = 'zz' WHERE id = ${id}`);
+
+    const resumed = runMigration(db, [], { snapshotPath: snapshot });
+    assert.notEqual(resumed.status, 0, 'a stale gesture_type must cause a non-zero exit at step 8');
+    assert.match(resumed.stderr, /step 8/i, `stderr should mention step 8; got:\n${resumed.stderr}`);
+    assert.equal(columnExists(db, 'gesture_recordings', 'gesture_type'), true, 'gesture_type must still exist after the abort');
+  });
+});
+
 // ── Resuming with the snapshot deleted aborts instead of silently skipping verification (item 1b) ──
-test('resuming after --stop-after=6 with the snapshot file deleted aborts and drops nothing', () => {
+test('resuming after --stop-after=6 with the snapshot file deleted aborts and drops nothing', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('nosnap', (db, snapshot) => {
     const partial = runMigration(db, ['--stop-after=6'], { snapshotPath: snapshot });
     assert.equal(partial.status, 0, `--stop-after=6 should exit 0; stderr:\n${partial.stderr}`);
@@ -262,12 +293,13 @@ test('resuming after --stop-after=6 with the snapshot file deleted aborts and dr
     const resumed = runMigration(db, [], { snapshotPath: snapshot });
     assert.notEqual(resumed.status, 0, 'resuming with no snapshot file and a partially-migrated DB must fail, not silently proceed');
     assert.equal(tableList(db).includes('esl_signs'), true, 'esl_signs must still exist after the abort');
+    assert.equal(tableList(db).includes('fsl_signs'), true, 'fsl_signs must still exist after the abort');
     assert.equal(columnExists(db, 'gesture_recordings', 'gesture_type'), true, 'gesture_type must still exist after the abort');
   });
 });
 
 // ── --verify-only (review round 1, item 8) ──────────────────────────────────
-test('--verify-only on a fully migrated clone: exit 0, "0 differences" + SHOW CREATE TABLE, changes nothing', () => {
+test('--verify-only on a fully migrated clone: exit 0, "0 differences" + SHOW CREATE TABLE, changes nothing', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('vo_ok', (db, snapshot) => {
     const full = runMigration(db, [], { snapshotPath: snapshot });
     assert.equal(full.status, 0, full.stderr);
@@ -286,7 +318,7 @@ test('--verify-only on a fully migrated clone: exit 0, "0 differences" + SHOW CR
   });
 });
 
-test('--verify-only on a clone mutated after migration: exits non-zero', () => {
+test('--verify-only on a clone mutated after migration: exits non-zero', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('vo_bad', (db, snapshot) => {
     const full = runMigration(db, [], { snapshotPath: snapshot });
     assert.equal(full.status, 0, full.stderr);
@@ -300,7 +332,7 @@ test('--verify-only on a clone mutated after migration: exits non-zero', () => {
 });
 
 // ── Step 2 must report "done" (not "already done") when a resume actually fixes stale data (item 7) ──
-test('step 2 reports "done" when resuming re-copies a value that had gone stale, not "already done"', () => {
+test('step 2 reports "done" when resuming re-copies a value that had gone stale, not "already done"', { skip: CLONE_SKIP }, () => {
   withCloneAndSnapshot('backfill', (db, snapshot) => {
     const partial = runMigration(db, ['--stop-after=2'], { snapshotPath: snapshot });
     assert.equal(partial.status, 0, `--stop-after=2 should exit 0; stderr:\n${partial.stderr}`);
@@ -326,7 +358,9 @@ before(() => {
 });
 after(() => {
   try {
-    for (const name of ALL_CLONES) dropDb(name);
+    for (const name of ALL_CLONES) {
+      try { dropDb(name); } catch (e) { console.error(`Failed to drop clone ${name}: ${e.message}`); }
+    }
     ALL_CLONES.clear();
   } finally {
     const liveTablesAfter = queryDb(LIVE_DB, 'SHOW TABLES');
