@@ -89,8 +89,8 @@ and listing all 300+ leaf files individually would not add ownership information
 | [php/api/save_gesture.php](../../php/api/save_gesture.php) | 585 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe` |
 | [php/api/save_translation.php](../../php/api/save_translation.php) | 99 | Translation save endpoint; called from `js/db-api.js` |
 | [php/api/get_translations.php](../../php/api/get_translations.php) | 65 | Translation fetch endpoint; called from `js/db-api.js` |
-| [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6) |
-| [php/api/get_history.php](../../php/api/get_history.php) | 14 | History fetch endpoint; **no frontend caller found in this repo** (see §6) |
+| [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** (DB cleanup, `BACKEND.md`) |
+| [php/api/get_history.php](../../php/api/get_history.php) | 14 | History fetch endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** |
 | [php/api/reports.php](../../php/api/reports.php) | 80 | Reports data endpoint; called from `reports.html` |
 
 ### `css/`
@@ -202,8 +202,8 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 | `php/api/get_translations.php` | `js/db-api.js` |
 | `php/api/core_api.php` | `js/db-local.js` (described as "unified api router" in `js/db-local.js:10`) |
 | `php/api/reports.php` | `reports.html` |
-| `php/api/save_history.php` | none found |
-| `php/api/get_history.php` | none found |
+| `php/api/save_history.php` | none found (file deleted 2026-09-24) |
+| `php/api/get_history.php` | none found (file deleted 2026-09-24) |
 | `php/admin_api.php` | none found |
 | `php/auth.php` | none found |
 | `scratch/trigger_sync.php` | none found (not under `php/`, requires `php/connect.php` directly) |
@@ -218,10 +218,10 @@ Same 8 tables appear identically named across all three SQL sources
 - `fsl_signs`
 - `users`
 - `gestures`
-- `gesture_words`
+- `gesture_words` — dropped 2026-09-24
 - `gesture_recordings`
 - `translations`
-- `translation_history`
+- `translation_history` — dropped 2026-09-24
 
 Column-level detail was not extracted this pass (reserved for the Pass 2
 backend/database document, using the `mysql` skill).
@@ -236,6 +236,7 @@ Note: several items originally listed here (`js/dist/build.js`, `js/main.js`,
 
 - **`php/admin_api.php`, `php/auth.php`, `php/api/save_history.php`,
   `php/api/get_history.php`** — no caller found anywhere in the tracked frontend.
+  (2026-09-24: `save_history.php` and `get_history.php` deleted; see `DEBT.md` items 8 and 72.)
 - **`diagnostic.html`** — no inbound or outbound HTML links found; looks like a
   standalone developer test page rather than a kiosk screen, but still calls
   `php/api/save_gesture.php` live, so it is not dead code.

@@ -37,6 +37,11 @@ commit `a86823a`. See `archive/old-revision-docs/ORIGIN.md`.
 were left alone — judgment calls, not mechanical deletions. Tracked in
 `docs/system/DEBT.md` items 6 and 8.
 
+**2026-09-24 (DB cleanup, owner-approved):** `php/api/save_history.php` and
+`php/api/get_history.php` were deleted, along with the `translation_history`
+and `gesture_words` tables and the `admin_api.php`/`core_api.php` branches that
+only served them. See `docs/system/BACKEND.md`, "DB cleanup (2026-09-24)".
+
 ## Line-count result
 
 Tracked-file line count (`git ls-files` content, summed): 1,103,503 before

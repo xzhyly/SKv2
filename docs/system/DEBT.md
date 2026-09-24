@@ -114,6 +114,15 @@ so a later session does not re-litigate them:
    bigger decision than removing a vendored binary — see
    `docs/system/DEAD_CODE.md`.
 
+   **Partly resolved (2026-09-24, DB cleanup, owner-approved):**
+   `php/api/save_history.php` and `php/api/get_history.php` were deleted
+   together with the `translation_history` table they served, and so were
+   `admin_api.php`'s `get_history`/`delete_history`/`clear_history` actions and
+   the `translation_history` parts of its `get_stats`. They were reachable by
+   URL even with no front-end caller, and `save_history.php` built its SQL by
+   string concatenation. `php/auth.php` and the rest of `php/admin_api.php`
+   remain. See item 72 for the authorization problem those still have.
+
 9. **SQL built by escape-then-concatenate instead of parameterized queries, in a
    file that also uses prepared statements elsewhere.** `php/api/save_history.php:18`,
    `php/auth.php:56,62,64,83`, `php/admin_api.php:19,56,59,65,83,87,99,106,111,132`,
@@ -123,6 +132,9 @@ so a later session does not re-litigate them:
    inconsistency with the prepared-statement style used elsewhere in the same
    files makes it fragile — a future edit dropping one escape call reintroduces a
    real hole.
+   (2026-09-24: `save_history.php` no longer exists, see item 8. The
+   `admin_api.php` line numbers above predate the removal of its history
+   actions and have shifted.)
 
 10. **Hardcoded developer-machine path, dead on the actual target hardware.**
     `php/api/save_gesture.php:535,550` — `C:\Users\Techlife\OneDrive\Documents\New
@@ -832,6 +844,16 @@ so a later session does not re-litigate them:
     decision): disable one of the two, e.g. set `MySQL80` to Manual/Disabled
     or stop starting XAMPP's MySQL module.
 
+    **RESOLVED 2026-09-24 (owner).** The project standardized on XAMPP
+    MariaDB, which is also what the Pi on Bookworm will run. The owner set
+    `MySQL80` to Stopped/Disabled, so MariaDB (`c:\xampp\mysql\bin\mysqld.exe`,
+    datadir `C:\xampp\mysql\data\`) is now the only DB server. The MySQL 8.0
+    copy of `sining_kamay_db` is orphaned; it had the `category` column as of
+    2026-09-23 and was not backed up by this change. Still open: XAMPP's
+    MariaDB runs `--standalone` from the Control Panel, not as a Windows
+    service, so nothing listens on port 3306 after a reboot until someone
+    starts it (Control Panel "Svc" checkbox, or Config → Autostart).
+
 69. **Low severity, open (dev-only path): the "G" hotkey label path skips
     Type auto-select.** `js/gesture-data.js` `startRecording()` fills the
     name input from `prompt()` without firing an `input` event, so the Type
@@ -856,6 +878,41 @@ so a later session does not re-litigate them:
     2026-09-23). `scratch/trigger_sync.php` also keeps its own stale copy of
     `ensure_gestures_columns()` and inserts `gestures` rows without a
     category (they get DEFAULT `word`, not the heuristic) — scratch-only.
+
+72. **High severity, open (report only, 2026-09-24): `admin_api.php` and
+    `core_api.php` run destructive actions with no real authentication.**
+    Both answer any request that reaches them. Both send
+    `Access-Control-Allow-Origin: *` (`php/admin_api.php:2`,
+    `php/api/core_api.php:9`). Apache serves on the network, not only on
+    localhost: `C:\xampp\apache\conf\httpd.conf:60` is `Listen 80`, bound on
+    0.0.0.0 and :: (measured on the dev PC on 2026-09-24; the Pi's Apache
+    config is not specified in the repo).
+    - **`php/api/core_api.php` has no check of any kind.** No session, token,
+      or role check exists before its `switch ($action)`. Any POST can call
+      `clear_store` (runs `TRUNCATE TABLE gesture_recordings` or
+      `translations`), `delete_recording`, `delete_translation`,
+      `save_recording`/`save_translation` (the latter uses columns that don't
+      exist, item 2), or `get_stats`.
+    - **`php/admin_api.php`'s check can be spoofed.** Every action calls
+      `requireAdmin($requesterRole)`, but that role is looked up from the
+      client-supplied `requester_id` in the request body (`admin_api.php:15-21`;
+      its own comment says "In production, use session tokens"). There is no
+      session or password check, so sending `"requester_id": 1` passes,
+      because the seeded admin is `users.id = 1` (measured 2026-09-24).
+      That unlocks `create_user` (including with `role = admin`),
+      `update_user` (including setting a new password), `delete_user`,
+      `get_users` (returns the users table), `delete_gesture`, and
+      `clear_gestures` (`TRUNCATE TABLE gestures`). `gestures` is rebuilt
+      from disk by the next sync, but that would erase every manual category
+      re-tag, which lives only in the DB (item 65).
+    - Neither file has a front-end caller (items 6, 8), so no UI depends on
+      the current behaviour. The options are deleting both files outright or
+      putting them behind a real server-side session check.
+    - **Related, outside this item's scope:** `save_gesture.php`'s
+      `delete_gesture` action, which the live Step 1 Delete button uses, is
+      also unauthenticated. The gesture-training page's PIN gate
+      (`CORRECT_PIN`, `gesture-training-ui.js:23`) is client-side only.
+    - Not fixed; logged per owner instruction.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

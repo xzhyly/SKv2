@@ -12,8 +12,8 @@
   phase)
 - `php/api/save_translation.php` (99 lines)
 - `php/api/get_translations.php` (65 lines)
-- `php/api/save_history.php` (24 lines)
-- `php/api/get_history.php` (14 lines)
+- `php/api/save_history.php` (24 lines) (**deleted 2026-09-24**, DB cleanup)
+- `php/api/get_history.php` (14 lines) (**deleted 2026-09-24**, DB cleanup)
 - `php/api/reports.php` (80 lines)
 - `scratch/trigger_sync.php` (170 lines)
 - `db-schema/database_setup.sql`
@@ -50,9 +50,9 @@ ffmpeg lookup order (`get_ffmpeg_path()`, lines 36-52): global `ffmpeg` via `she
 
 **get_translations.php** — GET, query params `?limit=` (default 50, max 200, line 15), `?source_type=`, `?language=`. Parameterized `SELECT ... FROM translations`.
 
-**save_history.php** — POST. Body JSON `{text, source}` (source default `'sign'`). Directly string-interpolates escaped values into SQL (line 18, see Problems).
+**save_history.php** (deleted 2026-09-24, with the `translation_history` table; record kept for history) — POST. Body JSON `{text, source}` (source default `'sign'`). Directly string-interpolates escaped values into SQL (line 18, see Problems).
 
-**get_history.php** — GET, no params. Returns top 50 `translation_history` rows.
+**get_history.php** (deleted 2026-09-24) — GET, no params. Returns top 50 `translation_history` rows.
 
 **reports.php** — GET, no params required. Dumps `esl_signs`, `fsl_signs` (both backfilling `asset_path` by checking `assets/signs/<en|fil>/<sign_key>.mp4` on disk if empty, lines 28-38, 46-56) and last 200 `translations`.
 
@@ -63,10 +63,10 @@ ffmpeg lookup order (`get_ffmpeg_path()`, lines 36-52): global `ffmpeg` via `she
 - `esl_signs` / `fsl_signs`: `id INT PK AUTO_INCREMENT`, `sign_key VARCHAR(120) UNIQUE`, `sign_label VARCHAR(255)`, `text_value VARCHAR(255)`, `description TEXT NULL`, `asset_path VARCHAR(255) NULL`, `is_active TINYINT(1) DEFAULT 1`, `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`, `updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP`, `INDEX idx_*_text_value(text_value)`. ENGINE=InnoDB, `utf8mb4`/`utf8mb4_general_ci` in both `.sql` dumps (`db-schema/sining_kamay_db_backup.sql` line region "esl_signs"; `sining_kamay_db.sql` same). `database_setup.sql` does not specify `ENGINE=` explicitly (defaults to server default — not specified in that file).
 - `users`: `id PK`, `username VARCHAR(80) UNIQUE`, `email VARCHAR(150) UNIQUE`, `password_hash VARCHAR(255)`, `role ENUM('user','admin') DEFAULT 'user'`, `created_at TIMESTAMP`.
 - `gestures`: `id PK`, `word VARCHAR(255)`, `sign_language VARCHAR(10) DEFAULT 'ESL'`, `category ENUM('word','letter','number','phrase') NOT NULL DEFAULT 'word'` (added 2026-09-23, `db-schema/database_setup.sql:89`; also added at runtime by `ensure_gestures_columns()`, `php/api/gesture_category.php:58-93` (moved there from `save_gesture.php` so it can be tested against a scratch table; optional `$table` parameter, default `'gestures'`; an ALTER that fails because a concurrent first request already added the column is tolerated by re-checking `column_exists()`), which runs a one-time `backfill_gesture_categories()` (`gesture_category.php:95`) — heuristic-tag every pre-existing row — in the same call that adds the column, never again), `created_at TIMESTAMP`, `UNIQUE KEY(word, sign_language)`.
-- `gesture_words`: `id PK`, `word VARCHAR(255) UNIQUE`, `created_at TIMESTAMP`.
+- `gesture_words`: `id PK`, `word VARCHAR(255) UNIQUE`, `created_at TIMESTAMP`. **Dropped 2026-09-24** (0 rows; only reader/writer was dead `core_api.php`); removed from `db-schema/database_setup.sql`. The two tracked `.sql` dumps still contain it (they are snapshots).
 - `gesture_recordings`: `id PK`, `gesture_id INT NULL` (indexed, no FK constraint), `sign_language VARCHAR(10) DEFAULT 'ESL'`, `gesture_type VARCHAR(100)`, `sample_count INT DEFAULT 0`, `sample_path VARCHAR(255) NULL`, `landmark_json LONGTEXT NULL`, `thumbnail LONGTEXT NULL`, `recorded_at TIMESTAMP`, `INDEX(gesture_id)`, `INDEX(gesture_type)`.
 - `translations`: `id PK`, `source_type VARCHAR(50)`, `sign_label VARCHAR(255)`, `translated_text VARCHAR(255)`, `language VARCHAR(20) DEFAULT 'en-US'`, `confidence DOUBLE NULL`, `created_at TIMESTAMP`.
-- `translation_history`: `id PK`, `translated_text TEXT`, `source VARCHAR(50) DEFAULT 'sign'`, `created_at TIMESTAMP`.
+- `translation_history`: `id PK`, `translated_text TEXT`, `source VARCHAR(50) DEFAULT 'sign'`, `created_at TIMESTAMP`. **Dropped 2026-09-24** (0 rows; readers/writers were dead `save_history.php`, `get_history.php`, `admin_api.php` history actions, all removed); removed from `db-schema/database_setup.sql`.
 
 No `FOREIGN KEY`/`CONSTRAINT` clauses appear anywhere in any of the 3 SQL sources (verified by direct grep of full `CREATE TABLE` blocks) — `gesture_recordings.gesture_id` is a plain indexed `INT`, referential integrity is enforced only in application code (e.g. `save_gesture.php` deletes children before parents).
 
@@ -93,11 +93,11 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 
 - **connect.php**: required by every other file in this set (`require_once __DIR__ . '/connect.php'` or `'/../connect.php'`). Breaking it (e.g. changing `$db` name) breaks all 10 endpoints at once.
 - **auth.php**: touches `users` table only. No caller found in tracked frontend JS/HTML (verified via repo-wide grep for `auth.php`/"auth" endpoint patterns — only `docs/system/INVENTORY.md`, `.planning/...progress.md`, and `admin_api.php` itself reference it). Currently dead code; removing it breaks nothing observable in the frontend as shipped.
-- **admin_api.php**: touches `users`, `translation_history`, `gestures`. No caller found in tracked frontend (same grep). Dead code as far as the shipped frontend is concerned; presumably meant for an admin dashboard that either was never built against it or was replaced by direct calls elsewhere.
-- **core_api.php**: touches `gesture_recordings`, `translations`, `gesture_words`. Only confirmed caller is `js/db-local.js:9` ("points to unified api router"). If its `translations` INSERT/SELECT column names (`detected_word`/`full_sentence`) are changed to match the real schema, any code path that actually exercises `db-local.js`'s translation save/get would start working for the first time (currently it fails against schema — see Problems #1); if `core_api.php` is deleted, whatever front-end flow uses `db-local.js` for camera-translator recording/translation storage breaks.
+- **admin_api.php**: touches `users`, `gestures` (its `translation_history` actions were removed 2026-09-24). Its admin check trusts a client-supplied `requester_id` — see `DEBT.md` item 72. No caller found in tracked frontend (same grep). Dead code as far as the shipped frontend is concerned; presumably meant for an admin dashboard that either was never built against it or was replaced by direct calls elsewhere.
+- **core_api.php**: touches `gesture_recordings`, `translations` (its `gesture_words` action and map entries were removed 2026-09-24; `js/db-local.js`'s uncalled `saveGestureWord()` still posts the removed `save_gesture_word` action and would now get "Unknown action"). No auth check at all — see `DEBT.md` item 72. Only confirmed caller is `js/db-local.js:9` ("points to unified api router"). If its `translations` INSERT/SELECT column names (`detected_word`/`full_sentence`) are changed to match the real schema, any code path that actually exercises `db-local.js`'s translation save/get would start working for the first time (currently it fails against schema — see Problems #1); if `core_api.php` is deleted, whatever front-end flow uses `db-local.js` for camera-translator recording/translation storage breaks.
 - **save_gesture.php**: touches `gestures`, `esl_signs`/`fsl_signs`, `gesture_recordings`, disk folders `saved_gestures/`, `saved_gestures_fsl/`, `assets/signs/en|fil/`, and shells out to **ffmpeg.exe**. Confirmed callers: `js/script.js:849`, `js/gesture-data.js:7`, `js/gesture-training-ui.js:246`, `diagnostic.html:113`. Changing its request/response JSON shape breaks the gesture-recording UI in all four; removing ffmpeg breaks only the MP4 transcode (falls back to `.webm` automatically, lines 543-556).
 - **save_translation.php / get_translations.php**: touch `translations` (real schema columns). Confirmed callers: `js/db-api.js:35` and `:75`.
-- **save_history.php / get_history.php**: touch `translation_history`. No caller found in tracked frontend JS/HTML (grep-verified) — dead code as shipped.
+- **save_history.php / get_history.php**: touched `translation_history`; both deleted 2026-09-24 together with the table. No caller found in tracked frontend JS/HTML (grep-verified) — dead code as shipped.
 - **reports.php**: touches `esl_signs`, `fsl_signs`, `translations` (read-only except for opportunistic `asset_path` backfill UPDATEs). Confirmed caller: `reports.html` (per system brief; endpoint itself has no auth/session check — any client can call it).
 - **scratch/trigger_sync.php**: touches `gestures`, `esl_signs`, `gesture_recordings`, and `saved_gestures/` only (not the FSL folder) — a one-off/manual migration tool, not wired to any frontend caller.
 
@@ -118,3 +118,7 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 8. **Could not determine**: exact MySQL/MariaDB port (not specified anywhere in `connect.php` or the `.sql` files — mysqli default assumed but never stated in code); whether `sining_kamay_db_backup.sql`'s ANSI encoding is intentional or accidental (no code comment explains it); the actual production Apache vhost/config (no `.htaccess` or Apache config file among owned files to cite).
 
 **Resolved in Phase 2** (see `docs/system/DEBT.md` items 3, 15): the two problems formerly numbered 6 and 8 here — the MyMemory network call and the file-wide `error_reporting(0)`/`display_errors=0` suppression — were both in `php/api/bulk_importer_api.php`, which was deleted along with `bulk-importer.html`.
+
+## DB cleanup (2026-09-24)
+
+Owner-approved, after a read-only reference audit. Backup taken beforehand by the owner: phpMyAdmin export of `sining_kamay_db` from MariaDB 10.4.32, `E:\ACADSS\IOT\backups\sining_kamay_db_2026-09-24.sql` (outside the repo). On MariaDB (the only DB server since `MySQL80` was disabled, `DEBT.md` item 68): `DROP TABLE gesture_words`, `DROP TABLE translation_history` (both 0 rows, guarded by a row-count check); `DELETE` of the 5 `translations` test rows from 2026-07-15 (all `confidence = 0.95`, the constant hard-coded by the archived sign-to-text page, `sign-to-text-ui.js:639`). `translations` itself is kept — `reports.php:58-61` reads it for the live Reports page, which returns one JSON for all three tabs, so dropping it would 500 the whole page. Remaining tables: `esl_signs`, `fsl_signs`, `gesture_recordings`, `gestures`, `translations`, `users`.

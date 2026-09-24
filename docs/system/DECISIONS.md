@@ -970,3 +970,30 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   (11000), and on the touchscreen the search box would then be impossible to
   type into. Done in CSS, scoped with `body:has(#datasetModal.show)`, so no
   other page or modal changes.
+
+## Decisions made during the DB cleanup (2026-09-24, owner-approved)
+
+- **The project standardizes on XAMPP MariaDB; the `MySQL80` Windows service
+  is Disabled (done by the owner).** Reason: two servers competed for port
+  3306 and each held its own `sining_kamay_db`, and the Pi on Bookworm will
+  run MariaDB too (`DEBT.md` item 68).
+- **`gesture_words` and `translation_history` are dropped; `translations` is
+  kept.** Reason: the read/write audit found no live reader or writer for the
+  two dropped tables (only dead `core_api.php`, `admin_api.php`,
+  `save_history.php`, `get_history.php`), and both had 0 rows. `translations`
+  is read by the live Reports page (`reports.php:58-61`), and a failed query
+  there returns a 500 for all three Reports tabs. Backup beforehand:
+  `E:\ACADSS\IOT\backups\sining_kamay_db_2026-09-24.sql` (owner's phpMyAdmin
+  export, outside the repo).
+- **The dead code that only served the dropped tables is deleted, not left in
+  place.** Reason (owner): it was reachable by URL with no front-end caller,
+  and `save_history.php` built SQL by string concatenation. `js/db-local.js`
+  was not in scope and still has an uncalled `saveGestureWord()` pointing at
+  the removed `save_gesture_word` action.
+- **The 5 `translations` rows from 2026-07-15 are deleted.** Reason: all 5 had
+  `confidence = 0.95`, the constant hard-coded by the archived sign-to-text
+  page (`sign-to-text-ui.js:639`). They were test output, not usage.
+- **No Let's Talk conversation tables in this change.** Reason (owner): they
+  come with the conversation-UI phase, together with a consent/retention
+  decision. `talk.html` persists nothing to the DB today; `localStorage` holds
+  only the skeleton toggle and the chosen microphone.
