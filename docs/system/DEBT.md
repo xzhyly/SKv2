@@ -52,6 +52,11 @@ so a later session does not re-litigate them:
    practice — but it will throw a MySQL "unknown column" error the moment
    anything does call it.
 
+   **RESOLVED (2026-09-24, DB normalization, Task 4).** `php/api/core_api.php`
+   was deleted outright rather than fixed — no live caller, and it referenced
+   columns/tables (`gesture_type`, `sample_count`, `thumbnail`, `gesture_words`)
+   this phase also removes.
+
 3. **Offline requirement violated by a live network call.**
    `php/api/bulk_importer_api.php:378-385` calls the public MyMemory translation
    API (`https://api.mymemory.translated.net/get`, 5s cURL timeout) over HTTPS
@@ -92,6 +97,11 @@ so a later session does not re-litigate them:
    from any of them (`docs/system/UI.md` Part 1, §4). Costs parse/load time on
    every screen for no effect.
 
+   **RESOLVED (2026-09-24, DB normalization, Task 4).** `js/db-local.js` was
+   deleted, along with its `<script>` tag in `gesture-training.html`
+   (`camera-translator.html`/`sign-to-text.html` no longer load it either,
+   having been archived/retired in earlier phases).
+
 7. **Three incompatible hardcoded deployment-path conventions coexist.**
    - `js/script.js:847-849` dynamically detects `/SKR` vs `/Sining_kamay` in
      `location.pathname`.
@@ -122,6 +132,11 @@ so a later session does not re-litigate them:
    URL even with no front-end caller, and `save_history.php` built its SQL by
    string concatenation. `php/auth.php` and the rest of `php/admin_api.php`
    remain. See item 72 for the authorization problem those still have.
+
+   **Further resolved (2026-09-24, DB normalization, Task 4):** the
+   `core_api.php`/`js/db-local.js` half of this item is now also gone (see
+   items 2 and 6). `php/auth.php` and `php/admin_api.php` themselves remain
+   unresolved.
 
 9. **SQL built by escape-then-concatenate instead of parameterized queries, in a
    file that also uses prepared statements elsewhere.** `php/api/save_history.php:18`,
@@ -879,6 +894,14 @@ so a later session does not re-litigate them:
     `ensure_gestures_columns()` and inserts `gestures` rows without a
     category (they get DEFAULT `word`, not the heuristic) — scratch-only.
 
+    **Partly resolved (2026-09-24, DB normalization).** The
+    `scratch/trigger_sync.php` part is gone — the file was deleted (Task 4;
+    it would have recreated `esl_signs`/`fsl_signs` and the old columns if
+    run). `delete_gesture` now selects `WHERE label = ? LIMIT 1` (column
+    renamed) but the "one row per (label, sign_language) pair, `LIMIT 1`
+    picks one" shape is unchanged — the ESL/FSL-same-label part of this item
+    is still open.
+
 72. **High severity, open (report only, 2026-09-24): `admin_api.php` and
     `core_api.php` run destructive actions with no real authentication.**
     Both answer any request that reaches them. Both send
@@ -913,6 +936,70 @@ so a later session does not re-litigate them:
       also unauthenticated. The gesture-training page's PIN gate
       (`CORRECT_PIN`, `gesture-training-ui.js:23`) is client-side only.
     - Not fixed; logged per owner instruction.
+
+    **Update (2026-09-24, DB normalization):** the `core_api.php` half of
+    this item is resolved by that file's deletion (see item 2). `admin_api.php`
+    remains open and unauthenticated exactly as described above. One new
+    consequence of the added foreign key: `admin_api.php`'s `delete_gesture`
+    and `clear_gestures` actions now **fail** against a `gestures` row that
+    still has recordings (`ON DELETE RESTRICT`, `TRUNCATE` blocked by the FK
+    too), where before they would silently orphan the row's recordings. This
+    is a safety improvement, not a new risk — recorded here so a later
+    session doesn't read the failure as a regression.
+
+73. **Medium, open: fresh-machine/Pi setup — the tracked `.sql` dumps are
+    pre-normalization and not importable with the current code.** Both
+    `sining_kamay_db.sql` and `db-schema/sining_kamay_db_backup.sql` predate
+    the 2026-09-24 schema-normalization phase (they still have
+    `esl_signs`/`fsl_signs`, `gestures.word`,
+    `gesture_recordings.sample_count`/`gesture_type`/`thumbnail`), and
+    `save_gesture.php` and the other endpoints now expect the normalized
+    4-table shape. `db-schema/migrations/2026-09-24-normalize.php` cannot
+    convert either dump into the current shape: it requires the `category`
+    column added in the 2026-09-23 gesture-categorization phase (neither dump
+    has it), and its default `--snapshot` path is a hardcoded Windows path.
+    See `docs/system/BACKEND.md`, "Schema migration and fresh-machine setup
+    (2026-09-24)", for the two supported setup routes. **Must be followed
+    before the Pi is updated** — importing either tracked dump there as-is
+    will not work with the current code.
+
+74. **Low, open: `gesture_recordings.landmark_json` duplicates each sample's
+    JSON file on disk.** Measured 2026-09-24 (Step 1 proposal): ~9.46 MB
+    across 210 rows, the bulk of a full DB dump. Kept by owner decision
+    (`docs/system/DECISIONS.md`, schema-normalization phase) — inside the DB
+    it's the recording's own payload, not duplicated *within* the DB, but it
+    is a byte-for-byte copy of the on-disk sample file the sync already
+    treats as the source of truth.
+
+75. **Low, open: `reports.php` only backfills a missing `asset_path` when a
+    `.mp4` exists, not a `.webm`.** `php/api/reports.php:~31` (`fetch_gestures()`)
+    checks `assets/signs/<en|fil>/<label>.mp4` on disk for a still-NULL
+    `asset_path`; a newly synced or video-less gesture whose only clip is a
+    `.webm` (the common case — `assets/signs/en/` holds 120 `.webm` files and
+    0 `.mp4` files, `DEBT.md` item 62) keeps a NULL `asset_path` from this
+    endpoint forever, even though the same file would satisfy
+    `db-schema/migrations/2026-09-24-backfill-asset-path.php`'s check. That
+    backfill script is one-time, not run automatically on sync, so this gap
+    reopens for every gesture recorded after it last ran.
+
+76. **Low, open, pre-existing (not introduced by this phase): `save_gesture.php`'s
+    POST response reports `dbGestureCreated: true` even when the `gestures`
+    row already existed.** `save_gesture_word_to_db()`'s `ON DUPLICATE KEY
+    UPDATE id = LAST_INSERT_ID(id)` clause (`php/api/save_gesture.php:78-85`)
+    makes `LAST_INSERT_ID()` return the existing row's id on a duplicate-key
+    update, and the code reads that as "created" regardless. Observed
+    2026-09-25 saving a second sample for an existing label. Not a
+    normalization regression — the same `ON DUPLICATE KEY UPDATE` pattern
+    predates this phase — but only became visible while re-verifying the
+    rewritten save path.
+
+77. **Low, open, tester note only, not a bug: `talk.html`'s idle return (120 s
+    + 30 s countdown, `talk.html:1273`/`:1475`) can fire during a slow or
+    automated test session.** An automated tool or a slow manual walkthrough
+    that leaves the page untouched past the timeout gets sent back to the
+    dashboard mid-check — this is the designed idle-timeout behavior
+    (`docs/system/DECISIONS.md`, "Idle countdown length"), not a defect,
+    recorded here so a future test session doesn't mistake it for one.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

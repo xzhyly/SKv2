@@ -997,3 +997,98 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   come with the conversation-UI phase, together with a consent/retention
   decision. `talk.html` persists nothing to the DB today; `localStorage` holds
   only the skeleton toggle and the chosen microphone.
+
+## Decisions made during the schema-normalization phase (2026-09-24)
+
+- **Scope: normalize the schema for the thesis ERD with no behaviour change.**
+  Reason (owner): remove duplicated data and misleading column names.
+  Features, the on-disk sample format, the videos, and the kNN and
+  frame-capture code stay exactly the same; security hardening (DEBT 72) is
+  out of scope.
+- **Target: 4 tables (`gestures`, `gesture_recordings`, `translations`,
+  `users`). `esl_signs`/`fsl_signs` are folded into `gestures`
+  (`asset_path`, `is_active`) and dropped.** Reason (measured 2026-09-24):
+  the two tables mirror `gestures` one-to-one (0 missing, 0 extra per
+  language). `description` is a per-language constant, `sign_label` and
+  `text_value` equal the label with `_` turned into spaces (209/209), and
+  `updated_at` is all NULL, so only `asset_path` and `is_active` are real
+  data. `asset_path` cannot be derived (`one` → `1.webm` … `ten` →
+  `10.webm`), so it is moved, not recomputed.
+- **Full rename (option a): `gestures.word` → `label`,
+  `gesture_recordings.sample_count` → `frame_count`, in the DB, PHP and
+  tests.** Reason: 0 live JS reads `word`, `sample_count` or `gesture_type`
+  from any API response (the dataset GET already sends `label`). The only
+  JSON consumer affected is `reports.html` (6 references), which changes
+  anyway because its source tables disappear. `sample_count` equals the
+  landmark frame count on 210/210 rows.
+- **Recordings lose `gesture_type`, `sign_language` and `thumbnail`.**
+  Reason: `gesture_type` and `sign_language` equal the joined gesture's
+  label and language on 210/210 rows. `thumbnail` is NULL on 210/210 rows
+  and only dead `core_api.php` used it.
+- **FK `gesture_recordings.gesture_id → gestures.id ON DELETE RESTRICT`,
+  with `gesture_id NOT NULL`.** Reason: 0 orphans and 0 NULLs today, and the
+  live code already deletes recordings before their gesture. RESTRICT turns
+  a future ordering bug into an error instead of an orphan (owner-approved).
+  Side effect: dead `admin_api.php` `delete_gesture`/`clear_gestures` now
+  fail rather than orphan recordings.
+- **`sample_path` becomes NOT NULL + UNIQUE.** Reason: the sync identifies
+  an already-synced sample by `sample_path`; 210/210 are set and distinct.
+  The index also removes one full-table scan per sample file during sync.
+- **`landmark_json` is kept (owner decision).** Reason: within the DB it is
+  the recording's own payload, not duplicated data. It duplicates the disk
+  sample file, which is logged as debt rather than dropped.
+- **`php/api/core_api.php`, `js/db-local.js` (and its `<script>` tag) and
+  `scratch/trigger_sync.php` are deleted.** Reason: no live callers
+  (owner-confirmed independently). Each references columns or tables this
+  phase drops, and `trigger_sync.php` would recreate `esl_signs` and the old
+  columns if run.
+- **The migration is a CLI-only PHP script with ordered, idempotent,
+  guarded steps plus a snapshot comparison before any drop; it is not one
+  transaction.** Reason: MariaDB DDL commits implicitly. Re-running resumes
+  at the first unfinished step, and destructive steps run only after every
+  label and recording matches the pre-migration snapshot. The script starts
+  with `if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }` because
+  it lives under the web root (owner addition A).
+- **The `asset_path` backfill for the 62 NULL rows is a separate task and
+  commit, not part of the migration.** Reason (owner addition B): it keeps
+  the migration's snapshot comparison exact. It fills a value only when
+  `assets/signs/<en|fil>/<label>.webm` exists, and never overwrites a
+  non-NULL value.
+- **The live cutover (Task 2) is one task: backup, then migrate, then switch
+  the code — not split across separate sessions or commits.** Reason:
+  Apache serves the working tree live, and every non-`no_sync` GET to
+  `save_gesture.php` runs `sync_disk_to_db`, which would call the
+  soon-to-be-deleted `ensure_language_dataset_table()`/
+  `save_gesture_to_language_dataset()` against a DB the migration had already
+  reshaped if anything hit the endpoint mid-window — step 7's snapshot
+  comparison would have aborted the migration rather than silently corrupt
+  anything, but keeping the window short and single-task avoided relying on
+  that safety net at all.
+- **`tests/normalization/migration.test.mjs` clones from the pre-normalization
+  backup (`E:\ACADSS\IOT\backups\sining_kamay_db_before-normalization.sql`,
+  env `SK_NORMALIZATION_SOURCE_DUMP` to override), not the live DB, since the
+  Task 4 addendum.** Reason: the file's tests assume the pre-migration
+  6-table shape to exercise the migration end to end; after the Task 2
+  cutover the live DB is already normalized and no longer has that shape. If
+  the backup file is absent, the file's tests skip with a clear message
+  instead of failing.
+- **`db-schema/database_setup.sql` uses `CREATE TABLE IF NOT EXISTS` for all
+  four tables, not a bare `CREATE TABLE`.** Reason: a Task 4 review found the
+  bare form made the setup script fail on any re-run against a database that
+  already had the tables, which defeats its purpose as a repeatable
+  fresh-machine setup script (fixed in `1de77ac`).
+- **`tests/normalization/schema-guard.test.mjs` is a whole-phase-review
+  addition, not part of any single task**, guarding two things no earlier
+  task's tests covered end to end: that a full disk-to-DB sync never
+  recreates `esl_signs`/`fsl_signs` or the dropped columns and that the FK
+  survives it, and that a second POST without a video never clears an
+  already-set `asset_path`. Reason: the whole-phase review found no
+  automated guard existed for either regression, only manual verification
+  (fixed in `b36d38d`).
+- **The only two visible differences on the live Reports page from this
+  phase: the ID column now shows `gestures.id` (was `esl_signs.id`/
+  `fsl_signs.id`), and `created_at` now comes from `gestures` (differs by up
+  to 1 second on 4 of 209 rows, measured in the Step 1 proposal).** Every
+  other visible column (Key, Label, Text, asset button) is unchanged, since
+  `reports.html`'s `display_label` computation reproduces the old
+  `sign_label`/`text_value` values exactly.

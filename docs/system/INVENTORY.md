@@ -57,7 +57,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1360 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26) |
 | [js/gesture-data.js](../../js/gesture-data.js) | 708 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed) |
 | [js/db-api.js](../../js/db-api.js) | 148 | Loaded by camera-translator.html/diagnostic.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
-| [js/db-local.js](../../js/db-local.js) | 65 | Loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wraps `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
+| js/db-local.js | 65 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wrapped `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
 | [js/camera-helper.js](../../js/camera-helper.js) | 68 | Loaded by gesture-training.html/sign-to-text.html; camera device helper |
 | [js/speech-synthesis.js](../../js/speech-synthesis.js) | 66 | Loaded by gesture-training.html/sign-to-text.html; TTS output helper |
 | [js/virtual-keyboard.js](../../js/virtual-keyboard.js) | 186 | Loaded by index.html/camera-translator.html/gesture-training.html; on-screen keyboard widget |
@@ -85,8 +85,8 @@ and listing all 300+ leaf files individually would not add ownership information
 | [php/connect.php](../../php/connect.php) | 13 | MySQL connection bootstrap; `require`d by every other PHP file listed below |
 | [php/auth.php](../../php/auth.php) | 95 | Auth logic; **no frontend caller found in this repo** (see §6) |
 | [php/admin_api.php](../../php/admin_api.php) | 196 | Admin API; **no frontend caller found in this repo** (see §6) |
-| [php/api/core_api.php](../../php/api/core_api.php) | 177 | "Unified api router" per `js/db-local.js:10`; backs `db-local.js` |
-| [php/api/save_gesture.php](../../php/api/save_gesture.php) | 585 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe` |
+| php/api/core_api.php | 177 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: "unified api router" per `js/db-local.js:10`; backed `db-local.js` |
+| [php/api/save_gesture.php](../../php/api/save_gesture.php) | 585 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe`. Rewritten 2026-09-24 for the normalized `gestures`/`gesture_recordings` schema (`label`/`frame_count`, `asset_path`, no `esl_signs`/`fsl_signs`) |
 | [php/api/save_translation.php](../../php/api/save_translation.php) | 99 | Translation save endpoint; called from `js/db-api.js` |
 | [php/api/get_translations.php](../../php/api/get_translations.php) | 65 | Translation fetch endpoint; called from `js/db-api.js` |
 | [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** (DB cleanup, `BACKEND.md`) |
@@ -156,7 +156,22 @@ Also holds `archive/old-revision-docs/` (see `### docs/` below).
 
 | File | Owns |
 |---|---|
-| [scratch/trigger_sync.php](../../scratch/trigger_sync.php) | One-off DB migration script (adds `sign_language` column to `gestures`, creates `esl_signs`/`fsl_signs` if missing); requires `php/connect.php`; not called from any HTML/JS found |
+| scratch/trigger_sync.php | **Deleted 2026-09-24** (DB normalization, Task 4). Was: one-off DB migration script (adds `sign_language` column to `gestures`, creates `esl_signs`/`fsl_signs` if missing); requires `php/connect.php`; not called from any HTML/JS found |
+
+### `db-schema/migrations/` (new 2026-09-24, DB normalization)
+
+| File | Owns |
+|---|---|
+| [db-schema/migrations/2026-09-24-normalize.php](../../db-schema/migrations/2026-09-24-normalize.php) | One-time CLI migration: folds `esl_signs`/`fsl_signs` into `gestures`, renames `word`→`label`/`sample_count`→`frame_count`, adds the `gesture_recordings`→`gestures` FK, drops the old tables/columns. See `docs/system/BACKEND.md` |
+| [db-schema/migrations/2026-09-24-backfill-asset-path.php](../../db-schema/migrations/2026-09-24-backfill-asset-path.php) | One-time CLI backfill of `gestures.asset_path` from on-disk `.webm` files, run once on live (62 rows filled) |
+
+### `tests/normalization/` (new 2026-09-24, DB normalization)
+
+| File | Owns |
+|---|---|
+| tests/normalization/migration.test.mjs | Clone-DB tests for the migration script (full run, re-run, interruption/resume at every step); clones from the pre-normalization backup (`SK_NORMALIZATION_SOURCE_DUMP`), skips if absent |
+| tests/normalization/clone-helper.mjs | Shared clone-database helper for the above |
+| tests/normalization/schema-guard.test.mjs | Live-DB regression guard: a full sync never recreates dropped tables/columns and the FK survives; a second POST without video never clears `asset_path`. Belongs in the serial live-DB test command, not the clone-based one |
 
 ### `.superpowers/` (4 files)
 
@@ -200,31 +215,38 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 | `php/api/save_gesture.php` | `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html` |
 | `php/api/save_translation.php` | `js/db-api.js` |
 | `php/api/get_translations.php` | `js/db-api.js` |
-| `php/api/core_api.php` | `js/db-local.js` (described as "unified api router" in `js/db-local.js:10`) |
+| `php/api/core_api.php` | deleted 2026-09-24; was called only by `js/db-local.js` (also deleted), described as "unified api router" in `js/db-local.js:10` |
 | `php/api/reports.php` | `reports.html` |
 | `php/api/save_history.php` | none found (file deleted 2026-09-24) |
 | `php/api/get_history.php` | none found (file deleted 2026-09-24) |
 | `php/admin_api.php` | none found |
 | `php/auth.php` | none found |
-| `scratch/trigger_sync.php` | none found (not under `php/`, requires `php/connect.php` directly) |
+| `scratch/trigger_sync.php` | deleted 2026-09-24; had no caller found (not under `php/`, required `php/connect.php` directly) |
 
 ## 5. MySQL tables
 
-Same 8 tables appear identically named across all three SQL sources
-(`db-schema/database_setup.sql`, `db-schema/sining_kamay_db_backup.sql`,
-`sining_kamay_db.sql`):
+**Updated 2026-09-24 (DB normalization phase): 4 tables now**, matching
+`db-schema/database_setup.sql`, the migrated live DB, and
+`docs/system/BACKEND.md`'s ER diagram:
 
-- `esl_signs`
-- `fsl_signs`
-- `users`
 - `gestures`
-- `gesture_words` — dropped 2026-09-24
 - `gesture_recordings`
 - `translations`
-- `translation_history` — dropped 2026-09-24
+- `users`
+
+`esl_signs`/`fsl_signs` were dropped this same phase, folded into
+`gestures.asset_path`/`is_active` — see `docs/system/BACKEND.md`, "Schema
+migration and fresh-machine setup (2026-09-24)". `gesture_words` and
+`translation_history` were dropped earlier the same day, in a separate DB
+cleanup (see `docs/system/BACKEND.md`, "DB cleanup (2026-09-24)"). The two
+tracked `.sql` dumps (`db-schema/sining_kamay_db_backup.sql`,
+`sining_kamay_db.sql`) still list the old 8 tables — they are
+pre-normalization snapshots, not re-generated by this phase.
 
 Column-level detail was not extracted this pass (reserved for the Pass 2
-backend/database document, using the `mysql` skill).
+backend/database document, using the `mysql` skill) — see
+`docs/system/BACKEND.md` for the current, exact `CREATE TABLE` for
+`gestures`/`gesture_recordings`.
 
 ## 6. Files that look dead, orphaned, half-finished, or out of place
 
@@ -240,7 +262,7 @@ Note: several items originally listed here (`js/dist/build.js`, `js/main.js`,
 - **`diagnostic.html`** — no inbound or outbound HTML links found; looks like a
   standalone developer test page rather than a kiosk screen, but still calls
   `php/api/save_gesture.php` live, so it is not dead code.
-- **`scratch/trigger_sync.php`** — ad-hoc migration script, not wired to the app.
+- **`scratch/trigger_sync.php`** — ad-hoc migration script, not wired to the app. **Deleted 2026-09-24** (DB normalization, Task 4).
 - **Deployment path inconsistency**: `start_kiosk.sh:17` serves the app at
   `http://localhost/SKR/index.html`, but `js/db-api.js:11`, `js/db-local.js:9`,
   `js/gesture-data.js:6`, `js/gesture-training-ui.js:245,1065`, and `js/script.js:848`

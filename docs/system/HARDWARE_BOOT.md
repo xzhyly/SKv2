@@ -27,7 +27,12 @@ deployment described above rather than replacing it:
   one copy, no build/copy/sync step.
 - **Database:** `sining_kamay_db` imported into the local MySQL/MariaDB
   instance (see `docs/system/BACKEND.md` for an encoding gotcha in one of the
-  two tracked `.sql` dumps).
+  two tracked `.sql` dumps). **On a fresh machine, including a Pi running
+  MariaDB on Bookworm, do not import either tracked `.sql` dump directly** —
+  both are pre-normalization snapshots (2026-09-24 schema-normalization
+  phase) and the current code no longer matches their shape. See
+  `docs/system/BACKEND.md`, "Schema migration and fresh-machine setup
+  (2026-09-24)", for the two supported setup routes.
 - **URL:** http://localhost/SKR/ — deliberately the same `/SKR/` path
   segment `start_kiosk.sh:17` uses on the Pi (see Section 6).
 - Confirmed working: camera capture and sign-to-text translation on
