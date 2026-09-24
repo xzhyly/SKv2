@@ -119,6 +119,12 @@ export function normalizeDdl(ddl) {
   return ddl.replace(/\s*AUTO_INCREMENT=\d+/i, '');
 }
 
+export function columnExists(dbName, table, col) {
+  return queryDb(dbName,
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='${dbName}' AND TABLE_NAME='${table}' AND COLUMN_NAME='${col}'`
+  ).length > 0;
+}
+
 export function tableList(dbName) {
   return queryDb(dbName,
     `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='${dbName}' AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME`)

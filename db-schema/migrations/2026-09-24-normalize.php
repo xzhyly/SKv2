@@ -158,14 +158,46 @@ function buildCurrentSnapshot($conn, $db) {
         ];
     }
 
-    return ['gestures' => $gestures, 'recordings' => $recordings];
+    // Raw, un-joined row counts, taken separately from the gesture-keyed join above so that a
+    // NULL/orphaned gesture_id (invisible to the INNER JOIN in $sql2) still shows up as a count
+    // mismatch instead of silently vanishing from the comparison.
+    $gestureCount = (int)scalar($conn, 'SELECT COUNT(*) FROM gestures');
+    $recordingCount = (int)scalar($conn, 'SELECT COUNT(*) FROM gesture_recordings');
+
+    return [
+        'gestures' => $gestures,
+        'recordings' => $recordings,
+        'gesture_count' => $gestureCount,
+        'recording_count' => $recordingCount,
+    ];
 }
+
+// Field-by-field strict comparison (not array !== / == on the whole record) so that a comparison
+// never depends on key insertion order, and so every field's normalization (string vs int vs null)
+// is explicit and identical on both the snapshot side and the freshly-queried side.
+function fieldsDiffer($a, $b, array $fields) {
+    foreach ($fields as $f) {
+        $av = array_key_exists($f, $a) ? $a[$f] : null;
+        $bv = array_key_exists($f, $b) ? $b[$f] : null;
+        if ($av !== $bv) { return true; }
+    }
+    return false;
+}
+
+const GESTURE_COMPARE_FIELDS = ['category', 'created_at', 'asset_path', 'is_active'];
+const RECORDING_COMPARE_FIELDS = ['label', 'sign_language', 'sample_path', 'frame_count', 'recorded_at', 'landmark_md5'];
 
 function compareSnapshots($orig, $cur) {
     $diffs = [];
+    if ((int)$orig['gesture_count'] !== (int)$cur['gesture_count']) {
+        $diffs[] = "gesture_count mismatch: expected {$orig['gesture_count']} got {$cur['gesture_count']} (raw COUNT(*) FROM gestures)";
+    }
+    if ((int)$orig['recording_count'] !== (int)$cur['recording_count']) {
+        $diffs[] = "recording_count mismatch: expected {$orig['recording_count']} got {$cur['recording_count']} (raw COUNT(*) FROM gesture_recordings)";
+    }
     foreach ($orig['gestures'] as $k => $v) {
         if (!array_key_exists($k, $cur['gestures'])) { $diffs[] = "gesture missing: $k"; continue; }
-        if ($cur['gestures'][$k] != $v) {
+        if (fieldsDiffer($v, $cur['gestures'][$k], GESTURE_COMPARE_FIELDS)) {
             $diffs[] = "gesture mismatch for $k: expected " . json_encode($v) . " got " . json_encode($cur['gestures'][$k]);
         }
     }
@@ -174,7 +206,7 @@ function compareSnapshots($orig, $cur) {
     }
     foreach ($orig['recordings'] as $id => $v) {
         if (!array_key_exists($id, $cur['recordings'])) { $diffs[] = "recording missing id=$id"; continue; }
-        if ($cur['recordings'][$id] != $v) {
+        if (fieldsDiffer($v, $cur['recordings'][$id], RECORDING_COMPARE_FIELDS)) {
             $diffs[] = "recording mismatch id=$id: expected " . json_encode($v) . " got " . json_encode($cur['recordings'][$id]);
         }
     }
@@ -210,7 +242,7 @@ if ($VERIFY_ONLY) {
     $current = buildCurrentSnapshot($conn, $DB);
     $diffs = compareSnapshots($snapshot, $current);
     abortOnDiffs($diffs, 'verify-only');
-    echo "verify-only: snapshot matches current data (" . count($current['gestures']) . " gestures, " .
+    echo "verify-only: 0 differences (" . count($current['gestures']) . " gestures, " .
          count($current['recordings']) . " recordings)\n";
     foreach (['gestures', 'gesture_recordings', 'translations', 'users'] as $t) {
         if (tableExists($conn, $DB, $t)) {
@@ -270,15 +302,22 @@ if (!empty($clauses)) {
     q($conn, "ALTER TABLE `gestures` " . implode(', ', $clauses));
 }
 $labelColNow = columnExists($conn, $DB, 'gestures', 'label') ? 'label' : 'word';
+$backfillAffected = 0;
 if (tableExists($conn, $DB, 'esl_signs')) {
     q($conn, "UPDATE gestures g JOIN esl_signs es ON es.sign_key = g.`$labelColNow` " .
              "SET g.asset_path = es.asset_path, g.is_active = es.is_active WHERE g.sign_language = 'ESL'");
+    $backfillAffected += mysqli_affected_rows($conn);
 }
 if (tableExists($conn, $DB, 'fsl_signs')) {
     q($conn, "UPDATE gestures g JOIN fsl_signs fs ON fs.sign_key = g.`$labelColNow` " .
              "SET g.asset_path = fs.asset_path, g.is_active = fs.is_active WHERE g.sign_language = 'FSL'");
+    $backfillAffected += mysqli_affected_rows($conn);
 }
-announce(2, 'add-gesture-columns', empty($clauses) ? 'already done' : 'done');
+// mysqli_affected_rows() (without the CLIENT_FOUND_ROWS flag, which php/connect.php does not set)
+// counts only rows whose value actually changed, not rows merely matched -- so a resume that finds
+// the columns already present but the backfill still incomplete (e.g. a crash between the ADD
+// COLUMN and this UPDATE) is correctly reported as "done" rather than a no-op "already done".
+announce(2, 'add-gesture-columns', (!empty($clauses) || $backfillAffected > 0) ? 'done' : 'already done');
 maybeStop(2, $STOP_AFTER);
 
 // ── Step 3: gestures.sign_language -> enum('ESL','FSL') ──────────────────
@@ -367,7 +406,6 @@ $hasFrameCount = columnExists($conn, $DB, 'gesture_recordings', 'frame_count');
 $didRename = false;
 $gClauses = [];
 if ($hasWord && !$hasLabelCol) {
-    $wordInfo = columnInfo($conn, $DB, 'gestures', 'word');
     $gClauses[] = "CHANGE COLUMN `word` `label` varchar(255) NOT NULL";
 }
 if (!$hasNewLabelKey) {
@@ -421,6 +459,28 @@ if (!$hasGestureType && !$hasSignLanguage && !$hasThumbnail) {
         $nonNullThumb = (int)scalar($conn, "SELECT COUNT(*) FROM gesture_recordings WHERE thumbnail IS NOT NULL");
         if ($nonNullThumb > 0) {
             fwrite(STDERR, "Step 8 precondition failed: $nonNullThumb gesture_recordings row(s) have a non-NULL thumbnail\n");
+            exit(1);
+        }
+    }
+    // Re-verify (don't just trust the earlier snapshot compare) that gesture_type/sign_language are
+    // still exactly redundant with the joined gesture's label/sign_language before dropping them --
+    // a binary comparison, since these are the actual columns about to be discarded with no
+    // replacement.
+    if ($hasGestureType) {
+        $badGestureType = (int)scalar($conn, "SELECT COUNT(*) FROM gesture_recordings gr " .
+            "JOIN gestures g ON g.id = gr.gesture_id WHERE BINARY gr.gesture_type <> BINARY g.`$labelColNow`");
+        if ($badGestureType > 0) {
+            fwrite(STDERR, "Step 8 precondition failed: $badGestureType gesture_recordings row(s) where gesture_type " .
+                "does not match the joined gesture's label\n");
+            exit(1);
+        }
+    }
+    if ($hasSignLanguage) {
+        $badSignLanguage = (int)scalar($conn, "SELECT COUNT(*) FROM gesture_recordings gr " .
+            "JOIN gestures g ON g.id = gr.gesture_id WHERE BINARY gr.sign_language <> BINARY g.sign_language");
+        if ($badSignLanguage > 0) {
+            fwrite(STDERR, "Step 8 precondition failed: $badSignLanguage gesture_recordings row(s) where sign_language " .
+                "does not match the joined gesture's sign_language\n");
             exit(1);
         }
     }

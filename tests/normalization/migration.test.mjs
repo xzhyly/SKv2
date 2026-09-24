@@ -3,14 +3,15 @@
 // disposable clone databases (sining_kamay_db_migtest*) restored from a real
 // mysqldump of the live DB -- the live `sining_kamay_db` itself is never
 // altered. A before/after snapshot of the live DB's SHOW TABLES / SHOW CREATE
-// TABLE gestures asserts that at the end of this file.
+// TABLE gestures asserts that at the end of this file, in a try/finally that
+// runs independently of (and after) clone cleanup so a failing assertion
+// earlier in the file can never skip either.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import {
   LIVE_DB, MIGRATION_SCRIPT, cloneLiveDb, dropDb, queryDb, runMigration, runUnderCgi,
-  tmpSnapshotPath, postMigrationState, showCreateTable, normalizeDdl, tableList,
+  tmpSnapshotPath, postMigrationState, showCreateTable, normalizeDdl, tableList, columnExists,
 } from './clone-helper.mjs';
 
 const CLONE = 'sining_kamay_db_migtest';
@@ -21,6 +22,21 @@ function clone(suffix) {
   ALL_CLONES.add(name);
   cloneLiveDb(name);
   return name;
+}
+
+// Every test that needs a clone (and usually a snapshot file) goes through this so cleanup runs in
+// a finally block even when the test's own assertions throw -- required so a failing test never
+// leaves a sining_kamay_db_migtest* database or a temp snapshot file behind.
+function withCloneAndSnapshot(suffix, fn) {
+  const db = clone(suffix);
+  const snapshot = tmpSnapshotPath(suffix);
+  try {
+    fn(db, snapshot);
+  } finally {
+    fs.rmSync(snapshot, { force: true });
+    dropDb(db);
+    ALL_CLONES.delete(db);
+  }
 }
 
 const TARGET_GESTURES_DDL = normalizeDdl(`CREATE TABLE \`gestures\` (
@@ -77,13 +93,18 @@ function assertFullyMigrated(dbName) {
   assert.equal(fk[0].DELETE_RULE, 'RESTRICT');
 }
 
+function pickOneId(dbName, table) {
+  return queryDb(dbName, `SELECT id FROM \`${table}\` ORDER BY id LIMIT 1`)[0].id;
+}
+
 // ── CLI guard ──────────────────────────────────────────────────────────────
 test('running the migration script under php-cgi (non-CLI) is refused with a 403 and no body, and changes nothing', () => {
   const before = queryDb(LIVE_DB, 'SHOW TABLES');
   const r = runUnderCgi(MIGRATION_SCRIPT);
   assert.match(r.stdout, /Status:\s*403/);
   const headerEnd = r.stdout.indexOf('\r\n\r\n');
-  const body = headerEnd >= 0 ? r.stdout.slice(headerEnd + 4) : '';
+  assert.ok(headerEnd >= 0, 'expected a CRLFCRLF header/body separator in the CGI response; got:\n' + r.stdout);
+  const body = r.stdout.slice(headerEnd + 4);
   assert.equal(body.trim(), '');
   const after = queryDb(LIVE_DB, 'SHOW TABLES');
   assert.deepEqual(after, before);
@@ -93,99 +114,208 @@ test('running the migration script under php-cgi (non-CLI) is refused with a 403
 let referenceState; // captured from the first full, uninterrupted run; reused by the interruption tests
 
 test('full run on a clone: exits 0 and produces the exact target schema/data', () => {
-  const db = clone('full');
-  const preRecordingCounts = queryDb(db,
-    "SELECT g.word AS label, g.sign_language, COUNT(*) AS c FROM gesture_recordings gr JOIN gestures g ON g.id = gr.gesture_id GROUP BY g.word, g.sign_language");
-  const preAssetInfo = queryDb(db, `
-    SELECT g.word AS label, g.sign_language,
-           COALESCE(es.asset_path, fs.asset_path) AS asset_path,
-           COALESCE(es.is_active, fs.is_active) AS is_active
-    FROM gestures g
-    LEFT JOIN esl_signs es ON g.sign_language='ESL' AND es.sign_key = g.word
-    LEFT JOIN fsl_signs fs ON g.sign_language='FSL' AND fs.sign_key = g.word`);
+  withCloneAndSnapshot('full', (db, snapshot) => {
+    const preRecordingCounts = queryDb(db,
+      "SELECT g.word AS label, g.sign_language, COUNT(*) AS c FROM gesture_recordings gr JOIN gestures g ON g.id = gr.gesture_id GROUP BY g.word, g.sign_language");
+    const preAssetInfo = queryDb(db, `
+      SELECT g.word AS label, g.sign_language,
+             COALESCE(es.asset_path, fs.asset_path) AS asset_path,
+             COALESCE(es.is_active, fs.is_active) AS is_active
+      FROM gestures g
+      LEFT JOIN esl_signs es ON g.sign_language='ESL' AND es.sign_key = g.word
+      LEFT JOIN fsl_signs fs ON g.sign_language='FSL' AND fs.sign_key = g.word`);
 
-  const snapshot = tmpSnapshotPath('full');
-  const r = runMigration(db, [], { snapshotPath: snapshot });
-  assert.equal(r.status, 0, `migration should exit 0; stderr:\n${r.stderr}\nstdout:\n${r.stdout}`);
-  assert.match(r.stdout, /step 10 final-verify: done/);
+    const r = runMigration(db, [], { snapshotPath: snapshot });
+    assert.equal(r.status, 0, `migration should exit 0; stderr:\n${r.stderr}\nstdout:\n${r.stdout}`);
+    assert.match(r.stdout, /step 10 final-verify: done/);
 
-  assertFullyMigrated(db);
+    assertFullyMigrated(db);
 
-  const postRecordingCounts = queryDb(db,
-    'SELECT label, sign_language, COUNT(*) AS c FROM gesture_recordings gr JOIN gestures g ON g.id = gr.gesture_id GROUP BY label, sign_language');
-  const keyOf = r => `${r.label}\u0001${r.sign_language}`;
-  const preMap = new Map(preRecordingCounts.map(r => [keyOf(r), Number(r.c)]));
-  const postMap = new Map(postRecordingCounts.map(r => [keyOf(r), Number(r.c)]));
-  assert.deepEqual(postMap, preMap, 'per-(label,language) recording counts must be unchanged by the migration');
+    const postRecordingCounts = queryDb(db,
+      'SELECT label, sign_language, COUNT(*) AS c FROM gesture_recordings gr JOIN gestures g ON g.id = gr.gesture_id GROUP BY label, sign_language');
+    const keyOf = r => `${r.label}\u0001${r.sign_language}`;
+    const preMap = new Map(preRecordingCounts.map(r => [keyOf(r), Number(r.c)]));
+    const postMap = new Map(postRecordingCounts.map(r => [keyOf(r), Number(r.c)]));
+    assert.deepEqual(postMap, preMap, 'per-(label,language) recording counts must be unchanged by the migration');
 
-  const postAssetInfo = queryDb(db, 'SELECT label, sign_language, asset_path, is_active FROM gestures');
-  const preAssetMap = new Map(preAssetInfo.map(r => [keyOf(r), `${r.asset_path}|${r.is_active}`]));
-  for (const row of postAssetInfo) {
-    const expected = preAssetMap.get(keyOf(row));
-    assert.equal(`${row.asset_path}|${row.is_active}`, expected, `asset_path/is_active for ${keyOf(row)} must be preserved`);
-  }
+    const postAssetInfo = queryDb(db, 'SELECT label, sign_language, asset_path, is_active FROM gestures');
+    const preAssetMap = new Map(preAssetInfo.map(r => [keyOf(r), `${r.asset_path}|${r.is_active}`]));
+    for (const row of postAssetInfo) {
+      const expected = preAssetMap.get(keyOf(row));
+      assert.equal(`${row.asset_path}|${row.is_active}`, expected, `asset_path/is_active for ${keyOf(row)} must be preserved`);
+    }
 
-  fs.rmSync(snapshot, { force: true });
-  referenceState = postMigrationState(db);
+    referenceState = postMigrationState(db);
+  });
 });
 
 // ── Re-run is a no-op ───────────────────────────────────────────────────────
 test('re-running the migration on an already-migrated clone: exit 0, every step "already done", data unchanged', () => {
-  const db = clone('rerun');
-  const snapshot = tmpSnapshotPath('rerun');
-  const first = runMigration(db, [], { snapshotPath: snapshot });
-  assert.equal(first.status, 0, first.stderr);
-  const before = postMigrationState(db);
+  withCloneAndSnapshot('rerun', (db, snapshot) => {
+    const first = runMigration(db, [], { snapshotPath: snapshot });
+    assert.equal(first.status, 0, first.stderr);
+    const before = postMigrationState(db);
 
-  const second = runMigration(db, [], { snapshotPath: snapshot });
-  assert.equal(second.status, 0, second.stderr);
-  for (let n = 1; n <= 10; n++) {
-    assert.match(second.stdout, new RegExp(`step ${n} `), `step ${n} should still be reported`);
-  }
-  // Steps 2-6, 8, 9 are idempotent no-ops on a second run; 1, 7, 10 always act (snapshot reuse / verify).
-  for (const n of [2, 3, 4, 5, 6, 8, 9]) {
-    assert.match(second.stdout, new RegExp(`step ${n} [a-z-]+: already done`), `step ${n} should say already done on re-run`);
-  }
-  assert.match(second.stdout, /step 1 snapshot: already done/);
+    const second = runMigration(db, [], { snapshotPath: snapshot });
+    assert.equal(second.status, 0, second.stderr);
+    for (let n = 1; n <= 10; n++) {
+      assert.match(second.stdout, new RegExp(`step ${n} `), `step ${n} should still be reported`);
+    }
+    // Steps 2-6, 8, 9 are idempotent no-ops on a second run; 1, 7, 10 always act (snapshot reuse / verify).
+    for (const n of [2, 3, 4, 5, 6, 8, 9]) {
+      assert.match(second.stdout, new RegExp(`step ${n} [a-z-]+: already done`), `step ${n} should say already done on re-run`);
+    }
+    assert.match(second.stdout, /step 1 snapshot: already done/);
 
-  assertFullyMigrated(db);
-  const after = postMigrationState(db);
-  assert.deepEqual(after, before, 'schema and data must be unchanged by a re-run');
-  fs.rmSync(snapshot, { force: true });
+    assertFullyMigrated(db);
+    const after = postMigrationState(db);
+    assert.deepEqual(after, before, 'schema and data must be unchanged by a re-run');
+  });
 });
 
 // ── Interruption / resume ───────────────────────────────────────────────────
 test('interrupting after any step N (1..9) and resuming reaches the same final state as an uninterrupted run', () => {
   assert.ok(referenceState, 'reference state must have been captured by the full-run test');
   for (let n = 1; n <= 9; n++) {
-    const db = clone(`stop${n}`);
-    const snapshot = tmpSnapshotPath(`stop${n}`);
-    const partial = runMigration(db, [`--stop-after=${n}`], { snapshotPath: snapshot });
-    assert.equal(partial.status, 0, `--stop-after=${n} should exit 0; stderr:\n${partial.stderr}`);
-    assert.match(partial.stdout, new RegExp(`step ${n} `), `--stop-after=${n} should have run step ${n}`);
-    assert.doesNotMatch(partial.stdout, new RegExp(`step ${n + 1} `), `--stop-after=${n} must not start step ${n + 1}`);
+    withCloneAndSnapshot(`stop${n}`, (db, snapshot) => {
+      const partial = runMigration(db, [`--stop-after=${n}`], { snapshotPath: snapshot });
+      assert.equal(partial.status, 0, `--stop-after=${n} should exit 0; stderr:\n${partial.stderr}`);
+      assert.match(partial.stdout, new RegExp(`step ${n} `), `--stop-after=${n} should have run step ${n}`);
+      assert.doesNotMatch(partial.stdout, new RegExp(`step ${n + 1} `), `--stop-after=${n} must not start step ${n + 1}`);
 
-    const resumed = runMigration(db, [], { snapshotPath: snapshot });
-    assert.equal(resumed.status, 0, `resuming after stop-after=${n} should exit 0; stderr:\n${resumed.stderr}`);
-    assertFullyMigrated(db);
-    assert.deepEqual(postMigrationState(db), referenceState, `final state after interrupting at step ${n} must match the reference run`);
-    fs.rmSync(snapshot, { force: true });
+      const resumed = runMigration(db, [], { snapshotPath: snapshot });
+      assert.equal(resumed.status, 0, `resuming after stop-after=${n} should exit 0; stderr:\n${resumed.stderr}`);
+      assertFullyMigrated(db);
+      assert.deepEqual(postMigrationState(db), referenceState, `final state after interrupting at step ${n} must match the reference run`);
+    });
   }
 });
 
-// ── Failed precondition aborts before any drop ──────────────────────────────
+// ── Failed precondition aborts before any drop (step 4) ─────────────────────
 test('an orphaned recording aborts at step 4 before esl_signs/fsl_signs are touched', () => {
-  const db = clone('orphan');
-  queryDb(db, `INSERT INTO gesture_recordings (gesture_id, sign_language, gesture_type, sample_count, sample_path, recorded_at)
-               VALUES (999999999, 'ESL', 'zz_orphan', 1, 'zz_orphan_probe.json', NOW())`);
-  const snapshot = tmpSnapshotPath('orphan');
-  const r = runMigration(db, [], { snapshotPath: snapshot });
-  assert.notEqual(r.status, 0, 'migration must fail when an orphaned recording exists');
-  assert.match(r.stdout + r.stderr, /step 4/i);
-  assert.doesNotMatch(r.stdout, /step 5/i);
-  assert.equal(tableList(db).includes('esl_signs'), true, 'esl_signs must still exist after the abort');
-  assert.equal(tableList(db).includes('fsl_signs'), true, 'fsl_signs must still exist after the abort');
-  fs.rmSync(snapshot, { force: true });
+  withCloneAndSnapshot('orphan', (db, snapshot) => {
+    queryDb(db, `INSERT INTO gesture_recordings (gesture_id, sign_language, gesture_type, sample_count, sample_path, recorded_at)
+                 VALUES (999999999, 'ESL', 'zz_orphan', 1, 'zz_orphan_probe.json', NOW())`);
+    const r = runMigration(db, [], { snapshotPath: snapshot });
+    assert.notEqual(r.status, 0, 'migration must fail when an orphaned recording exists');
+    assert.match(r.stdout + r.stderr, /step 4/i);
+    assert.doesNotMatch(r.stdout, /step 5/i);
+    assert.equal(tableList(db).includes('esl_signs'), true, 'esl_signs must still exist after the abort');
+    assert.equal(tableList(db).includes('fsl_signs'), true, 'fsl_signs must still exist after the abort');
+  });
+});
+
+// ── Step 7/10 comparison actually catches mutated data (review round 1, item 1a) ──
+const MUTATIONS = [
+  {
+    tag: 'category',
+    label: "a gesture's category changes after --stop-after=6",
+    mutate: db => {
+      const id = pickOneId(db, 'gestures');
+      queryDb(db, `UPDATE gestures SET category = IF(category = 'letter', 'word', 'letter') WHERE id = ${id}`);
+    },
+  },
+  {
+    tag: 'delete',
+    label: 'a recording is deleted after --stop-after=6',
+    mutate: db => {
+      const id = pickOneId(db, 'gesture_recordings');
+      queryDb(db, `DELETE FROM gesture_recordings WHERE id = ${id}`);
+    },
+  },
+  {
+    tag: 'landmark',
+    label: "a recording's landmark_json changes after --stop-after=6",
+    mutate: db => {
+      const id = pickOneId(db, 'gesture_recordings');
+      queryDb(db, `UPDATE gesture_recordings SET landmark_json = CONCAT(COALESCE(landmark_json, ''), 'X') WHERE id = ${id}`);
+    },
+  },
+];
+
+for (const { tag, label, mutate } of MUTATIONS) {
+  test(`step 7 verify-before-drop catches it and aborts when ${label}`, () => {
+    withCloneAndSnapshot(`mut_${tag}`, (db, snapshot) => {
+      const partial = runMigration(db, ['--stop-after=6'], { snapshotPath: snapshot });
+      assert.equal(partial.status, 0, `--stop-after=6 should exit 0; stderr:\n${partial.stderr}`);
+
+      mutate(db);
+
+      const resumed = runMigration(db, [], { snapshotPath: snapshot });
+      assert.notEqual(resumed.status, 0, 'mutated data must cause a non-zero exit at step 7');
+      assert.match(resumed.stderr, /step 7/i, `stderr should mention step 7; got:\n${resumed.stderr}`);
+      assert.doesNotMatch(resumed.stdout, /step 8/i, 'step 8 must never start once step 7 finds a mismatch');
+      assert.equal(tableList(db).includes('esl_signs'), true, 'esl_signs must still exist after the abort');
+      assert.equal(columnExists(db, 'gesture_recordings', 'gesture_type'), true, 'gesture_type must still exist after the abort');
+    });
+  });
+}
+
+// ── Resuming with the snapshot deleted aborts instead of silently skipping verification (item 1b) ──
+test('resuming after --stop-after=6 with the snapshot file deleted aborts and drops nothing', () => {
+  withCloneAndSnapshot('nosnap', (db, snapshot) => {
+    const partial = runMigration(db, ['--stop-after=6'], { snapshotPath: snapshot });
+    assert.equal(partial.status, 0, `--stop-after=6 should exit 0; stderr:\n${partial.stderr}`);
+
+    fs.rmSync(snapshot, { force: true });
+
+    const resumed = runMigration(db, [], { snapshotPath: snapshot });
+    assert.notEqual(resumed.status, 0, 'resuming with no snapshot file and a partially-migrated DB must fail, not silently proceed');
+    assert.equal(tableList(db).includes('esl_signs'), true, 'esl_signs must still exist after the abort');
+    assert.equal(columnExists(db, 'gesture_recordings', 'gesture_type'), true, 'gesture_type must still exist after the abort');
+  });
+});
+
+// ── --verify-only (review round 1, item 8) ──────────────────────────────────
+test('--verify-only on a fully migrated clone: exit 0, "0 differences" + SHOW CREATE TABLE, changes nothing', () => {
+  withCloneAndSnapshot('vo_ok', (db, snapshot) => {
+    const full = runMigration(db, [], { snapshotPath: snapshot });
+    assert.equal(full.status, 0, full.stderr);
+
+    const before = postMigrationState(db);
+    const ddlBefore = { g: showCreateTable(db, 'gestures'), r: showCreateTable(db, 'gesture_recordings') };
+
+    const vo = runMigration(db, ['--verify-only'], { snapshotPath: snapshot });
+    assert.equal(vo.status, 0, `--verify-only should exit 0 on an untouched, fully-migrated clone; stderr:\n${vo.stderr}`);
+    assert.match(vo.stdout, /0 differences/);
+    assert.match(vo.stdout, /SHOW CREATE TABLE/);
+
+    assert.deepEqual(postMigrationState(db), before, '--verify-only must not change any data');
+    assert.equal(showCreateTable(db, 'gestures'), ddlBefore.g, '--verify-only must not change the gestures schema');
+    assert.equal(showCreateTable(db, 'gesture_recordings'), ddlBefore.r, '--verify-only must not change the gesture_recordings schema');
+  });
+});
+
+test('--verify-only on a clone mutated after migration: exits non-zero', () => {
+  withCloneAndSnapshot('vo_bad', (db, snapshot) => {
+    const full = runMigration(db, [], { snapshotPath: snapshot });
+    assert.equal(full.status, 0, full.stderr);
+
+    const id = pickOneId(db, 'gestures');
+    queryDb(db, `UPDATE gestures SET category = IF(category = 'letter', 'word', 'letter') WHERE id = ${id}`);
+
+    const vo = runMigration(db, ['--verify-only'], { snapshotPath: snapshot });
+    assert.notEqual(vo.status, 0, '--verify-only must fail once the post-migration data no longer matches the snapshot');
+  });
+});
+
+// ── Step 2 must report "done" (not "already done") when a resume actually fixes stale data (item 7) ──
+test('step 2 reports "done" when resuming re-copies a value that had gone stale, not "already done"', () => {
+  withCloneAndSnapshot('backfill', (db, snapshot) => {
+    const partial = runMigration(db, ['--stop-after=2'], { snapshotPath: snapshot });
+    assert.equal(partial.status, 0, `--stop-after=2 should exit 0; stderr:\n${partial.stderr}`);
+
+    // Simulate a crash between step 2's ADD COLUMN and its backfill UPDATE actually taking effect:
+    // corrupt one already-backfilled gesture's asset_path. esl_signs/fsl_signs are still present at
+    // this point (step 9 hasn't run), so a resumed step 2 has a real source to re-copy from.
+    const row = queryDb(db, "SELECT id FROM gestures WHERE sign_language = 'ESL' LIMIT 1")[0];
+    queryDb(db, `UPDATE gestures SET asset_path = 'zz_stale_probe.webm' WHERE id = ${row.id}`);
+
+    const resumed = runMigration(db, [], { snapshotPath: snapshot });
+    assert.equal(resumed.status, 0, `resuming should succeed once step 2 re-backfills the corrupted row; stderr:\n${resumed.stderr}`);
+    assert.match(resumed.stdout, /step 2 add-gesture-columns: done/,
+      'step 2 must report "done" (it actually changed a row), not "already done"');
+  });
 });
 
 // ── Safety net: the live DB is never touched by any test above ─────────────
@@ -195,10 +325,13 @@ before(() => {
   liveGesturesDdlBefore = showCreateTable(LIVE_DB, 'gestures');
 });
 after(() => {
-  const liveTablesAfter = queryDb(LIVE_DB, 'SHOW TABLES');
-  const liveGesturesDdlAfter = showCreateTable(LIVE_DB, 'gestures');
-  assert.deepEqual(liveTablesAfter, liveTablesBefore, 'live DB table list must be unchanged by this test file');
-  assert.equal(liveGesturesDdlAfter, liveGesturesDdlBefore, 'live DB gestures DDL must be unchanged by this test file');
-  for (const name of ALL_CLONES) dropDb(name);
-  ALL_CLONES.clear();
+  try {
+    for (const name of ALL_CLONES) dropDb(name);
+    ALL_CLONES.clear();
+  } finally {
+    const liveTablesAfter = queryDb(LIVE_DB, 'SHOW TABLES');
+    const liveGesturesDdlAfter = showCreateTable(LIVE_DB, 'gestures');
+    assert.deepEqual(liveTablesAfter, liveTablesBefore, 'live DB table list must be unchanged by this test file');
+    assert.equal(liveGesturesDdlAfter, liveGesturesDdlBefore, 'live DB gestures DDL must be unchanged by this test file');
+  }
 });
