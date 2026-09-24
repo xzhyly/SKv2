@@ -41,10 +41,25 @@ export function dropDb(name) {
 
 // Clones SOURCE_DUMP (the pre-normalization backup, NOT the live DB -- see above) into a
 // freshly (re)created database named `name` via a direct mysql restore.
+// Refuses to restore a dump that names a database (a bare `USE ...` or `CREATE DATABASE ...`
+// statement), so a misconfigured SK_NORMALIZATION_SOURCE_DUMP pointing at e.g. a full-server dump
+// can never be restored on top of the live `sining_kamay_db` via mysql.exe's own USE switching.
+// A plain mysqldump of a single database (the expected SOURCE_DUMP shape) contains neither.
+function assertDumpHasNoDatabaseStatements(dumpPath) {
+  const sql = fs.readFileSync(dumpPath, 'utf8');
+  if (/^\s*USE\s/im.test(sql) || /CREATE\s+DATABASE/i.test(sql)) {
+    throw new Error(
+      `refusing to restore ${dumpPath}: it contains a USE or CREATE DATABASE statement, ` +
+      `which could redirect the restore onto a database other than the disposable clone`
+    );
+  }
+}
+
 export function cloneLiveDb(name) {
   if (!SOURCE_DUMP_EXISTS) {
     throw new Error(`source dump not found: ${SOURCE_DUMP} (set SK_NORMALIZATION_SOURCE_DUMP)`);
   }
+  assertDumpHasNoDatabaseStatements(SOURCE_DUMP);
   dropDb(name);
   mysqlCli(['-e', `CREATE DATABASE \`${name}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci`]);
   const restore = run(MYSQL, ['-uroot', '--default-character-set=utf8mb4', name], { input: fs.readFileSync(SOURCE_DUMP) });

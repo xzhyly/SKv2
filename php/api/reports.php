@@ -33,9 +33,11 @@ function fetch_gestures($conn, $signLanguage, $subFolder) {
             if (file_exists($absolutePath)) {
                 $row['asset_path'] = 'assets/signs/' . $subFolder . '/' . $row['label'] . '.mp4';
                 $stmt = mysqli_prepare($conn, 'UPDATE gestures SET asset_path = ? WHERE id = ?');
-                mysqli_stmt_bind_param($stmt, 'si', $row['asset_path'], $row['id']);
-                mysqli_stmt_execute($stmt);
-                mysqli_stmt_close($stmt);
+                if ($stmt) {
+                    mysqli_stmt_bind_param($stmt, 'si', $row['asset_path'], $row['id']);
+                    mysqli_stmt_execute($stmt);
+                    mysqli_stmt_close($stmt);
+                }
             }
         }
         $row['display_label'] = str_replace('_', ' ', $row['label']);
