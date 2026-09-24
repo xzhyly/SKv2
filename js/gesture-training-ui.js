@@ -84,15 +84,75 @@ function applyStepLayoutClass(step) {
 }
 
 // ── Dataset Modal Logic ──
+// Tab order and titles for the dataset modal; the default tab is the first one.
+const DATASET_TABS = [['word', 'Words'], ['letter', 'Letters'], ['number', 'Numbers'], ['phrase', 'Phrases']];
+let datasetGroups = null;          // category -> [{label, signSet, samples}], set by renderSavedDataset(); null = no table
+let datasetActiveTab = 'word';
+
 function trOpenDatasetModal() {
-  // Clone current table contents into the modal body
-  const tableWrap = document.getElementById('gestureDatasetTableWrap');
-  const modalBody = document.getElementById('datasetModalBody');
-  if (tableWrap && modalBody) {
-    modalBody.innerHTML = tableWrap.innerHTML || '<p style="color:#94a3b8;text-align:center;padding:16px;">No gestures recorded yet.</p>';
-  }
+  // Every open starts on the Words tab with an empty search.
+  datasetActiveTab = 'word';
+  const search = document.getElementById('datasetSearch');
+  if (search) search.value = '';
+  trRenderDatasetView();
   document.getElementById('datasetModal').classList.add('show');
 }
+
+function trSetDatasetTab(category) {
+  datasetActiveTab = category;
+  trRenderDatasetView();
+}
+
+// Renders the modal's tabs and the active tab's rows, filtered by the search box (label substring,
+// case-insensitive). Called on open, tab click, every search keystroke, and after every
+// renderSavedDataset() so a delete made from the modal shows up immediately.
+function trRenderDatasetView() {
+  const tabsEl = document.getElementById('datasetTabs');
+  const search = document.getElementById('datasetSearch');
+  const modalBody = document.getElementById('datasetModalBody');
+  if (!tabsEl || !search || !modalBody) return;
+
+  if (!datasetGroups) {   // empty dataset, still loading, or load error: show the status message as before
+    tabsEl.innerHTML = '';
+    search.style.display = 'none';
+    const tableWrap = document.getElementById('gestureDatasetTableWrap');
+    modalBody.innerHTML = (tableWrap && tableWrap.innerHTML) || '<p style="color:#94a3b8;text-align:center;padding:16px;">No gestures recorded yet.</p>';
+    return;
+  }
+  search.style.display = '';
+
+  tabsEl.innerHTML = DATASET_TABS.map(([category, title]) => {
+    const active = category === datasetActiveTab;
+    return `<button type="button" role="tab" aria-selected="${active}" class="tr-ds-tab${active ? ' active' : ''}" onclick="trSetDatasetTab('${category}')">${title} · <span class="tr-ds-count">${datasetGroups[category].length}</span></button>`;
+  }).join('');
+
+  const query = search.value.trim().toLowerCase();
+  const rows = datasetGroups[datasetActiveTab].filter(r => r.label.toLowerCase().includes(query));
+
+  let html = '<table style="width:100%; border-collapse:collapse; font-size:11px; color:var(--text);">';
+  html += '<tr style="background:var(--navy); color:#fff; font-weight:bold;">';
+  html += '<th style="padding:6px 4px; text-align:left;">Label</th>';
+  html += '<th style="padding:6px 4px; text-align:center;">Sign Set</th>';
+  html += '<th style="padding:6px 4px; text-align:center;">Samples</th>';
+  html += '<th style="padding:6px 4px; text-align:center;">Action</th>';
+  html += '</tr>';
+  if (rows.length === 0) {
+    const message = query ? 'No matches' : 'No gestures in this category yet.';
+    html += `<tr><td colspan="4" style="padding:14px 5px; text-align:center; color:var(--muted); font-style:italic;">${message}</td></tr>`;
+  }
+  rows.forEach(({ label, signSet, samples }) => {
+    html += `<tr style="border-bottom:1px solid var(--border);">`;
+    html += `<td style="padding:6px 5px; font-weight:700;">${label}</td>`;
+    html += `<td style="padding:6px 5px; text-align:center;">${signSet}</td>`;
+    html += `<td style="padding:6px 5px; text-align:center;">${samples}</td>`;
+    html += `<td style="padding:6px 5px; text-align:center;"><button type="button" onclick="deleteGesture('${label}')" style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:10px; font-weight:700; cursor:pointer;">Delete</button></td>`;
+    html += `</tr>`;
+  });
+  html += '</table>';
+  modalBody.innerHTML = html;
+}
+window.trSetDatasetTab = trSetDatasetTab;
+window.trRenderDatasetView = trRenderDatasetView;
 
 function trCloseDatasetModal() {
   document.getElementById('datasetModal').classList.remove('show');
@@ -271,6 +331,10 @@ async function renderSavedDataset(prefetchedGestures) {
   const tableWrap = document.getElementById('gestureDatasetTableWrap');
   const datasetCount = document.getElementById('datasetCount');
   if (!tableWrap) return;
+  // The modal (trRenderDatasetView) draws the per-category tabs from datasetGroups; tableWrap only
+  // carries the empty/error message it falls back to when there is no table to show.
+  datasetGroups = null;
+  tableWrap.innerHTML = '';
   try {
     const gestures = prefetchedGestures || await GestureDataRecorder.loadSavedGestureDataset();
     rebuildSampleInfo(gestures); refreshSampleCountLine();
@@ -289,42 +353,14 @@ async function renderSavedDataset(prefetchedGestures) {
       const set = String(signSet).toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
       const stored = savedCategories && savedCategories[set] && savedCategories[set][label];
       const category = stored || GestureCategory.guess(label);
-      (groups[category] || groups.word).push({ label, signSet, count: samples.length });
+      (groups[category] || groups.word).push({ label, signSet, samples: samples.length });
     });
     Object.keys(groups).forEach(cat => groups[cat].sort((a, b) => a.label.localeCompare(b.label)));
-
-    const GROUP_ORDER = [
-      { key: 'word', title: 'Words' },
-      { key: 'phrase', title: 'Phrases' },
-      { key: 'letter', title: 'Letters' },
-      { key: 'number', title: 'Numbers' },
-    ];
-
-    let html = '<table style="width:100%; border-collapse:collapse; font-size:11px; color:var(--text);">';
-    html += '<tr style="background:var(--navy); color:#fff; font-weight:bold;">';
-    html += '<th style="padding:6px 4px; text-align:left;">Label</th>';
-    html += '<th style="padding:6px 4px; text-align:center;">Sign Set</th>';
-    html += '<th style="padding:6px 4px; text-align:center;">Samples</th>';
-    html += '<th style="padding:6px 4px; text-align:center;">Action</th>';
-    html += '</tr>';
-    GROUP_ORDER.forEach(({ key, title }) => {
-      const rows = groups[key];
-      if (!rows.length) return;
-      html += `<tr><td colspan="4" style="padding:5px 6px; background:var(--bg); color:var(--navy); font-weight:800; border-top:2px solid var(--border); border-bottom:1px solid var(--border);"><span style="border-left:4px solid var(--orange); padding-left:6px;">${title} · <span style="color:var(--orange);">${rows.length}</span></span></td></tr>`;
-      rows.forEach(({ label, signSet, count }) => {
-        html += `<tr style="border-bottom:1px solid var(--border);">`;
-        html += `<td style="padding:6px 5px; font-weight:700;">${label}</td>`;
-        html += `<td style="padding:6px 5px; text-align:center;">${signSet}</td>`;
-        html += `<td style="padding:6px 5px; text-align:center;">${count}</td>`;
-        html += `<td style="padding:6px 5px; text-align:center;"><button type="button" onclick="deleteGesture('${label}')" style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:10px; font-weight:700; cursor:pointer;">Delete</button></td>`;
-        html += `</tr>`;
-      });
-    });
-    html += '</table>';
-    tableWrap.innerHTML = html;
+    datasetGroups = groups;
   } catch(err) {
     tableWrap.innerHTML = `<p style="font-size:11px; color:#ef4444; text-align:center; padding:10px;">Error loading dataset: ${err.message}</p>`;
   } finally {
+    trRenderDatasetView();
     autoSelectCategory();
   }
 }

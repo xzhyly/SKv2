@@ -379,6 +379,8 @@
       <h3>📁 Active Gesture Dataset</h3>
       <button type="button" class="tr-modal-close" onclick="trCloseDatasetModal()">✕</button>
     </div>
+    <div class="tr-ds-tabs" id="datasetTabs" role="tablist" aria-label="Gesture categories"></div>
+    <input id="datasetSearch" type="search" class="tr-input tr-ds-search" placeholder="Search labels in this tab…" autocomplete="off" aria-label="Search labels in this tab" oninput="trRenderDatasetView()">
     <div class="tr-modal-body" id="datasetModalBody">
       <p style="font-size:11px; color:#94a3b8; text-align:center; padding:16px;">No gestures recorded yet.</p>
     </div>
