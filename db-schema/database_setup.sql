@@ -5,7 +5,7 @@ CREATE DATABASE IF NOT EXISTS sining_kamay_db;
 USE sining_kamay_db;
 
 -- ─────────────────────────────────────────────────────────────
--- 2. USER AUTHENTICATION
+-- 1. USER AUTHENTICATION
 -- ─────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS users (
@@ -24,10 +24,10 @@ INSERT INTO users (username, email, password_hash, role) VALUES
 ON DUPLICATE KEY UPDATE id=id;
 
 -- ─────────────────────────────────────────────────────────────
--- 3. GESTURE TRAINING TENSORS & RECORDINGS
+-- 2. GESTURE TRAINING TENSORS & RECORDINGS
 -- ─────────────────────────────────────────────────────────────
 
-CREATE TABLE `gestures` (
+CREATE TABLE IF NOT EXISTS `gestures` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `label` varchar(255) NOT NULL,
   `sign_language` enum('ESL','FSL') NOT NULL DEFAULT 'ESL',
@@ -39,7 +39,7 @@ CREATE TABLE `gestures` (
   UNIQUE KEY `uq_gestures_label_language` (`label`,`sign_language`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE `gesture_recordings` (
+CREATE TABLE IF NOT EXISTS `gesture_recordings` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `gesture_id` int(11) NOT NULL,
   `frame_count` int(11) NOT NULL DEFAULT 0,
@@ -54,7 +54,7 @@ CREATE TABLE `gesture_recordings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ─────────────────────────────────────────────────────────────
--- 4. TRANSLATIONS HISTORY
+-- 3. TRANSLATIONS HISTORY
 -- ─────────────────────────────────────────────────────────────
 
 -- Core real-time translated phrases logger (from db-api / camera predict)
