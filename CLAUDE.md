@@ -32,6 +32,27 @@ see `docs/system/DEBT.md`.
 - **Raspberry Pi 4B is the target, not a laptop.** CPU only, no GPU.
 - **PHP touches admin/history only, never the live translation path.**
 
+## Reports go to files, not chat
+
+- Every report you'd normally give in chat goes to a Markdown file under
+  docs/reports/: Step 1 proposals (the STOP-and-wait point), investigation
+  results, blocker reports, and final phase reports.
+- File name: docs/reports/YYYY-MM-DD-<phase-slug>-<stage>.md, where
+  <stage> is step1, investigation, blocked, or final. A revised proposal
+  gets a new file (-step1-v2), never an overwrite.
+- Every report starts with this header:
+    Phase: <name>
+    Date: YYYY-MM-DD
+    Status: WAITING FOR APPROVAL | BLOCKED | DONE
+    Decision needed from owner: <one line, or "none">
+- Same evidence rule as docs/system/: every number is measured or cited
+  by file:line, never estimated.
+- In chat, reply with at most 3 lines: what happened, the Status, and the
+  report file path. No duplicate of the report in chat.
+- Commit report files with the phase's docs commit (not with code).
+- docs/revision/ keeps its own REVISE/REPORT convention (see
+  docs/revision/RULES.md). This rule covers everything outside it.
+
 ## Run
 
 Phase 2.5 (local development environment) is complete — the system runs
@@ -96,6 +117,7 @@ and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).
 | What Phase 1 deleted/archived, and why | [docs/system/DEAD_CODE.md](docs/system/DEAD_CODE.md) |
 | Known bugs, security issues, inconsistencies, ranked | [docs/system/DEBT.md](docs/system/DEBT.md) |
 | Full file-by-file inventory, load order, entry points | [docs/system/INVENTORY.md](docs/system/INVENTORY.md) |
+| Phase proposals, investigation results, and final reports | docs/reports/ |
 
 Every number in `docs/system/` is cited by file and line, or marked "not
 specified in code" — trust those documents over this file's prose if they ever
