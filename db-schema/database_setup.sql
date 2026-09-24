@@ -5,61 +5,6 @@ CREATE DATABASE IF NOT EXISTS sining_kamay_db;
 USE sining_kamay_db;
 
 -- ─────────────────────────────────────────────────────────────
--- 1. DICTIONARIES (ESL and FSL Signs)
--- ─────────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS esl_signs (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  sign_key VARCHAR(120) NOT NULL UNIQUE,
-  sign_label VARCHAR(255) NOT NULL,
-  text_value VARCHAR(255) NOT NULL,
-  description TEXT NULL,
-  asset_path VARCHAR(255) NULL,
-  is_active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_esl_text_value (text_value)
-);
-
-CREATE TABLE IF NOT EXISTS fsl_signs (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  sign_key VARCHAR(120) NOT NULL UNIQUE,
-  sign_label VARCHAR(255) NOT NULL,
-  text_value VARCHAR(255) NOT NULL,
-  description TEXT NULL,
-  asset_path VARCHAR(255) NULL,
-  is_active TINYINT(1) NOT NULL DEFAULT 1,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-  INDEX idx_fsl_text_value (text_value)
-);
-
--- Seed Initial Dictionary Data
-INSERT INTO esl_signs (sign_key, sign_label, text_value, description, asset_path) VALUES
-  ('hello', 'Hello', 'Hello', 'English sign dataset entry for hello.', 'assets/signs/hello.gif'),
-  ('thank_you', 'Thank you', 'Thank you', 'English sign dataset entry for thank you.', NULL),
-  ('yes', 'Yes', 'Yes', 'English sign dataset entry for yes.', NULL),
-  ('no', 'No', 'No', 'English sign dataset entry for no.', NULL)
-ON DUPLICATE KEY UPDATE
-  sign_label = VALUES(sign_label),
-  text_value = VALUES(text_value),
-  description = VALUES(description),
-  asset_path = VALUES(asset_path);
-
-INSERT INTO fsl_signs (sign_key, sign_label, text_value, description, asset_path) VALUES
-  ('kumusta', 'Kumusta', 'Kumusta', 'Filipino Sign Language dataset entry for hello/kumusta.', 'assets/signs/hello.gif'),
-  ('salamat', 'Salamat', 'Salamat', 'Filipino Sign Language dataset entry for thank you/salamat.', NULL),
-  ('oo', 'Oo', 'Oo', 'Filipino Sign Language dataset entry for yes/oo.', NULL),
-  ('hindi', 'Hindi', 'Hindi', 'Filipino Sign Language dataset entry for no/hindi.', NULL),
-  ('magandang_umaga', 'Magandang umaga', 'Magandang umaga', 'Filipino Sign Language dataset entry for good morning.', 'assets/signs/good morning.gif'),
-  ('mahal_kita', 'Mahal kita', 'Mahal kita', 'Filipino Sign Language dataset entry for I love you.', NULL)
-ON DUPLICATE KEY UPDATE
-  sign_label = VALUES(sign_label),
-  text_value = VALUES(text_value),
-  description = VALUES(description),
-  asset_path = VALUES(asset_path);
-
--- ─────────────────────────────────────────────────────────────
 -- 2. USER AUTHENTICATION
 -- ─────────────────────────────────────────────────────────────
 
@@ -82,28 +27,31 @@ ON DUPLICATE KEY UPDATE id=id;
 -- 3. GESTURE TRAINING TENSORS & RECORDINGS
 -- ─────────────────────────────────────────────────────────────
 
-CREATE TABLE IF NOT EXISTS gestures (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  word VARCHAR(255) NOT NULL,
-  sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL',
-  category ENUM('word','letter','number','phrase') NOT NULL DEFAULT 'word',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY (word, sign_language)
-);
+CREATE TABLE `gestures` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `label` varchar(255) NOT NULL,
+  `sign_language` enum('ESL','FSL') NOT NULL DEFAULT 'ESL',
+  `category` enum('word','letter','number','phrase') NOT NULL DEFAULT 'word',
+  `asset_path` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_gestures_label_language` (`label`,`sign_language`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE IF NOT EXISTS gesture_recordings (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  gesture_id INT NULL,
-  sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL',
-  gesture_type VARCHAR(100) NOT NULL,
-  sample_count INT NOT NULL DEFAULT 0,
-  sample_path VARCHAR(255) NULL,
-  landmark_json LONGTEXT NULL,
-  thumbnail LONGTEXT NULL,
-  recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX (gesture_id),
-  INDEX (gesture_type)
-);
+CREATE TABLE `gesture_recordings` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `gesture_id` int(11) NOT NULL,
+  `frame_count` int(11) NOT NULL DEFAULT 0,
+  `sample_path` varchar(255) NOT NULL,
+  `landmark_json` longtext DEFAULT NULL,
+  `recorded_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_gesture_recordings_sample_path` (`sample_path`),
+  KEY `idx_gesture_recordings_gesture` (`gesture_id`),
+  CONSTRAINT `fk_gesture_recordings_gesture` FOREIGN KEY (`gesture_id`)
+    REFERENCES `gestures` (`id`) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ─────────────────────────────────────────────────────────────
 -- 4. TRANSLATIONS HISTORY
