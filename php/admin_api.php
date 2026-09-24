@@ -114,34 +114,6 @@ if ($action === 'delete_user') {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TRANSLATION HISTORY CRUD
-// ══════════════════════════════════════════════════════════════════════════════
-
-if ($action === 'get_history') {
-    requireAdmin($requesterRole);
-    $res  = mysqli_query($conn, "SELECT * FROM translation_history ORDER BY created_at DESC LIMIT 200");
-    $rows = [];
-    while ($r = mysqli_fetch_assoc($res)) $rows[] = $r;
-    echo json_encode(["success" => true, "data" => $rows]);
-    exit;
-}
-
-if ($action === 'delete_history') {
-    requireAdmin($requesterRole);
-    $id = intval($data['id'] ?? 0);
-    $ok = mysqli_query($conn, "DELETE FROM translation_history WHERE id=$id");
-    echo json_encode(["success" => (bool)$ok]);
-    exit;
-}
-
-if ($action === 'clear_history') {
-    requireAdmin($requesterRole);
-    $ok = mysqli_query($conn, "TRUNCATE TABLE translation_history");
-    echo json_encode(["success" => (bool)$ok]);
-    exit;
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
 // GESTURES CRUD
 // ══════════════════════════════════════════════════════════════════════════════
 
@@ -176,18 +148,12 @@ if ($action === 'clear_gestures') {
 if ($action === 'get_stats') {
     requireAdmin($requesterRole);
     $totalUsers    = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM users"))[0];
-    $totalHistory  = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM translation_history"))[0];
     $totalGestures = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM gestures"))[0];
-    $recentHistory = [];
-    $rh = mysqli_query($conn, "SELECT translated_text, source, created_at FROM translation_history ORDER BY created_at DESC LIMIT 5");
-    while ($r = mysqli_fetch_assoc($rh)) $recentHistory[] = $r;
     echo json_encode([
         "success" => true,
         "stats" => [
             "total_users"    => (int)$totalUsers,
-            "total_history"  => (int)$totalHistory,
-            "total_gestures" => (int)$totalGestures,
-            "recent_history" => $recentHistory
+            "total_gestures" => (int)$totalGestures
         ]
     ]);
     exit;

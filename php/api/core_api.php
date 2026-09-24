@@ -125,31 +125,12 @@ switch ($action) {
         ok();
     }
 
-    // ── Save a gesture word (kNN trainer / main.js) ──────────
-    // Fired: main.js → setupTrainingUI() when user submits a new sign label
-    // Fields: word (string)
-    case 'save_gesture_word': {
-        $word = trim($body['word'] ?? '');
-        if ($word === '') fail('word is required');
-
-        // Prevent exact duplicates
-        $chk = q($conn, 'SELECT id FROM gesture_words WHERE word = ?', 's', $word);
-        mysqli_stmt_execute($chk);
-        if (mysqli_stmt_get_result($chk)->num_rows > 0) {
-            ok(['message' => 'Word already exists, skipped']);
-        }
-
-        $stmt = q($conn, 'INSERT INTO gesture_words (word) VALUES (?)', 's', $word);
-        ok(['id' => mysqli_insert_id($conn), 'message' => "Gesture word \"$word\" saved"]);
-    }
-
     // ── Clear an entire store (table) ────────────────────────
-    // storeName: 'recordings' | 'translations' | 'gesture_words'
+    // storeName: 'recordings' | 'translations'
     case 'clear_store': {
         $map = [
             'recordings'    => 'gesture_recordings',
             'translations'  => 'translations',
-            'gesture_words' => 'gesture_words',
         ];
         $store = trim($body['storeName'] ?? '');
         if (!isset($map[$store])) fail('Unknown store: ' . $store);
@@ -162,8 +143,7 @@ switch ($action) {
     case 'get_stats': {
         $counts = [];
         foreach (['gesture_recordings' => 'totalRecordings',
-                  'translations'       => 'totalTranslations',
-                  'gesture_words'      => 'totalGestureWords'] as $tbl => $key) {
+                  'translations'       => 'totalTranslations'] as $tbl => $key) {
             $r = mysqli_query($conn, "SELECT COUNT(*) AS n FROM `$tbl`");
             $counts[$key] = (int)mysqli_fetch_assoc($r)['n'];
         }

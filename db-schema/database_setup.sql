@@ -91,12 +91,6 @@ CREATE TABLE IF NOT EXISTS gestures (
   UNIQUE KEY (word, sign_language)
 );
 
-CREATE TABLE IF NOT EXISTS gesture_words (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  word VARCHAR(255) NOT NULL UNIQUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS gesture_recordings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   gesture_id INT NULL,
@@ -123,13 +117,5 @@ CREATE TABLE IF NOT EXISTS translations (
   translated_text VARCHAR(255) NOT NULL,
   language VARCHAR(20) NOT NULL DEFAULT 'en-US',
   confidence DOUBLE NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Text/Speech translation logs (from dashboard translate)
-CREATE TABLE IF NOT EXISTS translation_history (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  translated_text TEXT NOT NULL,
-  source VARCHAR(50) NOT NULL DEFAULT 'sign',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
