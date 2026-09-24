@@ -567,10 +567,10 @@
       target.innerHTML = rows.length ? rows.map(row => `
         <tr>
           <td>${esc(row.id)}</td>
-          <td><span class="pill">${esc(row.sign_key)}</span></td>
-          <td>${esc(row.sign_label)}</td>
-          <td>${esc(row.text_value)}</td>
-          <td>${row.asset_path ? `<button type="button" onclick="viewAsset('${esc(row.asset_path)}', '${esc(row.sign_label)}')" class="pill" style="background:rgba(249,115,22,0.08); border-color:rgba(249,115,22,0.2); color:var(--orange); cursor:pointer; font-family:inherit; border:1px solid rgba(249,115,22,0.2);">View Asset</button>` : '-'}</td>
+          <td><span class="pill">${esc(row.label)}</span></td>
+          <td>${esc(row.display_label)}</td>
+          <td>${esc(row.display_label)}</td>
+          <td>${row.asset_path ? `<button type="button" onclick="viewAsset('${esc(row.asset_path)}', '${esc(row.display_label)}')" class="pill" style="background:rgba(249,115,22,0.08); border-color:rgba(249,115,22,0.2); color:var(--orange); cursor:pointer; font-family:inherit; border:1px solid rgba(249,115,22,0.2);">View Asset</button>` : '-'}</td>
           <td>${esc(row.created_at)}</td>
         </tr>
       `).join('') : '<tr><td class="empty" colspan="6">No records found.</td></tr>';
@@ -625,11 +625,11 @@
       .then(response => response.json())
       .then(json => {
         if (!json.success) throw new Error(json.error || 'Report load failed');
-        document.getElementById('eslCount').textContent = json.summary.esl_signs;
-        document.getElementById('fslCount').textContent = json.summary.fsl_signs;
+        document.getElementById('eslCount').textContent = json.summary.esl;
+        document.getElementById('fslCount').textContent = json.summary.fsl;
         document.getElementById('translationCount').textContent = json.summary.translations;
-        renderSigns(document.getElementById('eslRows'), json.data.esl_signs);
-        renderSigns(document.getElementById('fslRows'), json.data.fsl_signs);
+        renderSigns(document.getElementById('eslRows'), json.data.esl);
+        renderSigns(document.getElementById('fslRows'), json.data.fsl);
         renderTranslations(document.getElementById('translationRows'), json.data.translations);
       })
       .catch(error => {

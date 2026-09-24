@@ -81,7 +81,7 @@ function save_gesture_word_to_db($label, $signLanguage, $category = null) {
     // (heuristic-only, e.g. from sync_disk_to_db) never touches an existing row's category.
     $stmt = mysqli_prepare(
         $conn,
-        'INSERT INTO gestures (word, sign_language, category) VALUES (?, ?, ?)
+        'INSERT INTO gestures (label, sign_language, category) VALUES (?, ?, ?)
          ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), category = IF(?, ?, category)'
     );
     if (!$stmt) {
@@ -98,7 +98,7 @@ function save_gesture_word_to_db($label, $signLanguage, $category = null) {
 
     // If ON DUPLICATE KEY returned 0, look up the existing id
     if ($id === 0) {
-        $sel = mysqli_prepare($conn, 'SELECT id FROM gestures WHERE word = ? AND sign_language = ? LIMIT 1');
+        $sel = mysqli_prepare($conn, 'SELECT id FROM gestures WHERE label = ? AND sign_language = ? LIMIT 1');
         mysqli_stmt_bind_param($sel, 'ss', $label, $signLanguage);
         mysqli_stmt_execute($sel);
         $res = mysqli_stmt_get_result($sel);
@@ -121,108 +121,19 @@ function save_gesture_word_to_db($label, $signLanguage, $category = null) {
     return ['id' => $id, 'created' => $created, 'category' => $storedCategory];
 }
 
-function ensure_language_dataset_table($conn, $signLanguage) {
-    $table = $signLanguage === 'FSL' ? 'fsl_signs' : 'esl_signs';
-    $sql = "CREATE TABLE IF NOT EXISTS `$table` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        sign_key VARCHAR(120) NOT NULL UNIQUE,
-        sign_label VARCHAR(255) NOT NULL,
-        text_value VARCHAR(255) NOT NULL,
-        description TEXT NULL,
-        asset_path VARCHAR(255) NULL,
-        is_active TINYINT(1) NOT NULL DEFAULT 1,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_text_value (text_value)
-    )";
-
-    if (!mysqli_query($conn, $sql)) {
-        fail('DB dataset table create failed: ' . mysqli_error($conn), 500);
-    }
-
-    return $table;
-}
-
-function save_gesture_to_language_dataset($label, $signLanguage, $assetPath = null) {
+function save_gesture_recording_to_db($gestureId, $frameCount, $samplePath, $landmarkJson) {
     global $conn;
-    $table = ensure_language_dataset_table($conn, $signLanguage);
-    $displayText = str_replace('_', ' ', $label);
 
     $insert = mysqli_prepare(
         $conn,
-        "INSERT INTO `$table` (sign_key, sign_label, text_value, description, asset_path)
-         VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           sign_label = VALUES(sign_label),
-           text_value = VALUES(text_value),
-           description = VALUES(description),
-           asset_path = IFNULL(VALUES(asset_path), asset_path)"
-    );
-    if (!$insert) {
-        fail('DB dataset prepare failed: ' . mysqli_error($conn), 500);
-    }
-
-    $description = $signLanguage . ' user-added gesture sample.';
-    mysqli_stmt_bind_param($insert, 'sssss', $label, $displayText, $displayText, $description, $assetPath);
-    if (!mysqli_stmt_execute($insert)) {
-        fail('DB dataset insert failed: ' . mysqli_stmt_error($insert), 500);
-    }
-
-    $id = mysqli_insert_id($conn);
-    if ($id === 0) {
-        $select = mysqli_prepare($conn, "SELECT id FROM `$table` WHERE sign_key = ? LIMIT 1");
-        mysqli_stmt_bind_param($select, 's', $label);
-        mysqli_stmt_execute($select);
-        $result = mysqli_stmt_get_result($select);
-        $row = mysqli_fetch_assoc($result);
-        $id = (int)($row['id'] ?? 0);
-        mysqli_stmt_close($select);
-    }
-
-    mysqli_stmt_close($insert);
-
-    return ['table' => $table, 'id' => (int)$id];
-}
-
-function ensure_gesture_recordings_table($conn) {
-    $sql = "CREATE TABLE IF NOT EXISTS gesture_recordings (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        gesture_id INT NULL,
-        sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL',
-        gesture_type VARCHAR(100) NOT NULL,
-        sample_count INT NOT NULL DEFAULT 0,
-        sample_path VARCHAR(255) NULL,
-        landmark_json LONGTEXT NULL,
-        thumbnail LONGTEXT NULL,
-        recorded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        INDEX (gesture_id),
-        INDEX (gesture_type)
-    )";
-
-    if (!mysqli_query($conn, $sql)) {
-        fail('DB table create failed: ' . mysqli_error($conn), 500);
-    }
-    if (!column_exists($conn, 'gesture_recordings', 'sign_language')) {
-        if (!mysqli_query($conn, "ALTER TABLE gesture_recordings ADD COLUMN sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL' AFTER gesture_id")) {
-            fail('DB recording alter failed: ' . mysqli_error($conn), 500);
-        }
-    }
-}
-
-function save_gesture_recording_to_db($gestureId, $signLanguage, $label, $frameCount, $samplePath, $landmarkJson) {
-    global $conn;
-    ensure_gesture_recordings_table($conn);
-
-    $insert = mysqli_prepare(
-        $conn,
-        'INSERT INTO gesture_recordings (gesture_id, sign_language, gesture_type, sample_count, sample_path, landmark_json)
-         VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO gesture_recordings (gesture_id, frame_count, sample_path, landmark_json)
+         VALUES (?, ?, ?, ?)'
     );
     if (!$insert) {
         fail('DB recording prepare failed: ' . mysqli_error($conn), 500);
     }
 
-    mysqli_stmt_bind_param($insert, 'ississ', $gestureId, $signLanguage, $label, $frameCount, $samplePath, $landmarkJson);
+    mysqli_stmt_bind_param($insert, 'iiss', $gestureId, $frameCount, $samplePath, $landmarkJson);
     if (!mysqli_stmt_execute($insert)) {
         fail('DB recording insert failed: ' . mysqli_stmt_error($insert), 500);
     }
@@ -243,9 +154,6 @@ function sync_db_to_disk($conn, $datasetRoot) {
 
 function sync_disk_to_db($conn, $unusedDatasetRoot) {
     ensure_gestures_columns($conn);
-    ensure_language_dataset_table($conn, 'ESL');
-    ensure_language_dataset_table($conn, 'FSL');
-    ensure_gesture_recordings_table($conn);
 
     $folders = [
         'ESL' => __DIR__ . '/../../saved_gestures',
@@ -287,12 +195,9 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
 
                 if (!$exists) {
                     $dbGesture = save_gesture_word_to_db($label, $signLanguage);
-                    save_gesture_to_language_dataset($label, $signLanguage);
                     $encoded = json_encode($json);
                     save_gesture_recording_to_db(
                         $dbGesture['id'],
-                        $signLanguage,
-                        $label,
                         count($json['frames'] ?? []),
                         $relativePath,
                         $encoded
@@ -331,22 +236,6 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
              WHERE gesture_id IS NOT NULL
          )'
     );
-
-    // Cascade: remove esl_signs with no matching gesture
-    mysqli_query($conn,
-        "DELETE FROM esl_signs
-         WHERE sign_key NOT IN (
-             SELECT DISTINCT word FROM gestures WHERE sign_language = 'ESL'
-         )"
-    );
-
-    // Cascade: remove fsl_signs with no matching gesture
-    mysqli_query($conn,
-        "DELETE FROM fsl_signs
-         WHERE sign_key NOT IN (
-             SELECT DISTINCT word FROM gestures WHERE sign_language = 'FSL'
-         )"
-    );
 }
 
 // Builds {"ESL": {label: category, ...}, "FSL": {label: category, ...}} for every (label,
@@ -356,14 +245,14 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
 function build_categories_map($conn, $gestures) {
     $dbCategory = []; // "ESL\x00label" -> category
     try {
-        $result = mysqli_query($conn, 'SELECT word, sign_language, category FROM gestures');
+        $result = mysqli_query($conn, 'SELECT label, sign_language, category FROM gestures');
     } catch (Throwable $e) {
         $result = false; // fall through to the per-label heuristic below
     }
     if ($result) {
         while ($row = mysqli_fetch_assoc($result)) {
             $set = strtoupper((string)($row['sign_language'] ?? 'ESL')) === 'FSL' ? 'FSL' : 'ESL';
-            $dbCategory[$set . "\x00" . $row['word']] = $row['category'];
+            $dbCategory[$set . "\x00" . $row['label']] = $row['category'];
         }
     }
 
@@ -470,7 +359,7 @@ if (isset($body['action']) && $body['action'] === 'delete_gesture') {
     // 2. Delete database entries in MySQL
     require_once __DIR__ . '/../connect.php';
     
-    $stmt = mysqli_prepare($conn, "SELECT id FROM gestures WHERE word = ? LIMIT 1");
+    $stmt = mysqli_prepare($conn, "SELECT id FROM gestures WHERE label = ? LIMIT 1");
     mysqli_stmt_bind_param($stmt, 's', $label);
     mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
@@ -482,9 +371,6 @@ if (isset($body['action']) && $body['action'] === 'delete_gesture') {
         mysqli_query($conn, "DELETE FROM gesture_recordings WHERE gesture_id = $gestureId");
         mysqli_query($conn, "DELETE FROM gestures WHERE id = $gestureId");
     }
-    
-    mysqli_query($conn, "DELETE FROM esl_signs WHERE sign_key = '" . mysqli_real_escape_string($conn, $label) . "'");
-    mysqli_query($conn, "DELETE FROM fsl_signs WHERE sign_key = '" . mysqli_real_escape_string($conn, $label) . "'");
 
     mysqli_close($conn);
     echo json_encode(['success' => true, 'message' => "Gesture '$label' successfully deleted."]);
@@ -629,11 +515,20 @@ if (!empty($videoBase64)) {
 
 $relativePath  = $targetFolder . '/' . $label . '/' . $filename;
 $dbGesture     = save_gesture_word_to_db($label, $signLanguage, $category);
-$dbDataset     = save_gesture_to_language_dataset($label, $signLanguage, $videoAssetRelative);
+
+// Never overwrite an existing asset_path with nothing (same rule as the old IFNULL()).
+$assetUpdate = mysqli_prepare($conn, 'UPDATE gestures SET asset_path = COALESCE(?, asset_path) WHERE id = ?');
+if (!$assetUpdate) {
+    fail('DB asset_path update prepare failed: ' . mysqli_error($conn), 500);
+}
+mysqli_stmt_bind_param($assetUpdate, 'si', $videoAssetRelative, $dbGesture['id']);
+if (!mysqli_stmt_execute($assetUpdate)) {
+    fail('DB asset_path update failed: ' . mysqli_stmt_error($assetUpdate), 500);
+}
+mysqli_stmt_close($assetUpdate);
+
 $dbRecordingId = save_gesture_recording_to_db(
     $dbGesture['id'],
-    $signLanguage,
-    $label,
     count($frames),
     $relativePath,
     $encoded
@@ -651,8 +546,6 @@ echo json_encode([
     'frameCount'       => count($frames),
     'dbGestureId'      => $dbGesture['id'],
     'dbGestureCreated' => $dbGesture['created'],
-    'dbDatasetTable'   => $dbDataset['table'],
-    'dbDatasetId'      => $dbDataset['id'],
     'dbRecordingId'    => $dbRecordingId,
     'labelSampleCount' => $priorSampleCount + 1,
     'videoSkipped'     => $videoSkipped,

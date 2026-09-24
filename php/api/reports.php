@@ -19,41 +19,32 @@ function fetch_rows($conn, $sql) {
     return $rows;
 }
 
-$esl = fetch_rows(
-    $conn,
-    "SELECT id, sign_key, sign_label, text_value, description, asset_path, is_active, created_at, updated_at
-       FROM esl_signs
-      ORDER BY created_at DESC, id DESC"
-);
-foreach ($esl as &$row) {
-    if (empty($row['asset_path'])) {
-        $expectedFile = '/assets/signs/en/' . $row['sign_key'] . '.mp4';
-        $absolutePath = __DIR__ . '/../..' . $expectedFile;
-        if (file_exists($absolutePath)) {
-            $row['asset_path'] = 'assets/signs/en/' . $row['sign_key'] . '.mp4';
-            $safePath = mysqli_real_escape_string($conn, $row['asset_path']);
-            mysqli_query($conn, "UPDATE esl_signs SET asset_path = '$safePath' WHERE id = " . $row['id']);
+function fetch_gestures($conn, $signLanguage, $subFolder) {
+    $rows = fetch_rows(
+        $conn,
+        "SELECT id, label, asset_path, is_active, created_at FROM gestures " .
+        "WHERE sign_language = '" . mysqli_real_escape_string($conn, $signLanguage) . "' " .
+        "ORDER BY created_at DESC, id DESC"
+    );
+    foreach ($rows as &$row) {
+        if (empty($row['asset_path'])) {
+            $expectedFile = '/assets/signs/' . $subFolder . '/' . $row['label'] . '.mp4';
+            $absolutePath = __DIR__ . '/../..' . $expectedFile;
+            if (file_exists($absolutePath)) {
+                $row['asset_path'] = 'assets/signs/' . $subFolder . '/' . $row['label'] . '.mp4';
+                $stmt = mysqli_prepare($conn, 'UPDATE gestures SET asset_path = ? WHERE id = ?');
+                mysqli_stmt_bind_param($stmt, 'si', $row['asset_path'], $row['id']);
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_close($stmt);
+            }
         }
+        $row['display_label'] = str_replace('_', ' ', $row['label']);
     }
+    return $rows;
 }
 
-$fsl = fetch_rows(
-    $conn,
-    "SELECT id, sign_key, sign_label, text_value, description, asset_path, is_active, created_at, updated_at
-       FROM fsl_signs
-      ORDER BY created_at DESC, id DESC"
-);
-foreach ($fsl as &$row) {
-    if (empty($row['asset_path'])) {
-        $expectedFile = '/assets/signs/fil/' . $row['sign_key'] . '.mp4';
-        $absolutePath = __DIR__ . '/../..' . $expectedFile;
-        if (file_exists($absolutePath)) {
-            $row['asset_path'] = 'assets/signs/fil/' . $row['sign_key'] . '.mp4';
-            $safePath = mysqli_real_escape_string($conn, $row['asset_path']);
-            mysqli_query($conn, "UPDATE fsl_signs SET asset_path = '$safePath' WHERE id = " . $row['id']);
-        }
-    }
-}
+$esl = fetch_gestures($conn, 'ESL', 'en');
+$fsl = fetch_gestures($conn, 'FSL', 'fil');
 
 $translations = fetch_rows(
     $conn,
@@ -66,13 +57,13 @@ $translations = fetch_rows(
 echo json_encode([
     "success" => true,
     "summary" => [
-        "esl_signs" => count($esl),
-        "fsl_signs" => count($fsl),
+        "esl" => count($esl),
+        "fsl" => count($fsl),
         "translations" => count($translations),
     ],
     "data" => [
-        "esl_signs" => $esl,
-        "fsl_signs" => $fsl,
+        "esl" => $esl,
+        "fsl" => $fsl,
         "translations" => $translations,
     ],
 ]);

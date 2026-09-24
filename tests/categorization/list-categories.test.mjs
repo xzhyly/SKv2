@@ -25,7 +25,7 @@ function cleanupLabel(label) {
 function cleanupAll() {
   for (const l of HTTP_LABELS) cleanupLabel(l);
   const list = HTTP_LABELS.map(l => `'${l}'`).join(',');
-  exec(`DELETE FROM gestures WHERE word IN (${list})`);
+  exec(`DELETE FROM gestures WHERE label IN (${list})`);
 }
 
 function post(label, extra = {}) {
@@ -85,7 +85,7 @@ test('a label on disk with no DB row reports its heuristic value in a no_sync lo
   }));
 
   // Confirm no DB row exists for this label.
-  const rows = query(`SELECT id FROM gestures WHERE word = '${label}'`);
+  const rows = query(`SELECT id FROM gestures WHERE label = '${label}'`);
   assert.equal(rows.length, 0, 'precondition: no gestures row for this label');
 
   const noSync = callEndpoint({ method: 'GET', query: 'no_sync=1', stub: false });

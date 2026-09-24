@@ -59,7 +59,7 @@ function ensure_gestures_columns($conn, $table = 'gestures') {
     $quotedTable = '`' . str_replace('`', '', $table) . '`';
     if (!column_exists($conn, $table, 'sign_language')) {
         try {
-            $ok = mysqli_query($conn, "ALTER TABLE $quotedTable ADD COLUMN sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL' AFTER word");
+            $ok = mysqli_query($conn, "ALTER TABLE $quotedTable ADD COLUMN sign_language ENUM('ESL','FSL') NOT NULL DEFAULT 'ESL' AFTER label");
         } catch (Throwable $e) {
             $ok = false;
         }
@@ -94,7 +94,7 @@ function ensure_gestures_columns($conn, $table = 'gestures') {
 // already 'word' (the column DEFAULT) don't need an UPDATE.
 function backfill_gesture_categories($conn, $table = 'gestures') {
     $quotedTable = '`' . str_replace('`', '', $table) . '`';
-    $result = mysqli_query($conn, "SELECT id, word FROM $quotedTable");
+    $result = mysqli_query($conn, "SELECT id, label FROM $quotedTable");
     if (!$result) {
         fail('DB backfill select failed: ' . mysqli_error($conn), 500);
     }
@@ -103,7 +103,7 @@ function backfill_gesture_categories($conn, $table = 'gestures') {
         fail('DB backfill prepare failed: ' . mysqli_error($conn), 500);
     }
     while ($row = mysqli_fetch_assoc($result)) {
-        $category = gesture_category($row['word']);
+        $category = gesture_category($row['label']);
         if ($category === 'word') {
             continue; // matches the column DEFAULT already
         }

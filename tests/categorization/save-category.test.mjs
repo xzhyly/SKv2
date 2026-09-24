@@ -29,10 +29,10 @@ function dropScratchTable() {
 // byte-for-byte identical after, so a regression like that fails loudly instead of silently.
 let realRowsBefore;
 before(() => {
-  realRowsBefore = query("SELECT word, sign_language, category FROM gestures WHERE word NOT LIKE 'zz%' ORDER BY sign_language, word");
+  realRowsBefore = query("SELECT label, sign_language, category FROM gestures WHERE label NOT LIKE 'zz%' ORDER BY sign_language, label");
 });
 after(() => {
-  const realRowsAfter = query("SELECT word, sign_language, category FROM gestures WHERE word NOT LIKE 'zz%' ORDER BY sign_language, word");
+  const realRowsAfter = query("SELECT label, sign_language, category FROM gestures WHERE label NOT LIKE 'zz%' ORDER BY sign_language, label");
   assert.deepEqual(realRowsAfter, realRowsBefore, 'no real gesture row\'s category may change from running this suite');
 });
 
@@ -53,7 +53,7 @@ function post(label, extra = {}) {
 }
 
 function gestureRow(label) {
-  const rows = query(`SELECT category FROM gestures WHERE word = '${label}' AND sign_language = 'ESL' LIMIT 1`);
+  const rows = query(`SELECT category FROM gestures WHERE label = '${label}' AND sign_language = 'ESL' LIMIT 1`);
   return rows[0] || null;
 }
 
@@ -124,8 +124,8 @@ test('a full disk sync recreates a deleted gestures row with the heuristic categ
   // the label entirely, since its "already synced" check is keyed off gesture_recordings, not
   // gestures. This matches the real scenario the phase's own notes describe: disk is the source
   // of truth and sync recreates rows for anything not yet reflected in the DB.
-  exec(`DELETE FROM gestures WHERE word = 'zz_cat_syncheuristic' AND sign_language = 'ESL'`);
-  exec(`DELETE FROM gesture_recordings WHERE gesture_type = 'zz_cat_syncheuristic' AND sign_language = 'ESL'`);
+  exec(`DELETE FROM gesture_recordings WHERE gesture_id IN (SELECT id FROM gestures WHERE label = 'zz_cat_syncheuristic' AND sign_language = 'ESL')`);
+  exec(`DELETE FROM gestures WHERE label = 'zz_cat_syncheuristic' AND sign_language = 'ESL'`);
   assert.equal(gestureRow('zz_cat_syncheuristic'), null);
 
   callEndpoint({ method: 'GET', stub: false }); // full sync recreates it from disk
@@ -154,14 +154,15 @@ function ensureGesturesColumns(table) {
 test('backfill_gesture_categories sets every existing row to its heuristic category when the column is (re-)added', () => {
   dropScratchTable();
   try {
-    // Pre-migration shape: no `category` column yet, one row per heuristic outcome.
+    // Pre-category shape: label + sign_language enum already in place (post-normalization), just
+    // no `category` column yet.
     exec(`
       CREATE TABLE \`${SCRATCH_TABLE}\` (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        word VARCHAR(255) NOT NULL,
-        sign_language VARCHAR(10) NOT NULL DEFAULT 'ESL',
+        label VARCHAR(255) NOT NULL,
+        sign_language ENUM('ESL','FSL') NOT NULL DEFAULT 'ESL',
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY (word, sign_language)
+        UNIQUE KEY (label, sign_language)
       )
     `);
     const seed = [
@@ -172,8 +173,8 @@ test('backfill_gesture_categories sets every existing row to its heuristic categ
       ['how_are_you', 'phrase'],
       ['42', 'number'],
     ];
-    for (const [word] of seed) {
-      exec(`INSERT INTO \`${SCRATCH_TABLE}\` (word, sign_language) VALUES ('${word}', 'ESL')`);
+    for (const [label] of seed) {
+      exec(`INSERT INTO \`${SCRATCH_TABLE}\` (label, sign_language) VALUES ('${label}', 'ESL')`);
     }
 
     ensureGesturesColumns(SCRATCH_TABLE);
@@ -183,16 +184,16 @@ test('backfill_gesture_categories sets every existing row to its heuristic categ
     assert.match(cols[0].Type, /^enum\(/i);
     assert.equal(cols[0].Default, 'word');
 
-    for (const [word, expected] of seed) {
-      const rows = query(`SELECT category FROM \`${SCRATCH_TABLE}\` WHERE word = '${word}'`);
-      assert.equal(rows[0].category, expected, `backfilled category for '${word}'`);
+    for (const [label, expected] of seed) {
+      const rows = query(`SELECT category FROM \`${SCRATCH_TABLE}\` WHERE label = '${label}'`);
+      assert.equal(rows[0].category, expected, `backfilled category for '${label}'`);
     }
 
     // Manually re-tag one row (simulating the owner's own re-tag), then call ensure again: the
     // column already exists, so this must NOT re-run the backfill and revert the manual tag.
-    exec(`UPDATE \`${SCRATCH_TABLE}\` SET category = 'phrase' WHERE word = 'hello'`);
+    exec(`UPDATE \`${SCRATCH_TABLE}\` SET category = 'phrase' WHERE label = 'hello'`);
     ensureGesturesColumns(SCRATCH_TABLE);
-    const helloRow = query(`SELECT category FROM \`${SCRATCH_TABLE}\` WHERE word = 'hello'`);
+    const helloRow = query(`SELECT category FROM \`${SCRATCH_TABLE}\` WHERE label = 'hello'`);
     assert.equal(helloRow[0].category, 'phrase', 'a second ensure call must not re-run the backfill');
   } finally {
     dropScratchTable();
