@@ -497,16 +497,42 @@ below. None of that ran.
   different Type than the label currently has re-tags that label
   (`js/gesture-data.js:552-555` reads the checked radio and passes it as
   `category` in the save payload).
-  The Step 1 dataset table/modal (`renderSavedDataset()`,
-  gesture-training-ui.js:275-330) is now grouped into four sections — Words ·
-  Phrases · Letters · Numbers, in that order (`GROUP_ORDER`,
-  gesture-training-ui.js:298-303), each a header row with a count
-  (`"<Title> · N"`) and its rows sorted alphabetically by label within the
-  group. Grouping uses the same stored-category-else-heuristic lookup as the
-  Type selector. The dataset counter (`#datasetCount`, gesture-training.html:250)
-  changed from "N categories" to "N gestures" (gesture-training-ui.js:278) —
-  "categories" now means word/letter/number/phrase, so the old label would
-  have been ambiguous.
+  The View Active Gesture Dataset modal shows **one tab per category**
+  (follow-up, 2026-09-24; this replaced the single list with section headers
+  that shipped on 2026-09-23). The tabs are Words · Letters · Numbers · Phrases
+  (`DATASET_TABS`, gesture-training-ui.js:88), each labelled with its total
+  count (`"Words · 117"`), and Words is the default on every open
+  (`trOpenDatasetModal()`, :92). The tabs use `.tr-ds-tab`
+  (css/gesture-training.css:693-721), which has the same navy selected state
+  as the Sign Set and Type toggles.
+  - **Search box** (`#datasetSearch`, gesture-training.html:383). It filters
+    only the active tab's rows, by label substring, case-insensitive, as you
+    type. The query is kept when you switch tabs and cleared when the modal is
+    opened again. A search with no results shows a single "No matches" row
+    (gesture-training-ui.js:140); an empty category with no query shows "No
+    gestures in this category yet."
+  - **Where the data comes from.** `renderSavedDataset()` (:330) now only
+    groups the labels into `datasetGroups`. The stored category wins,
+    otherwise the heuristic guess is used, the same lookup as the Type
+    selector, and rows are sorted alphabetically within each category.
+    `trRenderDatasetView()` (:109) draws the tabs, search and table from that
+    data. It runs on open, on tab click, on every keystroke, and at the end of
+    every `renderSavedDataset()`.
+  - **Delete now updates the open modal in place**, keeping the tab and the
+    query. Before this, the modal was a one-time copy of the hidden
+    `#gestureDatasetTableWrap` table, which now only holds the empty/error
+    message. The Delete button and `deleteGesture()`, including its
+    `confirm()` text, are unchanged.
+  - **On-screen keyboard.** It normally sits at z-index 9999, below this
+    modal's overlay (11000). While the modal is open it is raised to 11001,
+    and the card is top-aligned and capped at `100vh - 280px - 16px` so it
+    fits above the 280px keyboard (css/gesture-training.css:725-733). Measured
+    at 1024×600: the card spans y=8–312 with the keyboard open, and y=48–552
+    with it closed.
+  - The dataset counter (`#datasetCount`, gesture-training.html:250) changed
+    from "N categories" to "N gestures" (gesture-training-ui.js:342).
+    "Categories" now means word/letter/number/phrase, so the old wording
+    would have been ambiguous.
 - **The soft target of 5 is not arbitrary.** `knnPredict` scores a label as
   the mean of its top `min(5, N)` cosine similarities across *all* of that
   label's saved frames, i.e. K=5 (gesture-training-ui.js:310, same K cited

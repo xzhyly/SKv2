@@ -953,3 +953,20 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   XAMPP is PHP 8.0.30 but the Pi's PHP version is not specified in the docs
   (Raspberry Pi OS Bookworm ships 8.2), and the dataset list must never
   fail because of categories.
+- **Follow-up (2026-09-24, owner request): the dataset modal is one tab per
+  category (Words · Letters · Numbers · Phrases, default Words) with a live
+  label search, replacing the single list with section headers.** The search
+  filters only the active tab. Its text is kept across tab switches (the box
+  stays visible, so what it shows always matches what is filtered) and
+  cleared when the modal is reopened, which also resets to Words.
+- **The modal renders from `renderSavedDataset()`'s grouped data
+  (`datasetGroups`) instead of copying the hidden table's HTML.** Reason:
+  tabs and a search box need live state, which a one-time HTML copy cannot
+  hold. Side benefit: a delete made from the open modal now shows up
+  immediately.
+- **While the dataset modal is open, the on-screen keyboard is raised above
+  it and the card is shortened to fit above the keyboard.** Reason: the
+  keyboard (z-index 9999) would otherwise open underneath the modal overlay
+  (11000), and on the touchscreen the search box would then be impossible to
+  type into. Done in CSS, scoped with `body:has(#datasetModal.show)`, so no
+  other page or modal changes.

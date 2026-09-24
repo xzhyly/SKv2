@@ -817,6 +817,21 @@ so a later session does not re-litigate them:
     doesn't support) — a "just use XAMPP's MySQL client" instinct will fail
     here. See also `CLAUDE.md`'s Run section, corrected by this phase.
 
+    **Update (2026-09-24): it is actually two servers on one port.** After a
+    reboot, `SELECT @@version` through `php/connect.php` returned
+    `10.4.32-MariaDB` (datadir `C:\xampp\mysql\data\`, port 3306), and the
+    `MySQL80` service showed Stopped (start type Automatic). Whichever server
+    starts first owns port 3306 and becomes "the DB", and each has its own
+    `sining_kamay_db`. The MariaDB copy migrated itself on its first request
+    (`ensure_gestures_columns()` added the column, and the sync created the
+    rows with heuristic categories). Measured: 209 rows, 0 NULL, 0 invalid,
+    ESL 67/26/10/17 and FSL 50/0/10/29, 209/209 equal to the heuristic —
+    the same as the MySQL 8.0 copy on 2026-09-23. Risk: any manual re-tag or
+    other DB-only state lives in whichever server was running at the time,
+    and silently "disappears" when the other one wins the port. Fix (owner
+    decision): disable one of the two, e.g. set `MySQL80` to Manual/Disabled
+    or stop starting XAMPP's MySQL module.
+
 69. **Low severity, open (dev-only path): the "G" hotkey label path skips
     Type auto-select.** `js/gesture-data.js` `startRecording()` fills the
     name input from `prompt()` without firing an `input` event, so the Type

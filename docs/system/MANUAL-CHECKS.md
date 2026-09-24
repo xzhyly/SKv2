@@ -364,11 +364,16 @@ Owner check for `gesture-training.html` Step 1 (see `docs/system/UI.md` and
 `docs/system/DECISIONS.md`, "Decisions made during the gesture-categorization
 phase").
 
-- [ ] **Is the grouped Step 1 dataset table easier to scan than the flat
-      list it replaces?** Open Step 1 → View Active Gesture Dataset with a
-      real dataset loaded (120+ ESL labels). Compare skimming for a specific
-      word against how the old single alphabetical list would have felt —
-      this is a judgment call, not a pass/fail.
+- [ ] **Is the tabbed Step 1 dataset modal easier to scan than the flat
+      list it replaces?** (Updated 2026-09-24: tabs Words · Letters ·
+      Numbers · Phrases plus a search box replaced the section headers.) Open
+      Step 1 → View Active Gesture Dataset with a real dataset loaded (200+
+      labels). Find a specific word by tab and by searching. This is a
+      judgment call, not a pass/fail.
+- [ ] **Search on the touchscreen.** On the kiosk, tap the search box.
+      Expected: the on-screen keyboard opens *above* the modal (not hidden
+      behind it), the modal stays readable above the keyboard, and typing
+      filters the active tab live; HIDE closes the keyboard.
 - [ ] **Type preselects for an existing label.** Type an existing label's
       name (e.g. a known letter or phrase) into Gesture Name with Sign Set
       matching where it's saved. Expected: the Type control jumps to that

@@ -37,13 +37,17 @@ see `docs/system/DEBT.md`.
 Phase 2.5 (local development environment) is complete — the system runs
 locally via XAMPP:
 
-- **Stack:** XAMPP (Apache + PHP) in front of a separate MySQL 8.0 Windows
-  service — not XAMPP's own bundled MariaDB; XAMPP's `mysql.exe` client
-  cannot authenticate to it (see `docs/system/DEBT.md` item 68).
+- **Stack:** XAMPP (Apache + PHP). This machine has **two** database servers
+  that both use port 3306: XAMPP's MariaDB 10.4 (`C:\xampp\mysql\data`) and a
+  separate MySQL 8.0 Windows service (`MySQL80`). The app talks to whichever
+  one currently owns the port. That was MySQL 8.0 on 2026-09-23 and XAMPP
+  MariaDB on 2026-09-24, and each holds its own separate copy of
+  `sining_kamay_db`. Check `SELECT @@version` through `php/connect.php`
+  before trusting any DB measurement (see `docs/system/DEBT.md` item 68).
 - **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at this
   repo, so there is one copy of the files on disk — editing the repo edits
   what Apache serves, and vice versa. No file copying/syncing step.
-- **Database:** import `sining_kamay_db` into the local MySQL 8.0 instance
+- **Database:** import `sining_kamay_db` into the local MySQL/MariaDB instance
   (see `docs/system/BACKEND.md` for which `.sql` file to use — one of the
   tracked dumps needs encoding conversion first).
 - **URL:** http://localhost/SKR/
