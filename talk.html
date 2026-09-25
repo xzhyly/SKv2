@@ -1211,6 +1211,7 @@
   <script src="js/talk-signing.js"></script>
   <script src="js/sign-player.js"></script>
   <script src="js/talk-speaking.js"></script>
+  <script src="js/talk-history.js"></script>
   <script>
     'use strict';
 
@@ -1280,6 +1281,12 @@
     // Both are (re)assigned by the "Screen 04 — real speech + sign preview" IIFE further down.
     var speakingPlayer = null;
     var resetSpeakingUi = function () {};
+    // True once the mic (js/talk-speaking.js) has written into the field for the message
+    // currently being composed; cleared whenever the field goes back to empty (the input
+    // listener below), which also covers the clear after Send. So mic-then-edited-by-typing
+    // still counts as 'speech' until the field is emptied, per docs/reports/
+    // 2026-09-25-saved-conversations-step1.md's owner answer.
+    var speakingFromMic = false;
     // Leaving Speak or Type: stop any sign playback, release the mic (js/talk-speaking.js),
     // and return the screen to the compose state (typed text is kept) for the next entry.
     function onLeaveSpeaking() {
@@ -1291,7 +1298,8 @@
     // load (the load itself also frees them). The loaded Vosk model is a page-lifetime resource
     // that the page load releases (see docs/ui-target/README.md, "End Conversation must be a
     // real teardown").
-    function onEndConversation() {
+    function onEndConversation(reason) {
+      try { TalkHistory.end(reason); } catch (err) { console.warn('[talk-history] end() threw', err); }
       TalkSpeaking.leave();
       TalkSigning.leave();
     }
@@ -1388,7 +1396,7 @@
      * this file (grepped and confirmed — see the comment at appendBubble's
      * declaration above and this task's report).
      *
-     * @param {{label: string, text: string, from: 'deaf'|'hearing'}} opts
+     * @param {{label: string, text: string, from: 'deaf'|'hearing', source: 'sign'|'speech'|'typed', signLanguage: ('ESL'|'FSL'|undefined)}} opts
      */
     function renderConfirmModal(opts) {
       opts = opts || {};
@@ -1410,7 +1418,10 @@
       addBtn.className = 'confirm-add-btn';
       addBtn.textContent = 'Add to Conversation';
       addBtn.addEventListener('click', function () {
-        appendBubble({ from: opts.from, text: opts.text, timestamp: new Date() });
+        appendBubble({ from: opts.from, source: opts.source, text: opts.text, timestamp: new Date() });
+        try {
+          TalkHistory.saveMessage({ from: opts.from, source: opts.source, signLanguage: opts.signLanguage, text: opts.text });
+        } catch (err) { console.warn('[talk-history] saveMessage() threw', err); }
         closeModal();
         showScreen('thread');
       });
@@ -1484,7 +1495,7 @@
         if (secondsLeft <= 0) {
           clearInterval(idleCountdownIntervalId);
           idleCountdownIntervalId = null;
-          onEndConversation();
+          onEndConversation('idle');
           location.href = 'index.html';
           return;
         }
@@ -1510,7 +1521,7 @@
       endNowBtn.addEventListener('click', function () {
         clearInterval(idleCountdownIntervalId);
         idleCountdownIntervalId = null;
-        onEndConversation();
+        onEndConversation('ended');
         location.href = 'index.html';
       });
       card.appendChild(endNowBtn);
@@ -1580,7 +1591,7 @@
      *   openModal('error', {heading: 'Camera not available', message: 'I cannot reach the camera.', buttonLabel: 'Go back'})
      *
      * @param {string} kind
-     * @param {{label: string, text: string, from: 'deaf'|'hearing'}|{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
+     * @param {{label: string, text: string, from: 'deaf'|'hearing', source: 'sign'|'speech'|'typed', signLanguage: ('ESL'|'FSL'|undefined)}|{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
      *   Shape depends on kind — see renderConfirmModal()/renderIdleModal()/
      *   renderErrorModal() above.
      */
@@ -1714,7 +1725,17 @@
       deaf: '\u{1F50A}',
       hearing: '✋'
     };
-    var BUBBLE_LABEL_VERB = { deaf: 'Signed', hearing: 'Spoken' };
+    var BUBBLE_LABEL_VERB = { deaf: 'Signed', hearing: { speech: 'Spoken', typed: 'Typed' } };
+
+    // Owner change C: the live label must match what gets saved (source), not just who
+    // spoke — a hearing bubble reads "Typed" for typed text and "Spoken" only for real mic
+    // speech (mic-then-edited-by-typing counts as 'speech' per talk-history.js's contract, so
+    // it still reads "Spoken" here, matching what is saved). Falls back to "Spoken" for the
+    // (unused) case of a hearing message with no recognised source, so a bad call never throws.
+    function bubbleLabelVerb(from, source) {
+      if (from === 'deaf') return BUBBLE_LABEL_VERB.deaf;
+      return BUBBLE_LABEL_VERB.hearing[source] || BUBBLE_LABEL_VERB.hearing.speech;
+    }
 
     /**
      * Format a Date (or anything `new Date()` accepts) as "h:mm AM/PM" — no
@@ -1744,7 +1765,7 @@
      * removal (README: "cap the thread at roughly the last 30 bubbles in
      * the DOM" — older messages still live in the database, just not here).
      *
-     * @param {{from: 'deaf'|'hearing', text: string, timestamp: (Date|*)}} msg
+     * @param {{from: 'deaf'|'hearing', source: ('sign'|'speech'|'typed'|undefined), text: string, timestamp: (Date|*)}} msg
      *
      * Task 5 note: grepped the finished file for `appendBubble(` — 2 matches
      * total: this declaration, and the one real call site inside
@@ -1767,7 +1788,7 @@
 
       var label = document.createElement('div');
       label.className = 'bubble-label';
-      label.textContent = BUBBLE_LABEL_VERB[from] + ' · ' + formatBubbleTime(msg.timestamp);
+      label.textContent = bubbleLabelVerb(from, msg.source) + ' · ' + formatBubbleTime(msg.timestamp);
       row.appendChild(label);
 
       var bubble = document.createElement('div');
@@ -1825,8 +1846,8 @@
     // Real camera + recognition (js/talk-signing.js). Output goes through the SAME confirm
     // card every other path uses — nothing reaches appendBubble() directly.
     TalkSigning.init({
-      onText: function (text) {
-        openModal('confirm', { label: 'You signed', text: text, from: 'deaf' });
+      onText: function (text, meta) {
+        openModal('confirm', { label: 'You signed', text: text, from: 'deaf', source: 'sign', signLanguage: meta && meta.signLanguage });
       },
       onEmpty: function () {
         openModal('error', {
@@ -1866,6 +1887,7 @@
       var speakingSend = document.getElementById('speaking-send');
       speakingInput.addEventListener('input', function () {
         speakingSend.disabled = speakingInput.value.trim() === '';
+        if (speakingInput.value.trim() === '') speakingFromMic = false;
       });
 
       // Send: REAL typed or spoken text (docs/system/DECISIONS.md —
@@ -1881,10 +1903,12 @@
         openModal('confirm', {
           label: 'You said',
           text: typedText,
-          from: 'hearing'
+          from: 'hearing',
+          source: speakingFromMic ? 'speech' : 'typed'
         });
         speakingInput.value = '';
         speakingSend.disabled = true;
+        speakingFromMic = false;
       });
     })();
 
@@ -1923,6 +1947,7 @@
 
       TalkSpeaking.init({
         onChange: refreshTranslate,
+        onTranscript: function () { speakingFromMic = true; },
         onMicError: function () {
           openModal('error', {
             heading: 'Microphone not available',
@@ -1998,7 +2023,7 @@
     // onEndConversation() hook first (it releases the signing camera and the
     // speaking mic), then navigates for real.
     document.getElementById('end-conversation-btn').addEventListener('click', function () {
-      onEndConversation();
+      onEndConversation('ended');
       location.href = 'index.html';
     });
 

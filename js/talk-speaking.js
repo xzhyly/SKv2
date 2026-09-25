@@ -62,6 +62,7 @@
     var combined = (finalText + (finalText && partialText ? ' ' : '') + partialText).trim();
     input.value = combined;
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    if (cb.onTranscript) cb.onTranscript();
   }
 
   // archive/script.js:1050-1063: keep the saved mic if it still exists, else prefer the kiosk's
@@ -228,6 +229,7 @@
         catch (err) { console.error('[talk-speaking] formatGrammar failed, keeping the raw transcript:', err); tidy = text; }
         input.value = tidy;
         input.dispatchEvent(new Event('input', { bubbles: true }));
+        if (cb.onTranscript) cb.onTranscript();
       }
     } finally {
       changed();                               // the hardware is already released: always tell the page

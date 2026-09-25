@@ -124,7 +124,7 @@
       if (cb.onEmpty) cb.onEmpty();
       return;
     }
-    if (cb.onText) cb.onText(formulateSmartSentence(got, signLang));
+    if (cb.onText) cb.onText(formulateSmartSentence(got, signLang), { signLanguage: signLang === 'fil' ? 'FSL' : 'ESL' });
   }
 
   function tick() {
