@@ -20,6 +20,17 @@ function fail($message, $code = 400) {
     exit;
 }
 
+// Normalizes a mysqli/mysqli_stmt failure (whether the call returned false — PHP < 8.1's default
+// mysqli.report_mode — or threw a mysqli_sql_exception — PHP >= 8.1's default) into a thrown
+// RuntimeException, so every DB failure surfaces the same way regardless of report mode. Mirrors
+// php/api/save_conversation.php's db_fail_check(); kept as a local copy per-file rather than a
+// shared include, since it's a few lines.
+function db_fail_check($ok, $context) {
+    if (!$ok) {
+        throw new RuntimeException($context);
+    }
+}
+
 // Shared SELECT for both the list and the detail view. $where/$params/$types let the caller add
 // a "WHERE c.id = ?" for the detail case; list leaves them empty.
 function fetch_conversations($conn, $where, $params, $types) {
@@ -34,14 +45,13 @@ function fetch_conversations($conn, $where, $params, $types) {
              ORDER BY c.started_at DESC, c.id DESC";
 
     $stmt = mysqli_prepare($conn, $sql);
-    if (!$stmt) {
-        fail('Database error', 500);
-    }
+    db_fail_check($stmt !== false, 'prepare fetch_conversations');
     if ($types !== '') {
-        mysqli_stmt_bind_param($stmt, $types, ...$params);
+        db_fail_check(mysqli_stmt_bind_param($stmt, $types, ...$params), 'bind fetch_conversations');
     }
-    mysqli_stmt_execute($stmt);
+    db_fail_check(mysqli_stmt_execute($stmt), 'execute fetch_conversations');
     $result = mysqli_stmt_get_result($stmt);
+    db_fail_check($result !== false, 'get_result fetch_conversations');
     $rows = [];
     while ($row = mysqli_fetch_assoc($result)) {
         $rows[] = [
@@ -68,42 +78,49 @@ if ($method === 'GET') {
         }
         $id = (int)$idRaw;
 
-        $rows = fetch_conversations($conn, 'WHERE c.id = ?', [$id], 'i');
-        if (count($rows) === 0) {
-            fail('Conversation not found', 404);
-        }
+        try {
+            $rows = fetch_conversations($conn, 'WHERE c.id = ?', [$id], 'i');
+            if (count($rows) === 0) {
+                fail('Conversation not found', 404);
+            }
 
-        $msgStmt = mysqli_prepare(
-            $conn,
-            'SELECT seq, speaker, source, sign_language, text, created_at
-               FROM messages
-              WHERE conversation_id = ?
-              ORDER BY seq ASC'
-        );
-        if (!$msgStmt) {
+            $msgStmt = mysqli_prepare(
+                $conn,
+                'SELECT seq, speaker, source, sign_language, text, created_at
+                   FROM messages
+                  WHERE conversation_id = ?
+                  ORDER BY seq ASC'
+            );
+            db_fail_check($msgStmt !== false, 'prepare detail messages');
+            db_fail_check(mysqli_stmt_bind_param($msgStmt, 'i', $id), 'bind detail messages');
+            db_fail_check(mysqli_stmt_execute($msgStmt), 'execute detail messages');
+            $msgResult = mysqli_stmt_get_result($msgStmt);
+            db_fail_check($msgResult !== false, 'get_result detail messages');
+            $messages = [];
+            while ($row = mysqli_fetch_assoc($msgResult)) {
+                $messages[] = [
+                    'seq' => (int)$row['seq'],
+                    'speaker' => $row['speaker'],
+                    'source' => $row['source'],
+                    'sign_language' => $row['sign_language'],
+                    'text' => $row['text'],
+                    'created_at' => $row['created_at'],
+                ];
+            }
+            mysqli_stmt_close($msgStmt);
+        } catch (Throwable $e) {
             fail('Database error', 500);
         }
-        mysqli_stmt_bind_param($msgStmt, 'i', $id);
-        mysqli_stmt_execute($msgStmt);
-        $msgResult = mysqli_stmt_get_result($msgStmt);
-        $messages = [];
-        while ($row = mysqli_fetch_assoc($msgResult)) {
-            $messages[] = [
-                'seq' => (int)$row['seq'],
-                'speaker' => $row['speaker'],
-                'source' => $row['source'],
-                'sign_language' => $row['sign_language'],
-                'text' => $row['text'],
-                'created_at' => $row['created_at'],
-            ];
-        }
-        mysqli_stmt_close($msgStmt);
 
         echo json_encode(['success' => true, 'conversation' => $rows[0], 'messages' => $messages]);
         exit;
     }
 
-    $conversations = fetch_conversations($conn, '', [], '');
+    try {
+        $conversations = fetch_conversations($conn, '', [], '');
+    } catch (Throwable $e) {
+        fail('Database error', 500);
+    }
     echo json_encode(['success' => true, 'conversations' => $conversations]);
     exit;
 }
@@ -123,39 +140,35 @@ if ($method === 'POST') {
             fail('id must be a positive integer', 400);
         }
 
-        $checkStmt = mysqli_prepare($conn, 'SELECT id FROM conversations WHERE id = ?');
-        if (!$checkStmt) {
+        try {
+            $delStmt = mysqli_prepare($conn, 'DELETE FROM conversations WHERE id = ?');
+            db_fail_check($delStmt !== false, 'prepare delete');
+            db_fail_check(mysqli_stmt_bind_param($delStmt, 'i', $id), 'bind delete');
+            db_fail_check(mysqli_stmt_execute($delStmt), 'execute delete');
+            $deleted = mysqli_stmt_affected_rows($delStmt);
+            mysqli_stmt_close($delStmt);
+        } catch (Throwable $e) {
             fail('Database error', 500);
         }
-        mysqli_stmt_bind_param($checkStmt, 'i', $id);
-        mysqli_stmt_execute($checkStmt);
-        mysqli_stmt_store_result($checkStmt);
-        $exists = mysqli_stmt_num_rows($checkStmt) > 0;
-        mysqli_stmt_close($checkStmt);
 
-        if (!$exists) {
+        if ($deleted === 0) {
             fail('Conversation not found', 404);
         }
-
-        $delStmt = mysqli_prepare($conn, 'DELETE FROM conversations WHERE id = ?');
-        if (!$delStmt) {
-            fail('Database error', 500);
-        }
-        mysqli_stmt_bind_param($delStmt, 'i', $id);
-        mysqli_stmt_execute($delStmt);
-        $deleted = mysqli_stmt_affected_rows($delStmt);
-        mysqli_stmt_close($delStmt);
 
         echo json_encode(['success' => true, 'deleted' => (int)$deleted]);
         exit;
     }
 
     if ($action === 'clear_all') {
-        $result = mysqli_query($conn, 'DELETE FROM conversations');
-        if ($result === false) {
+        try {
+            $clearStmt = mysqli_prepare($conn, 'DELETE FROM conversations');
+            db_fail_check($clearStmt !== false, 'prepare clear_all');
+            db_fail_check(mysqli_stmt_execute($clearStmt), 'execute clear_all');
+            $deleted = mysqli_stmt_affected_rows($clearStmt);
+            mysqli_stmt_close($clearStmt);
+        } catch (Throwable $e) {
             fail('Database error', 500);
         }
-        $deleted = mysqli_affected_rows($conn);
         echo json_encode(['success' => true, 'deleted' => (int)$deleted]);
         exit;
     }
