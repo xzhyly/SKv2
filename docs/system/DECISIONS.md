@@ -1092,3 +1092,128 @@ title says `talk.html`; this section is about `gesture-training.html`.)
   other visible column (Key, Label, Text, asset button) is unchanged, since
   `reports.html`'s `display_label` computation reproduces the old
   `sign_label`/`text_value` values exactly.
+
+## Decisions made during the saved-conversations phase (2026-09-25)
+
+Owner-approved proposal:
+`docs/reports/2026-09-25-saved-conversations-step1.md`. Owner answers to the
+proposal's five open questions (section (h)), plus two owner change-requests
+folded into the tasks below.
+
+- **`translations`: dropped outright (option A of three offered).** Reason
+  (owner + measured evidence, proposal section (c)): the table had 0 rows
+  (emptied in the 2026-09-24 DB cleanup); its only live writer, the
+  gesture-training Step 4 `stop`-gesture branch, could never run because no
+  `stop` gesture exists (`SELECT label FROM gestures WHERE label IN
+  ('stop','start')` returned only `start/ESL`); its only reader with a live
+  caller, the Reports Translations tab, always showed "No translation
+  records found." Option B (drop the table and the two PHP endpoints, but
+  leave `js/db-api.js` and its three dead call sites in place to 404/log
+  harmlessly) and option C (leave `translations` alone, add Conversations as
+  a 4th tab) were both considered and rejected — full removal leaves no dead
+  code behind for a table that can no longer be written to. Executed across
+  Tasks 5 (table + endpoints + `reports.php`/`reports.html`) and 6
+  (`js/db-api.js`, its two `<script>` tags, and the three orphaned `DB_API`
+  call sites).
+- **The idle card's End Now → `'ended'`, not `'idle'`.** Reason (owner):
+  `'idle'` describes the system's own return-to-dashboard timeout, not a
+  person's deliberate tap. Only the countdown reaching 0 with no tap counts
+  as `'idle'`; End Conversation and End Now both mean a person ended the
+  conversation on purpose, so both map to `'ended'`.
+- **`sign_language` is `NULL` for every hearing message, never the preview's
+  sign set.** Reason (owner, proposal section (b) open question 3): a
+  hearing person's spoken/typed text isn't signing input, and the
+  word-by-word sign-video preview shown before Send/confirm is explicitly
+  never stored in the thread (`js/sign-player.js`) — recording a sign
+  language against text that was never actually signed would misrepresent
+  what happened. The `messages` table's own CHECK constraint
+  (`chk_messages_sign_language`) enforces this structurally: `sign_language`
+  is non-NULL if and only if `speaker = 'signer'`.
+- **Mic-then-edited text is `'speech'`, not `'typed'`** — i.e. the flag is
+  "the mic wrote into the field since it was last empty," not "the mic wrote
+  the exact final text." Reason (owner, proposal section (h) open question
+  4, default accepted): a person who corrects a misheard word by typing over
+  part of the transcript still spoke the message; only clearing the field to
+  empty (a fresh compose) resets the source back to `'typed'`. Implemented
+  as `speakingFromMic`, set `true` by `onTranscript()` (called after
+  `js/talk-speaking.js`'s `renderTranscript()`/`stopCapture()` write into
+  `#speaking-input`) and cleared to `false` only when the field's value is
+  empty. **Whole-phase review correction:** the first implementation set
+  `speakingFromMic = true` unconditionally inside `onTranscript`, which would
+  incorrectly keep the flag `true` even if a partial transcript was retracted
+  to an empty field by the recognizer itself (not by the person clearing it).
+  Fixed to `speakingFromMic = input.value.trim() !== ''` — read the field's
+  actual state at the moment `onTranscript` fires, rather than assuming any
+  call means "the mic just added text" (`.git/sdd/conv-final-fix-report.md`).
+- **`client_key` column added; `confidence` dropped.** Reason (owner,
+  proposal section (b), open question 5, default accepted): `talk.html`
+  never has a recognition score to store (`js/talk-signing.js:119-128` only
+  ever produces label strings, never a confidence number), so `confidence`
+  would be an invented field. `client_key` (32 lowercase hex chars from
+  `crypto.getRandomValues`, made once per page load) exists because saving
+  is fire-and-forget and every exit path navigates away immediately after
+  calling `TalkHistory.end()` — the page can never wait for a server-assigned
+  conversation id before it might unload, so the client supplies its own key
+  and `INSERT ... ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)` does the
+  rest server-side.
+- **Two CHECK constraints added to `messages`, enforced by MariaDB 10.4, not
+  just in PHP.** `chk_messages_speaker_source` (source can only be `sign` for
+  the signer, and `speech`/`typed` for the hearing person) and
+  `chk_messages_sign_language` (described above). Reason: MariaDB 10.4
+  enforces CHECK constraints natively (confirmed in Task 1 by a rolled-back
+  transaction that triggered error 4025 for an invalid combination), so the
+  invariant holds even if a future caller bypasses `save_conversation.php`'s
+  own PHP-side mirror of the same rules.
+- **`end` never creates a row — it only ever `UPDATE`s.** Reason: every
+  conversation row must have come from at least one real message; a
+  conversation "ended" with zero messages would be meaningless in Reports.
+  The accepted cost is the known edge case in `DEBT.md` item 78: End tapped
+  within the still-in-flight first message's save round trip can leave
+  `ended_at` NULL if the `end` request's `UPDATE` reaches the server before
+  the `message` request's `INSERT` does (0 rows matched, since the
+  conversation doesn't exist yet) — no message is lost, only the end
+  timestamp/reason.
+- **Owner change A — `db-schema/database_setup.sql` uses `CREATE TABLE IF NOT
+  EXISTS` for the two new tables too**, matching the existing `gestures`/
+  `gesture_recordings` convention (and the same fix already applied to those
+  two tables during the earlier schema-normalization phase) rather than a
+  bare `CREATE TABLE` — keeps the script safe to re-run on a database that
+  already has the tables.
+- **Probe-key prefix changed from the plan's `zz` to `deadbeef00000000`.**
+  Reason: `client_key` must match `/^[0-9a-f]{32}$/` (hex digits only), and
+  `z` is not a hex digit — a literal `zz`-prefixed key is rejected by the
+  endpoint's own validation before it could ever serve as a probe. `dead`
+  (all valid hex digits) was used first (Task 2), then lengthened to the
+  16-hex-char `deadbeef00000000` in Task 3 to reduce the chance of an
+  accidental collision with a real key under the shorter prefix's cleanup
+  `LIKE` pattern. The `clear_all` test additionally requires an opt-in
+  environment variable, `SK_ALLOW_CLEAR_ALL=1`, added during the whole-phase
+  review fix pass — without it the test self-skips rather than deleting
+  every row in `conversations`, even when every current row is a probe.
+- **Reports Conversations tab loads only after the PIN, unlike
+  `reports.php`'s ESL/FSL data (still fetched at page load).** Reason
+  (proposal, "Privacy finding"): `reports.php`'s gesture dictionary isn't
+  private and was already fetched pre-PIN; conversation contents are
+  private and the proposal treats "fetched before PIN entry" as equivalent
+  to "readable without the PIN," so `loadConversations()` is called only
+  from `trVerifyPin()`'s success branch, never at page load and never from
+  anywhere else.
+- **Owner change C — the live conversation's own bubble label (Typed /
+  Spoken / Signed) is driven by `source`, replacing the earlier
+  fake-data-phase behavior where every hearing bubble read "Spoken"
+  regardless of how the text was entered.** Reason: once `source` exists to
+  distinguish speech from typed text, showing the wrong verb in the same
+  session where the two are now genuinely different would be misleading two
+  ways at once — needlessly so, since the message causing it is `talk.html`'s
+  own submission.
+- **Reports' thread-view bubbles reuse `talk.html`'s own bubble CSS (signer
+  left/white/bordered, hearing right/navy/white text), not a new visual
+  style.** Reason: the thread modal is showing the same kind of content
+  `talk.html` itself renders live; a different look for the same data would
+  read as a second, unrelated design system rather than "this is what that
+  conversation looked like."
+- **Confirm step for Delete/Clear all is an in-page confirm card, not
+  `window.confirm`.** Reason: matches every other confirmation surface
+  already in this codebase (talk.html's own modals); `window.confirm` is a
+  blocking native dialog with no styling control and is inconsistent with
+  the rest of the kiosk UI.

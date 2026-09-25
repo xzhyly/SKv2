@@ -56,8 +56,9 @@ and listing all 300+ leaf files individually would not add ownership information
 | [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `talk.html` via `js/talk-loader.js` since 2026-09-21 (was `sign-to-text.html`); k-NN/label/sentence logic |
 | [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1360 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26) |
 | [js/gesture-data.js](../../js/gesture-data.js) | 708 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed) |
-| [js/db-api.js](../../js/db-api.js) | 148 | Loaded by camera-translator.html/diagnostic.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
+| js/db-api.js | 148 | **Deleted 2026-09-25** (saved-conversations phase, Task 6, option A). Was: loaded by camera-translator.html/diagnostic.html/gesture-training.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
 | js/db-local.js | 65 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wrapped `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
+| [js/talk-history.js](../../js/talk-history.js) | 109 | **New 2026-09-25** (saved-conversations phase, Task 4). Loaded by `talk.html`; fire-and-forget save client for `php/api/save_conversation.php` — `window.TalkHistory.saveMessage()`/`.end()` |
 | [js/camera-helper.js](../../js/camera-helper.js) | 68 | Loaded by gesture-training.html/sign-to-text.html; camera device helper |
 | [js/speech-synthesis.js](../../js/speech-synthesis.js) | 66 | Loaded by gesture-training.html/sign-to-text.html; TTS output helper |
 | [js/virtual-keyboard.js](../../js/virtual-keyboard.js) | 186 | Loaded by index.html/camera-translator.html/gesture-training.html; on-screen keyboard widget |
@@ -87,11 +88,13 @@ and listing all 300+ leaf files individually would not add ownership information
 | [php/admin_api.php](../../php/admin_api.php) | 196 | Admin API; **no frontend caller found in this repo** (see §6) |
 | php/api/core_api.php | 177 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: "unified api router" per `js/db-local.js:10`; backed `db-local.js` |
 | [php/api/save_gesture.php](../../php/api/save_gesture.php) | 585 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe`. Rewritten 2026-09-24 for the normalized `gestures`/`gesture_recordings` schema (`label`/`frame_count`, `asset_path`, no `esl_signs`/`fsl_signs`) |
-| [php/api/save_translation.php](../../php/api/save_translation.php) | 99 | Translation save endpoint; called from `js/db-api.js` |
-| [php/api/get_translations.php](../../php/api/get_translations.php) | 65 | Translation fetch endpoint; called from `js/db-api.js` |
+| php/api/save_translation.php | 99 | **Deleted 2026-09-25** (saved-conversations phase, Task 6). Was: translation save endpoint; called from `js/db-api.js` |
+| php/api/get_translations.php | 65 | **Deleted 2026-09-25** (same phase). Was: translation fetch endpoint; called from `js/db-api.js` |
 | [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** (DB cleanup, `BACKEND.md`) |
 | [php/api/get_history.php](../../php/api/get_history.php) | 14 | History fetch endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** |
-| [php/api/reports.php](../../php/api/reports.php) | 80 | Reports data endpoint; called from `reports.html` |
+| [php/api/reports.php](../../php/api/reports.php) | 63 | Reports data endpoint; called from `reports.html`. `translations` query/keys removed 2026-09-25 (see below) |
+| [php/api/save_conversation.php](../../php/api/save_conversation.php) | 154 | **New 2026-09-25** (saved-conversations phase, Task 2). Kiosk-facing, write-only; called from `js/talk-history.js` |
+| [php/api/conversations.php](../../php/api/conversations.php) | 180 | **New 2026-09-25** (Task 3). Admin-facing list/detail/delete/clear_all; called from `reports.html`, after its PIN |
 
 ### `css/`
 
@@ -107,8 +110,8 @@ and listing all 300+ leaf files individually would not add ownership information
 
 | File | Lines/Size | Owns |
 |---|---|---|
-| [db-schema/database_setup.sql](../../db-schema/database_setup.sql) | 8 `CREATE TABLE IF NOT EXISTS` statements | Idempotent schema-creation script; 8 tables (see §5) |
-| [db-schema/sining_kamay_db_backup.sql](../../db-schema/sining_kamay_db_backup.sql) | 2,648,411 bytes | Full dump backup, same 8 tables as above, ANSI-encoded |
+| [db-schema/database_setup.sql](../../db-schema/database_setup.sql) | 88 lines, 5 `CREATE TABLE IF NOT EXISTS` statements (was 8 statements before the 2026-09-24/09-25 phases) | Idempotent schema-creation script; 5 tables (see §5) — `conversations`/`messages` added and the `translations` block removed 2026-09-25 |
+| [db-schema/sining_kamay_db_backup.sql](../../db-schema/sining_kamay_db_backup.sql) | 2,648,411 bytes | Full dump backup of the old 8-table schema (pre-2026-09-24, not the current 5), ANSI-encoded |
 
 ### `models/`
 
@@ -171,7 +174,22 @@ Also holds `archive/old-revision-docs/` (see `### docs/` below).
 |---|---|
 | tests/normalization/migration.test.mjs | Clone-DB tests for the migration script (full run, re-run, interruption/resume at every step); clones from the pre-normalization backup (`SK_NORMALIZATION_SOURCE_DUMP`), skips if absent |
 | tests/normalization/clone-helper.mjs | Shared clone-database helper for the above |
-| tests/normalization/schema-guard.test.mjs | Live-DB regression guard: a full sync never recreates dropped tables/columns and the FK survives; a second POST without video never clears `asset_path`. Belongs in the serial live-DB test command, not the clone-based one |
+| tests/normalization/schema-guard.test.mjs | Live-DB regression guard: a full sync never recreates dropped tables/columns and the FK survives; a second POST without video never clears `asset_path`. `EXPECTED_TABLES` updated 2026-09-25 to the current 5-table list. Belongs in the serial live-DB test command, not the clone-based one |
+
+### `tests/conversations/` (new 2026-09-25, saved-conversations phase)
+
+| File | Owns |
+|---|---|
+| tests/conversations/helper.mjs | Generic `callPhp()` runner for any `php/api/*.php` under php-cgi (same env-var approach as `tests/multi-sample/harness.mjs`, not hard-wired to one script); exports `PROBE_PREFIX = 'deadbeef00000000'` and `probeKey()`/`cleanupProbes()` |
+| tests/conversations/save-conversation.test.mjs | 28 tests for `php/api/save_conversation.php` — message/end actions, every validation rule, duplicate-seq 409, response shape |
+| tests/conversations/conversations-admin.test.mjs | 17 tests for `php/api/conversations.php` — list/detail/delete/clear_all; `clear_all` is opt-in via `SK_ALLOW_CLEAR_ALL=1` and self-skips otherwise |
+
+Run together with the existing live-DB suite: `node --test
+--test-concurrency=1 tests/categorization/*.test.mjs
+tests/multi-sample/save-endpoint.test.mjs
+tests/normalization/schema-guard.test.mjs tests/conversations/*.test.mjs` —
+measured 2026-09-25: 79 tests, 78 pass, 1 skipped (`clear_all` without the
+env var); `tests/normalization/migration.test.mjs` separately, 13/13.
 
 ### `.superpowers/` (4 files)
 
@@ -213,10 +231,12 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 | Endpoint | Called from (found in repo) |
 |---|---|
 | `php/api/save_gesture.php` | `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html` |
-| `php/api/save_translation.php` | `js/db-api.js` |
-| `php/api/get_translations.php` | `js/db-api.js` |
+| `php/api/save_translation.php` | deleted 2026-09-25; was called only by `js/db-api.js` (also deleted) |
+| `php/api/get_translations.php` | deleted 2026-09-25; was called only by `js/db-api.js` (also deleted) |
 | `php/api/core_api.php` | deleted 2026-09-24; was called only by `js/db-local.js` (also deleted), described as "unified api router" in `js/db-local.js:10` |
 | `php/api/reports.php` | `reports.html` |
+| `php/api/save_conversation.php` | `js/talk-history.js` (loaded by `talk.html`) — new 2026-09-25 |
+| `php/api/conversations.php` | `reports.html`, after its PIN — new 2026-09-25 |
 | `php/api/save_history.php` | none found (file deleted 2026-09-24) |
 | `php/api/get_history.php` | none found (file deleted 2026-09-24) |
 | `php/admin_api.php` | none found |
@@ -225,16 +245,20 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 
 ## 5. MySQL tables
 
-**Updated 2026-09-24 (DB normalization phase): 4 tables now**, matching
-`db-schema/database_setup.sql`, the migrated live DB, and
-`docs/system/BACKEND.md`'s ER diagram:
+**Updated 2026-09-25 (saved-conversations phase): 5 tables now**, matching
+`db-schema/database_setup.sql`, the live DB, and `docs/system/BACKEND.md`'s
+ER diagram:
 
 - `gestures`
 - `gesture_recordings`
-- `translations`
+- `conversations` (new 2026-09-25)
+- `messages` (new 2026-09-25)
 - `users`
 
-`esl_signs`/`fsl_signs` were dropped this same phase, folded into
+`translations` was **dropped 2026-09-25** (0 rows, its only live writer
+could never run — see `docs/system/BACKEND.md`, "translations dropped
+(2026-09-25)"). `esl_signs`/`fsl_signs` were dropped in the earlier
+2026-09-24 schema-normalization phase, folded into
 `gestures.asset_path`/`is_active` — see `docs/system/BACKEND.md`, "Schema
 migration and fresh-machine setup (2026-09-24)". `gesture_words` and
 `translation_history` were dropped earlier the same day, in a separate DB
@@ -264,7 +288,8 @@ Note: several items originally listed here (`js/dist/build.js`, `js/main.js`,
   `php/api/save_gesture.php` live, so it is not dead code.
 - **`scratch/trigger_sync.php`** — ad-hoc migration script, not wired to the app. **Deleted 2026-09-24** (DB normalization, Task 4).
 - **Deployment path inconsistency**: `start_kiosk.sh:17` serves the app at
-  `http://localhost/SKR/index.html`, but `js/db-api.js:11`, `js/db-local.js:9`,
+  `http://localhost/SKR/index.html`, but (before its 2026-09-25 deletion)
+  `js/db-api.js:11`, plus the still-present `js/db-local.js:9`,
   `js/gesture-data.js:6`, `js/gesture-training-ui.js:245,1065`, and `js/script.js:848`
   all hard-code a fallback base URL of `http://localhost/Sining_kamay/php/api/...`
   (old project folder name), while `diagnostic.html:112` checks for **either**

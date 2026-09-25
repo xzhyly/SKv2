@@ -12,11 +12,17 @@
   normalized schema, see below)
 - `php/api/gesture_category.php` (44 lines, new in the gesture-categorization
   phase)
-- `php/api/save_translation.php` (99 lines)
-- `php/api/get_translations.php` (65 lines)
+- `php/api/save_translation.php` (99 lines) (**deleted 2026-09-25**,
+  saved-conversations phase, Task 6 — see "translations dropped" below)
+- `php/api/get_translations.php` (65 lines) (**deleted 2026-09-25**, same phase)
 - `php/api/save_history.php` (24 lines) (**deleted 2026-09-24**, DB cleanup)
 - `php/api/get_history.php` (14 lines) (**deleted 2026-09-24**, DB cleanup)
-- `php/api/reports.php` (80 lines)
+- `php/api/reports.php` (63 lines, `translations` query/keys removed
+  2026-09-25 — see below)
+- `php/api/save_conversation.php` (154 lines, new 2026-09-25, saved-conversations
+  phase) — kiosk-facing, write-only
+- `php/api/conversations.php` (180 lines, new 2026-09-25) — admin-facing
+  list/detail/delete/clear_all, read by `reports.html`
 - `scratch/trigger_sync.php` (170 lines) (**deleted 2026-09-24**, DB
   normalization)
 - `db-schema/database_setup.sql`
@@ -28,7 +34,7 @@
 
 ## 2. What it does
 
-PHP 8 + MySQL (actual server per dump headers: **MariaDB 10.4.32**, `db-schema/sining_kamay_db_backup.sql:5`, `sining_kamay_db.sql:5` — "MySQL" in the brief is imprecise) endpoints for: user auth (`auth.php`), admin CRUD over users/history/gestures (`admin_api.php`), a "unified" data router for recordings/translations/gesture words (`core_api.php`), gesture-sample persistence including video transcoding (`save_gesture.php`), translation logging (`save_translation.php`, `get_translations.php`, `save_history.php`, `get_history.php`), and a read-only dictionary/report dump (`reports.php`).
+PHP 8 + MySQL (actual server per dump headers: **MariaDB 10.4.32**, `db-schema/sining_kamay_db_backup.sql:5`, `sining_kamay_db.sql:5` — "MySQL" in the brief is imprecise) endpoints for: user auth (`auth.php`), admin CRUD over users/history/gestures (`admin_api.php`), a "unified" data router for recordings/translations/gesture words (`core_api.php`), gesture-sample persistence including video transcoding (`save_gesture.php`), translation logging (`save_translation.php`, `get_translations.php`, `save_history.php`, `get_history.php` — all four now deleted; translations logging was never wired to any live UI, see "translations dropped" below), a read-only dictionary/report dump (`reports.php`), and, since the 2026-09-25 saved-conversations phase, `talk.html`'s Let's Talk history: a kiosk-facing write-only save endpoint (`save_conversation.php`) and an admin-facing list/detail/delete endpoint (`conversations.php`).
 
 Confirmed data-persistence/admin-only: no PHP file here touches MediaPipe/TensorFlow.js or the frame-classification loop. All are reached via `fetch()` from front-end JS/HTML after inference already happened client-side (see Section 6 for exact callers). This matches the brief's claim that PHP/MySQL is never in the live translation path.
 
@@ -55,32 +61,118 @@ ffmpeg invocation (`php/api/save_gesture.php:522`):
 ```
 ffmpeg lookup order (`get_ffmpeg_path()`, lines 36-52): global `ffmpeg` via `shell_exec('ffmpeg -version 2>&1')`, else `<project root>/ffmpeg.exe`, `<project root>/bin/ffmpeg.exe`, or `C:\ffmpeg\bin\ffmpeg.exe`.
 
-**save_translation.php** — POST only (405 otherwise, line 25). Body JSON: `source_type` (must be `sign_to_text`|`text_to_sign`, line 49-54), `sign_label`, `translated_text`, `language` (default `en-US`), `confidence` (float, nullable). Inserts into `translations(source_type, sign_label, translated_text, language, confidence)` (line 65-67) — matches the actual schema, unlike core_api.php's version of the same table.
+**save_translation.php** — **deleted 2026-09-25** (saved-conversations phase,
+Task 6, option A). Was: POST only (405 otherwise, line 25). Body JSON:
+`source_type` (must be `sign_to_text`|`text_to_sign`, line 49-54),
+`sign_label`, `translated_text`, `language` (default `en-US`), `confidence`
+(float, nullable). Inserted into `translations(source_type, sign_label,
+translated_text, language, confidence)` (line 65-67) — matched the actual
+schema, unlike core_api.php's version of the same table. Deleted because
+`translations` (0 rows, its only live writer — the gesture-training `stop`
+gesture branch — could never run since no `stop` gesture exists) was dropped
+in the same phase; see "translations dropped (2026-09-25)" below.
 
-**get_translations.php** — GET, query params `?limit=` (default 50, max 200, line 15), `?source_type=`, `?language=`. Parameterized `SELECT ... FROM translations`.
+**get_translations.php** — **deleted 2026-09-25** (same phase). Was: GET,
+query params `?limit=` (default 50, max 200, line 15), `?source_type=`,
+`?language=`. Parameterized `SELECT ... FROM translations`. Its only
+confirmed caller, `js/db-api.js`, was deleted in the same commit.
+
+**save_conversation.php** (`php/api/save_conversation.php`, 154 lines, new
+2026-09-25) — kiosk-facing, write-only endpoint for `talk.html`'s
+`js/talk-history.js`. POST only, 405 otherwise (`:19-21`). Reads
+`php://input`/`json_decode`s; a non-array body → 400 (`:23-27`).
+- `action:"message"` (`:47-123`): validates `client_key` (`/^[0-9a-f]{32}$/`,
+  `:31-33`), `seq` (PHP `is_int` and `>= 1`, so a JSON string or float `seq`
+  is rejected, `:58-60`), `speaker` (`signer`|`hearing`), `source`
+  (`sign`|`speech`|`typed`), `sign_language` (`ESL`|`FSL`|`null`), `text`
+  (non-empty after `trim()`, `<= 65535` bytes — the `messages.text` `TEXT`
+  column's limit) — every check runs before any DB write. It also mirrors
+  both of the `messages` table's CHECK constraints in PHP for a clearer 400
+  message (`:78-86`). On success, one transaction (`:88-119`): `INSERT INTO
+  conversations (client_key) VALUES (?) ON DUPLICATE KEY UPDATE id =
+  LAST_INSERT_ID(id)` (so the first message for a `client_key` creates the
+  conversation row and every later message for the same key reuses it, with
+  no round trip needed to learn the id first — `talk.html` never waits for a
+  response before it might unload), then `INSERT INTO messages(...)`. A
+  `db_fail_check()` helper (`:38-45`) normalizes both mysqli failure modes
+  (a call returning `false`, this machine's actual behavior on PHP 8.0.30
+  with `mysqli.report_mode` off by default, or a thrown
+  `mysqli_sql_exception` on PHP 8.1+) into one `RuntimeException` path:
+  errno 1062 (duplicate `(conversation_id, seq)`) → rollback, 409; any other
+  DB error → rollback, 500.
+- `action:"end"` (`:125-152`): validates `client_key` and `reason`
+  (`ended`|`idle`|`left`), then `UPDATE conversations SET ended_at =
+  current_timestamp(), end_reason = ? WHERE client_key = ? AND ended_at IS
+  NULL` — never inserts. Matching 0 rows (unknown key, or an already-ended
+  conversation) still returns `{"success":true}`, since the caller is
+  fire-and-forget and has nothing to react to either way.
+- Unknown/missing `action` → 400 (`:154`). Every success response is exactly
+  `{"success":true}` — it never returns an id, text, or any other
+  conversation's data.
+
+**conversations.php** (`php/api/conversations.php`, 180 lines, new
+2026-09-25) — admin-facing, read+delete endpoint for `reports.html`'s
+Conversations tab. No server-side auth of any kind (`:1-6`'s own header
+comment says so) — same posture as `reports.php`; see `docs/system/DEBT.md`
+item 72 (its scope now explicitly includes this file too).
+- `GET` (no `id`, `:74`, `:120-126`): list, via the shared
+  `fetch_conversations()` helper (`:37-70`) — `SELECT c.id, c.started_at,
+  c.ended_at, c.end_reason, TIMESTAMPDIFF(SECOND, c.started_at,
+  COALESCE(c.ended_at, MAX(m.created_at))) AS duration_seconds, COUNT(m.id)
+  AS message_count, (SELECT text FROM messages WHERE conversation_id = c.id
+  ORDER BY seq ASC LIMIT 1) AS first_message FROM conversations c LEFT JOIN
+  messages m ON m.conversation_id = c.id [WHERE ...] GROUP BY c.id, ...
+  ORDER BY c.started_at DESC, c.id DESC`. `id`/`duration_seconds`/
+  `message_count` are explicitly `(int)`-cast before `json_encode` (`:59,63-64`)
+  so they always serialize as JSON numbers, not strings.
+- `GET ?id=N` (`:75-118`): `id` must be a positive integer (400 otherwise);
+  404 if `fetch_conversations()` with `WHERE c.id = ?` returns no row; then a
+  second prepared statement selects `seq, speaker, source, sign_language,
+  text, created_at FROM messages WHERE conversation_id = ? ORDER BY seq ASC`.
+- `POST {"action":"delete","id":N}` (`:138-161`): a single prepared `DELETE
+  FROM conversations WHERE id = ?`, branching on
+  `mysqli_stmt_affected_rows()` — 1 → `{success:true, deleted:1}`, 0 → 404.
+  `messages` cascades via `fk_messages_conversation ... ON DELETE CASCADE`
+  (no separate delete needed).
+- `POST {"action":"clear_all"}` (`:163-175`): a prepared (parameterless)
+  `DELETE FROM conversations` — not `TRUNCATE`, since InnoDB refuses to
+  truncate a table another table's foreign key points into. Responds
+  `{success:true, deleted:n}`.
+- Every mysqli call in this file is wrapped by a local `db_fail_check()`
+  (`:29-33`, a same-named but simpler copy of `save_conversation.php`'s
+  helper — added in a Task 3 review-fix round after the first version left
+  these calls unchecked, which on this machine's PHP 8.0.30 would have been
+  an uncaught fatal `TypeError` instead of a clean 500 JSON response) inside
+  a `try { ... } catch (Throwable $e) { fail('Database error', 500); }`.
+- Any other method → 405 (`:180`); a POST with an invalid JSON body, or a
+  missing/unknown `action`, → 400 (`:132-134`, `:177`).
 
 **save_history.php** (deleted 2026-09-24, with the `translation_history` table; record kept for history) — POST. Body JSON `{text, source}` (source default `'sign'`). Directly string-interpolates escaped values into SQL (line 18, see Problems).
 
 **get_history.php** (deleted 2026-09-24) — GET, no params. Returns top 50 `translation_history` rows.
 
-**reports.php** (`php/api/reports.php`, 74 lines, rewritten 2026-09-24) — GET,
-no params required. `fetch_gestures($conn, $signLanguage, $subFolder)`
-(line 22) runs `SELECT id, label, asset_path, is_active, created_at FROM
-gestures WHERE sign_language = ? ORDER BY created_at DESC, id DESC` for `'ESL'`
-and `'FSL'` (was two separate `esl_signs`/`fsl_signs` queries before the
-normalization); each row also gets a computed `display_label` =
-`str_replace('_', ' ', label)` (line 43) so the visible Reports columns
-("Key"/"Label"/"Text") stay exactly as before the rename. The empty-`asset_path`
-`.mp4`-on-disk backfill (line 30-41) keeps its old logic but now targets
-`gestures` directly (`UPDATE gestures SET asset_path = ? WHERE id = ?`,
-line 35) — it only fires per-request for a still-NULL row with a `.mp4` on
-disk, unlike the one-time `.webm` backfill script (see "Schema migration and
-fresh-machine setup" below), so a synced-but-video-less row without a `.mp4`
-stays NULL until that script runs (`DEBT.md` new item, below). Response shape:
-`{success, summary: {esl, fsl, translations}, data: {esl, fsl, translations}}`
-— `translations` (line 51-57, unchanged) is still `SELECT id, source_type,
-sign_label, translated_text, language, confidence, created_at FROM
-translations ORDER BY created_at DESC, id DESC LIMIT 200`.
+**reports.php** (`php/api/reports.php`, 63 lines — was 74/80 lines before the
+`translations` query and its response keys were removed 2026-09-25,
+saved-conversations phase Task 5) — GET, no params required.
+`fetch_gestures($conn, $signLanguage, $subFolder)` (`:22`) runs `SELECT id,
+label, asset_path, is_active, created_at FROM gestures WHERE sign_language =
+? ORDER BY created_at DESC, id DESC` for `'ESL'` and `'FSL'` (was two
+separate `esl_signs`/`fsl_signs` queries before the 2026-09-24 normalization);
+each row also gets a computed `display_label` = `str_replace('_', ' ',
+label)` (`:43`) so the visible Reports columns ("Key"/"Label"/"Text") stay
+exactly as before the rename. The empty-`asset_path` `.mp4`-on-disk backfill
+(`:30-41`) keeps its old logic but now targets `gestures` directly (`UPDATE
+gestures SET asset_path = ? WHERE id = ?`, `:35`) — it only fires per-request
+for a still-NULL row with a `.mp4` on disk, unlike the one-time `.webm`
+backfill script (see "Schema migration and fresh-machine setup" below), so a
+synced-but-video-less row without a `.mp4` stays NULL until that script runs
+(`DEBT.md` item 75). Response shape as of 2026-09-25: `{success, summary:
+{esl, fsl}, data: {esl, fsl}}` — the `translations`/`summary.translations`/
+`data.translations` keys are gone; Reports' third tab and metric now come
+from `conversations.php` instead (fetched by `reports.html`, only after the
+PIN — see `docs/system/UI.md` Part 3c). `reports.php` itself is still fetched
+at page load, before the PIN, exactly as before — the ESL/FSL gesture
+dictionary it returns isn't private, unlike conversation contents.
 
 **scratch/trigger_sync.php** — **deleted 2026-09-24** (DB normalization,
 Task 4). Was: standalone CLI/browser script, requires `php/connect.php`
@@ -93,7 +185,18 @@ dropped schema" guarantee the migration promises (enforced by
 `tests/normalization/schema-guard.test.mjs`, see below); it had no frontend
 caller (`DEBT.md` items 8/71).
 
-**Tables — 4 total as of the 2026-09-24 schema-normalization phase** (`esl_signs`/`fsl_signs` dropped, folded into `gestures.asset_path`/`is_active`; `gesture_words` and `translation_history` were already dropped in the earlier 2026-09-24 DB cleanup, see below). Exact `SHOW CREATE TABLE`, taken from `db-schema/database_setup.sql:30-54` (verified live-identical by Task 4's scratch-database comparison, `.git/sdd/progress.md` Task 4):
+**Tables — 5 total as of the 2026-09-25 saved-conversations phase**
+(`translations` dropped that day, see "translations dropped (2026-09-25)"
+below; `esl_signs`/`fsl_signs` were dropped in the earlier 2026-09-24
+schema-normalization phase, folded into `gestures.asset_path`/`is_active`;
+`gesture_words` and `translation_history` were dropped in the same day's
+earlier DB cleanup, see below). Exact `SHOW CREATE TABLE`, `gestures`/
+`gesture_recordings` taken from `db-schema/database_setup.sql:30-54`
+(verified live-identical by Task 4's scratch-database comparison,
+`.git/sdd/progress.md` Task 4); `conversations`/`messages` taken from
+`db-schema/database_setup.sql:60-88` and confirmed live-identical (no
+`ON UPDATE` clause, the FK's `ON DELETE CASCADE`, and both CHECK constraints
+all present) by Task 1's `SHOW CREATE TABLE` run, `.git/sdd/conv-task-1-report.md`:
 
 ```sql
 CREATE TABLE `gestures` (
@@ -121,7 +224,55 @@ CREATE TABLE `gesture_recordings` (
   CONSTRAINT `fk_gesture_recordings_gesture` FOREIGN KEY (`gesture_id`)
     REFERENCES `gestures` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `conversations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_key` char(32) NOT NULL,
+  `started_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `ended_at` timestamp NULL DEFAULT NULL,
+  `end_reason` enum('ended','idle','left') DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_conversations_client_key` (`client_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `messages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `conversation_id` int(11) NOT NULL,
+  `seq` int(11) NOT NULL,
+  `speaker` enum('signer','hearing') NOT NULL,
+  `source` enum('sign','speech','typed') NOT NULL,
+  `sign_language` enum('ESL','FSL') DEFAULT NULL,
+  `text` text NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_messages_conversation_seq` (`conversation_id`,`seq`),
+  CONSTRAINT `fk_messages_conversation` FOREIGN KEY (`conversation_id`)
+    REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_messages_speaker_source` CHECK (
+    (`speaker` = 'signer'  AND `source` = 'sign') OR
+    (`speaker` = 'hearing' AND `source` IN ('speech','typed'))),
+  CONSTRAINT `chk_messages_sign_language` CHECK (
+    (`speaker` = 'signer') = (`sign_language` IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 ```
+
+`client_key` (32 lowercase hex chars, made client-side by
+`crypto.getRandomValues`) stands in for a server-issued conversation id: the
+page never waits for a response before it might unload (all three exits —
+End Conversation, the idle timeout, the idle card's End Now — navigate to
+`index.html` right after), so `save_conversation.php`'s `INSERT ... ON
+DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)` lets the first message create
+the row and every later message/`end` for the same key find it, with no id
+round-trip needed first. `end` only ever `UPDATE`s — no message means no row,
+so a conversation with 0 messages cannot exist. `seq` is assigned by the page
+in confirm order (1, 2, 3…); the `(conversation_id, seq)` UNIQUE key rejects a
+duplicate. Neither timestamp column gets an implicit `ON UPDATE` (MariaDB
+10.4's `explicit_defaults_for_timestamp` is OFF, but both NOT NULL timestamps
+have an explicit `DEFAULT current_timestamp()`, so the implicit-`ON UPDATE`
+rule that would otherwise attach to "the first TIMESTAMP column" never fires).
+`sign_language` is non-NULL exactly when `speaker = 'signer'` (the CHECK), and
+`confidence` was considered and dropped — `talk.html`'s recognizer never
+produces a sentence-level score (`js/talk-signing.js:119-128`).
 
 209 `gestures` rows (ESL 67 word/26 letter/10 number/17 phrase; FSL 50/0/10/29),
 210 `gesture_recordings` rows (measured pre-migration 2026-09-24, unchanged in
@@ -145,12 +296,19 @@ count by the migration — see `docs/reports/2026-09-24-db-normalization-step1.m
   below).
 - `users`: `id PK`, `username VARCHAR(80) UNIQUE`, `email VARCHAR(150) UNIQUE`, `password_hash VARCHAR(255)`, `role ENUM('user','admin') DEFAULT 'user'`, `created_at TIMESTAMP`. Unchanged by this phase.
 - `gesture_words`: **dropped 2026-09-24**, in the earlier DB cleanup (not this phase) — see "DB cleanup (2026-09-24)" below.
-- `translations`: `id PK`, `source_type VARCHAR(50)`, `sign_label VARCHAR(255)`, `translated_text VARCHAR(255)`, `language VARCHAR(20) DEFAULT 'en-US'`, `confidence DOUBLE NULL`, `created_at TIMESTAMP`. Unchanged by this phase.
+- `translations`: **dropped 2026-09-25** (saved-conversations phase, Task 5).
+  Was: `id PK`, `source_type VARCHAR(50)`, `sign_label VARCHAR(255)`,
+  `translated_text VARCHAR(255)`, `language VARCHAR(20) DEFAULT 'en-US'`,
+  `confidence DOUBLE NULL`, `created_at TIMESTAMP`. See "translations dropped
+  (2026-09-25)" below.
 - `translation_history`: **dropped 2026-09-24**, in the earlier DB cleanup — see below.
+- `conversations` / `messages`: **new 2026-09-25** (saved-conversations
+  phase, Task 1) — see the DDL above.
 
 ```mermaid
 erDiagram
     gestures ||--o{ gesture_recordings : "has"
+    conversations ||--o{ messages : "has"
     gestures {
         int id PK
         varchar label
@@ -168,13 +326,21 @@ erDiagram
         longtext landmark_json "nullable"
         timestamp recorded_at
     }
-    translations {
+    conversations {
         int id PK
-        varchar source_type
-        varchar sign_label
-        varchar translated_text
-        varchar language
-        double confidence "nullable"
+        char client_key UK
+        timestamp started_at
+        timestamp ended_at "nullable"
+        enum end_reason "ended/idle/left, nullable"
+    }
+    messages {
+        int id PK
+        int conversation_id FK
+        int seq
+        enum speaker "signer or hearing"
+        enum source "sign/speech/typed"
+        enum sign_language "ESL or FSL, nullable"
+        text text
         timestamp created_at
     }
     users {
@@ -186,13 +352,15 @@ erDiagram
         timestamp created_at
     }
 ```
-`translations` and `users` have no foreign-key relationship to `gestures` or
-to each other — shown standalone above, unchanged by this phase.
-`gesture_recordings.gesture_id` is the only foreign key in the schema
-(`fk_gesture_recordings_gesture`, `ON DELETE RESTRICT`) — before this phase
-there were no `FOREIGN KEY`/`CONSTRAINT` clauses anywhere and referential
-integrity was enforced only in application code (`save_gesture.php` deleting
-children before parents).
+`users` has no foreign-key relationship to any other table — shown standalone
+above. `gestures`↔`gesture_recordings` and `conversations`↔`messages` are the
+only two foreign-key relationships in the schema
+(`fk_gesture_recordings_gesture` `ON DELETE RESTRICT`; `fk_messages_conversation`
+`ON DELETE CASCADE`, added 2026-09-25 — deleting a conversation deletes its
+messages, unlike the older FK). Before the 2026-09-24 schema-normalization
+phase there were no `FOREIGN KEY`/`CONSTRAINT` clauses anywhere and
+referential integrity was enforced only in application code (`save_gesture.php`
+deleting children before parents).
 
 ## 4. Key decisions and why
 
@@ -220,9 +388,11 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 - **admin_api.php**: touches `users`, `gestures` (its `translation_history` actions were removed 2026-09-24). Its admin check trusts a client-supplied `requester_id` — see `DEBT.md` item 72. No caller found in tracked frontend (same grep). Dead code as far as the shipped frontend is concerned; presumably meant for an admin dashboard that either was never built against it or was replaced by direct calls elsewhere.
 - **core_api.php**: touches `gesture_recordings`, `translations` (its `gesture_words` action and map entries were removed 2026-09-24; `js/db-local.js`'s uncalled `saveGestureWord()` still posts the removed `save_gesture_word` action and would now get "Unknown action"). No auth check at all — see `DEBT.md` item 72. Only confirmed caller is `js/db-local.js:9` ("points to unified api router"). If its `translations` INSERT/SELECT column names (`detected_word`/`full_sentence`) are changed to match the real schema, any code path that actually exercises `db-local.js`'s translation save/get would start working for the first time (currently it fails against schema — see Problems #1); if `core_api.php` is deleted, whatever front-end flow uses `db-local.js` for camera-translator recording/translation storage breaks.
 - **save_gesture.php**: touches `gestures`, `esl_signs`/`fsl_signs`, `gesture_recordings`, disk folders `saved_gestures/`, `saved_gestures_fsl/`, `assets/signs/en|fil/`, and shells out to **ffmpeg.exe**. Confirmed callers: `js/script.js:849`, `js/gesture-data.js:7`, `js/gesture-training-ui.js:246`, `diagnostic.html:113`. Changing its request/response JSON shape breaks the gesture-recording UI in all four; removing ffmpeg breaks only the MP4 transcode (falls back to `.webm` automatically, lines 543-556).
-- **save_translation.php / get_translations.php**: touch `translations` (real schema columns). Confirmed callers: `js/db-api.js:35` and `:75`.
+- **save_translation.php / get_translations.php**: touched `translations` (real schema columns). Confirmed callers: `js/db-api.js:35` and `:75`. Both files, `js/db-api.js`, and the `translations` table itself were **deleted 2026-09-25** together (saved-conversations phase, Tasks 5-6) — see "translations dropped" below.
 - **save_history.php / get_history.php**: touched `translation_history`; both deleted 2026-09-24 together with the table. No caller found in tracked frontend JS/HTML (grep-verified) — dead code as shipped.
-- **reports.php**: touches `esl_signs`, `fsl_signs`, `translations` (read-only except for opportunistic `asset_path` backfill UPDATEs). Confirmed caller: `reports.html` (per system brief; endpoint itself has no auth/session check — any client can call it).
+- **reports.php**: touches `gestures` only as of 2026-09-25 (the `translations` read and its opportunistic `asset_path` backfill UPDATE were removed with the table). Confirmed caller: `reports.html` (per system brief; endpoint itself has no auth/session check — any client can call it, and it is still fetched before the PIN).
+- **save_conversation.php**: touches `conversations`/`messages` only, write-only (INSERT/UPDATE, never SELECT). No auth of any kind, but it is same-origin, write-only, and never echoes back anything but `{"success":...}`, so it cannot be used to read past conversations even without auth. Confirmed caller: `js/talk-history.js`, wired from `talk.html`.
+- **conversations.php**: touches `conversations`/`messages`, read+delete. No server-side auth (`DEBT.md` item 72's scope now includes this file). Confirmed caller: `reports.html`, only after its client-side PIN. Deleting a conversation cascades to its messages via the FK; `clear_all` has no probe/real-data distinction server-side (`tests/conversations/conversations-admin.test.mjs`'s own `clear_all` test guards itself, opt-in via `SK_ALLOW_CLEAR_ALL=1`, but the endpoint itself does not).
 - **scratch/trigger_sync.php**: touches `gestures`, `esl_signs`, `gesture_recordings`, and `saved_gestures/` only (not the FSL folder) — a one-off/manual migration tool, not wired to any frontend caller.
 
 ## Problems found
@@ -245,7 +415,65 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 
 ## DB cleanup (2026-09-24)
 
-Owner-approved, after a read-only reference audit. Backup taken beforehand by the owner: phpMyAdmin export of `sining_kamay_db` from MariaDB 10.4.32, `E:\ACADSS\IOT\backups\sining_kamay_db_2026-09-24.sql` (outside the repo). On MariaDB (the only DB server since `MySQL80` was disabled, `DEBT.md` item 68): `DROP TABLE gesture_words`, `DROP TABLE translation_history` (both 0 rows, guarded by a row-count check); `DELETE` of the 5 `translations` test rows from 2026-07-15 (all `confidence = 0.95`, the constant hard-coded by the archived sign-to-text page, `sign-to-text-ui.js:639`). `translations` itself is kept — `reports.php:58-61` reads it for the live Reports page, which returns one JSON for all three tabs, so dropping it would 500 the whole page. Remaining tables at the end of this cleanup: `esl_signs`, `fsl_signs`, `gesture_recordings`, `gestures`, `translations`, `users` (`esl_signs`/`fsl_signs` were dropped in the later schema-normalization phase the same day — see below).
+Owner-approved, after a read-only reference audit. Backup taken beforehand by the owner: phpMyAdmin export of `sining_kamay_db` from MariaDB 10.4.32, `E:\ACADSS\IOT\backups\sining_kamay_db_2026-09-24.sql` (outside the repo). On MariaDB (the only DB server since `MySQL80` was disabled, `DEBT.md` item 68): `DROP TABLE gesture_words`, `DROP TABLE translation_history` (both 0 rows, guarded by a row-count check); `DELETE` of the 5 `translations` test rows from 2026-07-15 (all `confidence = 0.95`, the constant hard-coded by the archived sign-to-text page, `sign-to-text-ui.js:639`). `translations` itself was kept at this point — `reports.php:58-61` (at that time) read it for the live Reports page, which returned one JSON for all three tabs, so dropping it then would have 500'd the whole page. It was dropped the next day instead, once its readers no longer needed it — see "translations dropped (2026-09-25)" below. Remaining tables at the end of this cleanup: `esl_signs`, `fsl_signs`, `gesture_recordings`, `gestures`, `translations`, `users` (`esl_signs`/`fsl_signs` were dropped in the later schema-normalization phase the same day — see below).
+
+## translations dropped (2026-09-25, saved-conversations phase)
+
+**Backup taken first (Task 1), before any schema change this phase:**
+`mysqldump.exe --single-transaction sining_kamay_db` to
+`E:\ACADSS\IOT\backups\sining_kamay_db_before-conversations.sql`, **9,804,299
+bytes** (`.git/sdd/conv-task-1-report.md`; outside the repo, like the
+2026-09-24 backups above).
+
+Owner-approved (option A of three offered — full removal — in
+`docs/reports/2026-09-25-saved-conversations-step1.md` section (c)). Measured
+`SELECT COUNT(*) FROM translations` = 0 both immediately before Task 5's drop
+and again as a pre-condition check in Task 5's own report
+(`.git/sdd/conv-task-5-report.md`) — it had been empty since the 2026-09-24 DB
+cleanup above, and its only live writer (the gesture-training Step 4 `stop`-
+gesture branch, `js/gesture-training-ui.js:844-853` at the time) could never
+run: it needs the k-NN to detect a `stop` gesture, and none exists (`SELECT
+label FROM gestures WHERE label IN ('stop','start')` returned only
+`start/ESL`). Its only reader with a live caller, the Reports Translations
+tab, always showed "No translation records found."
+
+Sequence (Task 5, `.git/sdd/conv-task-5-report.md`): re-checked the 0-row
+count, edited `php/api/reports.php`/`db-schema/database_setup.sql`/
+`tests/normalization/schema-guard.test.mjs` first, then ran `DROP TABLE
+translations` on live, then `SHOW TABLES` confirmed the resulting 5-table
+shape. Task 6 then deleted the now-fully-dead client/server code (option A,
+"a smaller-footprint option that leaves `db-api.js` and its call sites in
+place, 404ing on paths that can never run" was considered and rejected —
+see `docs/reports/2026-09-25-saved-conversations-step1.md` section (c),
+option B):
+- Deleted: `php/api/save_translation.php`, `php/api/get_translations.php`,
+  `js/db-api.js`.
+- Removed the `<script src="js/db-api.js">` tag from `gesture-training.html`
+  and `diagnostic.html`.
+- Removed the three now-orphaned `DB_API.*` call sites (all already inside
+  `try/catch`, so nothing crashed while they were dead — they just could
+  never be reached): the `DB_API.saveTranslation` block in
+  `js/gesture-training-ui.js`'s stop-gesture branch, the
+  `DB_API.saveTranslation` block in `js/sign-to-text-ui.js`'s
+  `tlProcessAndFinishSentence` (unreachable from `talk.html`, which uses its
+  own recognition loop and never loads `db-api.js`), and the
+  `DB_API.getTranslations` "DB connected" status-dot ping in that same
+  file's `DOMContentLoaded` handler (never reachable from `talk.html` either,
+  since that file adds `sign-to-text-ui.js` on window `load`, after
+  `DOMContentLoaded` has already fired).
+- The four protected k-NN functions (`knnPredict`, `cosineSimilarity`,
+  `trainModel`, `mergeSavedGestureSamples`) and all frame-capture logic were
+  not touched.
+
+Verification (`.git/sdd/conv-task-6-report.md`): `grep -rn
+"DB_API|db-api|save_translation|get_translations"` outside `archive/`/`docs/`
+returns 0 hits in source files; `gesture-training.html`, `diagnostic.html`,
+and `talk.html?devqueue` all still load with 0 console errors and 0 failed
+requests, and the sign stack (120 ESL gestures) and Vosk model still load in
+`talk.html` with `db-api.js` gone.
+
+Reports' third tab and metric became **Conversations** in the same phase
+(Task 5) — see `docs/system/UI.md` Part 3c.
 
 ## Schema migration and fresh-machine setup (2026-09-24)
 
@@ -324,8 +552,8 @@ two tracked dumps, `sining_kamay_db.sql` and
 (they still have `esl_signs`/`fsl_signs`, `gestures.word`,
 `gesture_recordings.sample_count`/`gesture_type`/`thumbnail`) and are **not
 importable as-is** with the current code — `save_gesture.php` and the other
-endpoints now expect the normalized 4-table shape and will error against the
-old one. The migration script **cannot** be pointed at a fresh import of
+endpoints now expect the normalized, current 5-table shape (see "Tables"
+above) and will error against the old one. The migration script **cannot** be pointed at a fresh import of
 either dump to fix this: it requires the `category` column added in the
 2026-09-23 gesture-categorization phase (neither dump has it), and its
 default `--snapshot` path is a hardcoded Windows path
@@ -339,16 +567,35 @@ Pi):
   re-tag (`DEBT.md` item 65) and every `asset_path` value exactly as they are
   now — nothing needs re-deriving.
 - **Alternative: run the setup script, then one sync, then the backfill.**
-  Run `db-schema/database_setup.sql` (creates the 4 tables directly in their
-  final shape, `CREATE TABLE IF NOT EXISTS` throughout so it's safe to
-  re-run), do one full-sync GET of `php/api/save_gesture.php` (no `?no_sync`)
-  so `sync_disk_to_db` populates `gestures`/`gesture_recordings` from the
-  `saved_gestures*/` folders, then run
-  `db-schema/migrations/2026-09-24-backfill-asset-path.php` to fill
+  Run `db-schema/database_setup.sql` (creates the 5 tables directly in their
+  final shape — `users`, `gestures`, `gesture_recordings`, `conversations`,
+  `messages`, no `translations` block since 2026-09-25 — `CREATE TABLE IF NOT
+  EXISTS` throughout so it's safe to re-run), do one full-sync GET of
+  `php/api/save_gesture.php` (no `?no_sync`) so `sync_disk_to_db` populates
+  `gestures`/`gesture_recordings` from the `saved_gestures*/` folders, then
+  run `db-schema/migrations/2026-09-24-backfill-asset-path.php` to fill
   `asset_path` from the `.webm` files on disk. **This loses every manual
   category re-tag** — the sync has no re-tag information to offer, so every
   label falls back to the `gesture_category()` heuristic (`DEBT.md` item 65
   already documents this as the accepted cost of category being DB-only).
+  `conversations`/`messages` need no seeding — they start empty either way.
+
+**If instead you run `db-schema/migrations/2026-09-24-normalize.php` itself**
+(e.g. against a fresh import of the pre-normalization backup, for a reason
+other than the two routes above): that script's own end state, unchanged by
+this phase, is the 2026-09-24 **4-table** shape (`gestures`,
+`gesture_recordings`, `translations`, `users`) — it predates both the
+saved-conversations phase and the translations drop, and per the brief for
+this phase it was deliberately left alone (its step-7 snapshot comparison is
+exact only against that older shape; adding new tables to it would be
+scope creep on a one-time script that already ran on live). A database
+brought up this way needs one manual post-migration step to reach the
+current 5-table shape: apply `database_setup.sql`'s "SAVED CONVERSATIONS"
+section (the `conversations`/`messages` `CREATE TABLE IF NOT EXISTS`
+statements — safe to run standalone, they don't touch anything else) and then
+`DROP TABLE translations` (after confirming it's empty, the same guard Task 1
+used on live). This is a manual note, not a change to the migration script
+itself.
 
 **Tests:** `tests/normalization/migration.test.mjs` clones from the
 pre-normalization backup, not the live DB — env var

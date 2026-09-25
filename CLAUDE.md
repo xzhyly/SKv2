@@ -69,8 +69,10 @@ locally via XAMPP:
 - **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at this
   repo, so there is one copy of the files on disk — editing the repo edits
   what Apache serves, and vice versa. No file copying/syncing step.
-- **Database:** the 4-table normalized schema (`gestures`, `gesture_recordings`,
-  `translations`, `users`) is what the current code expects. Do **not** import
+- **Database:** the 5-table normalized schema (`gestures`, `gesture_recordings`,
+  `conversations`, `messages`, `users`) is what the current code expects
+  (`translations` was dropped 2026-09-25, saved-conversations phase — see
+  `docs/system/BACKEND.md`). Do **not** import
   either tracked `.sql` dump on a fresh machine — both are pre-normalization
   snapshots (2026-09-24 schema-normalization phase) and no longer match the
   code. See `docs/system/BACKEND.md`, "Schema migration and fresh-machine
@@ -103,7 +105,16 @@ a real Vosk microphone (`js/talk-speaking.js`, English-only model; Filipino disa
 the mic) filling the text field, an explicit **Translate** button, and an in-place
 word-by-word sign-video preview (`js/sign-player.js`, a port of `js/script.js`'s
 pipeline) before the unchanged Send → confirm → Add to Conversation flow; the
-preview is never stored in the thread. No DB logging happens from `talk.html`.
+preview is never stored in the thread. As of the 2026-09-25 saved-conversations
+phase, every message added to the thread (signed, spoken or typed) and every
+conversation end (End Conversation, the idle timeout, reload/tab-close) is
+also fire-and-forget POSTed to `php/api/save_conversation.php`
+(`js/talk-history.js`) into the `conversations`/`messages` tables — this never
+blocks, delays or breaks the live conversation, and any failure is only a
+`console.warn`. Past conversations are never read back from `talk.html` or
+`index.html`; only `reports.html`'s Conversations tab, after its PIN, reads
+them (`php/api/conversations.php`). See `docs/system/BACKEND.md` and
+`docs/system/UI.md` Part 3.
 Open it at `/SKR/talk.html`. `index.html` is now a **pure dashboard**: the old
 `#translator-pane` (`?screen=voice`) and `js/script.js` were retired into this screen
 and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).

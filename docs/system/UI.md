@@ -419,8 +419,9 @@ below. None of that ran.
   a sign-to-text/speech translator built from custom gestures. 4-step wizard (Add
   Data → Train AI → Predict → Translate), lines 94-354.
 - **reports.html** — PIN-gated admin analytics screen: 3 tabs (ESL Signs, FSL
-  Signs, Translations) pulling from a PHP/MySQL-backed report endpoint, with
-  print/PDF export.
+  Signs, Conversations — was Translations before the 2026-09-25
+  saved-conversations phase replaced it, see below) pulling from a
+  PHP/MySQL-backed report endpoint, with print/PDF export.
 - **learn-signs.html** — thin wrapper that shows a floating "Back to Kiosk" button
   over a full-screen `<iframe>`.
 
@@ -586,6 +587,51 @@ below. None of that ran.
   `atob`/Blob at runtime) — this is the vendored `vosk-browser` library, not
   hand-written kiosk code; confirmed third-party by embedded UUID/Microsoft
   license headers (vosk.js:7-20, 32-50).
+- **Reports Conversations tab (2026-09-25 saved-conversations phase),
+  replacing the old Translations tab.** `reports.html`'s third summary metric
+  and third tab (was `#translationCount`/`#tab-translations`) are now
+  `#conversationCount`/`#tab-conversations`, listing rows from
+  `php/api/conversations.php` instead of the `translations` data
+  `php/api/reports.php` used to include (that table was dropped the same
+  day — `docs/system/BACKEND.md`). Unlike the ESL/FSL tabs, which come from
+  `reports.php` fetched at page load like before, `loadConversations()` is
+  called only from `trVerifyPin()`'s success branch — **not** at page load —
+  so no request to `conversations.php` exists in the network log before the
+  correct PIN is entered (privacy finding in
+  `docs/reports/2026-09-25-saved-conversations-step1.md`; `reports.php` and
+  the PIN gate itself both stay client-side-only, so this only closes the
+  "fetched before the PIN" gap, not the underlying auth gap — `DEBT.md`
+  item 72).
+  - **List columns:** Date/time · Duration · Messages · First message (wraps,
+    no ellipsis) · Ended (Ended / Idle / Left / Not ended, from
+    `end_reason`/whether `ended_at` is set) · Delete. A **Clear all** button
+    sits above the table. The list re-fetches after every delete and after
+    Clear all.
+  - **Tapping a row** (anywhere but Delete) opens a thread-view modal (in the
+    `.asset-modal` family already used for the asset preview): header shows
+    date/duration/message count/end reason; body is a scrolling list of
+    bubbles styled after `talk.html`'s own (`talk.html:226-247` — signer
+    left/white/bordered, hearing right/navy/white), each labelled "Signed ·
+    h:mm AM/PM · ESL/FSL", "Spoken · h:mm AM/PM", or "Typed · h:mm AM/PM"
+    from `source`; footer has Back and Delete. Read-only — no reply/continue
+    control.
+  - **Delete and Clear all** both go through one in-page confirm card (not
+    `window.confirm`): "Delete this conversation?" / "Delete all N
+    conversations?" plus "This cannot be undone.", Cancel/red Delete buttons,
+    a toast afterward. Delete on a conversation whose row is `id`-matched
+    cascades to its `messages` rows server-side (the FK's `ON DELETE
+    CASCADE`); Clear all has no probe/real-data distinction on the server
+    side (only the test suite guards itself against wiping real data —
+    `DEBT.md` item 79 covers the missing server-side auth generally).
+  - **Measured at 1024×600** (headless Chrome via CDP,
+    `.git/sdd/conv-task-5-report.md`): `document.documentElement.scrollWidth`
+    = 1024 in the list, thread modal, and confirm card; the Date/time column
+    is 168px wide (widened twice across review rounds — the true worst-case
+    string measured across every value the column's own `formatDateTime()`
+    can produce, bounded by the `TIMESTAMP` column's valid range through
+    2038, is "May 30, 2034, 10:44 AM" at 139.42px text width); every control
+    ≥ 44×44px; 0 console errors through a full list/thread/delete/clear-all
+    walkthrough.
 
 ### 4. Key decisions and why
 
@@ -675,11 +721,17 @@ below. None of that ran.
   heights pushes the input back under the keyboard.
 - **reports.html table columns**: `reports.html:71-79` targets columns by position
   (`th:nth-child(6|7)` for Created, `td:nth-child(3|4)` for the wrapping text
-  columns) in all three tabs. Adding, removing or reordering a column in the
-  `<thead>` markup (`reports.html:411-417`) or in `renderSigns`/`renderTranslations`
-  moves those widths and wrapping rules onto the wrong column, and truncation
-  returns. The 150 px Created width assumes 12 px Inter (`css/fonts.css`) and the
-  `YYYY-MM-DD HH:MM:SS` format `php/api/reports.php` returns.
+  columns) in the two ESL/FSL tabs (`renderSigns`). Adding, removing or
+  reordering a column in the `<thead>` markup (`reports.html:411-417`) or in
+  `renderSigns` moves those widths and wrapping rules onto the wrong column,
+  and truncation returns. The 150 px Created width assumes 12 px Inter
+  (`css/fonts.css`) and the `YYYY-MM-DD HH:MM:SS` format `php/api/reports.php`
+  returns. **The Conversations tab (2026-09-25, replacing the old
+  Translations tab) has its own separate, 6-column positional rule
+  (`#tab-conversations` — see the "Reports Conversations tab" bullet in §3
+  above), independently widened; the two tabs' column-width rules do not
+  share a selector and must be kept in sync by hand if the shared `12px
+  Inter` assumption ever changes.**
 - **reports.html → php/api/reports.php**: path logic keys off `location.port`
   rather than protocol+path-name pattern used elsewhere (reports.html:613-615), and
   hardcodes `/Sining_kamay/` (not `/SKR/`) for the `file:`/non-standard-port
@@ -781,6 +833,14 @@ onward is reached only by typing `/SKR/talk.html` directly); see
 > disagree ("no camera, MediaPipe, TensorFlow, Vosk … anywhere in this file",
 > "the five hooks are all empty", the canned signing pool), 3a wins. The
 > speaking screen's mic button is still a canned stand-in.
+>
+> **Updated 2026-09-25 — every message added to the thread and every
+> conversation end is now also saved to the database; see "3c" below.**
+> Where the text above or below still says "no … database access anywhere in
+> this file," "no DB logging," or that the 30-bubble cap's removed messages
+> are gone rather than "still live in the database," 3c wins. Nothing else
+> about the thread/screen/modal behaviour described below changed — only that
+> a save call now runs alongside it.
 
 ### 3a. Signing-screen merge (spec: `docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md`)
 
@@ -931,6 +991,84 @@ Errors reuse the existing error card: mic denied → "Microphone not available /
 `SignPlayer.registerCustomGestures()` adds one `save_gesture.php?no_sync=1` fetch on first entry (measured 2 in a cold-cache page
 load, together with the queue's own).
 
+### 3c. Saved conversations (Let's Talk history, admin-only; spec: `docs/reports/2026-09-25-saved-conversations-step1.md`)
+
+**New file:** `js/talk-history.js` (109 lines) — a self-contained IIFE, no
+dependency on any other new-in-this-phase file, exposing
+`window.TalkHistory = { saveMessage, end }`. Loaded via one more `<script
+src="js/talk-history.js">` tag, before the inline script (`talk.html:1214`).
+
+**What gets saved, and when — additive only, no existing behaviour changed:**
+- **Every message that reaches the confirm card's "Add to Conversation"
+  handler** (`talk.html:1421-1425`, the same single call site documented in
+  §3 below as the *only* way a message enters `#thread-list`) also calls
+  `TalkHistory.saveMessage({from, source, signLanguage, text})` right after
+  `appendBubble(...)`, wrapped in its own `try/catch` so a save failure can
+  never stop the bubble from rendering or the modal from closing.
+  - **Signed** messages: `TalkSigning.init({onText})`'s callback
+    (`talk.html:1849-1852`) now receives a second argument,
+    `{signLanguage: 'ESL'|'FSL'}`, from `js/talk-signing.js:127`'s `finish()`
+    (`signLang === 'fil' ? 'FSL' : 'ESL'` — the one line that function's
+    `cb.onText(...)` call gained this phase).
+  - **Spoken vs. typed**: `js/talk-speaking.js` calls a new
+    `cb.onTranscript()` right after each of its two existing writes into
+    `#speaking-input` (`renderTranscript()` and `stopCapture()`,
+    `js/talk-speaking.js:65,232`). `talk.html`'s own `onTranscript` handler
+    (`:1950`) sets a hoisted flag, `speakingFromMic = input.value.trim() !==
+    ''` — true exactly when the mic has written non-empty text into the
+    field since it was last empty. Send (`:1905-1913`) reads that flag into
+    `source: speakingFromMic ? 'speech' : 'typed'` and then resets it to
+    `false`; the field-emptied `input` listener (`:1889-1890`) also clears it
+    early. Net effect (owner decision, `docs/system/DECISIONS.md`): typing
+    over part of a mic transcript still counts as `'speech'`; only clearing
+    the field to empty resets the next message to `'typed'`.
+- **Every conversation end** — End Conversation (`talk.html:2026`), the idle
+  countdown reaching 0 (`:1497`), and the idle card's End Now (`:1523`) — now
+  calls `onEndConversation(reason)` (`:1301-1305`), which calls
+  `TalkHistory.end(reason)` in `try/catch` *before* the existing
+  `TalkSpeaking.leave()`/`TalkSigning.leave()` calls, so a hung/slow save
+  request can never delay releasing the camera/mic. `reason` is `'ended'` for
+  both End Conversation and End Now (owner decision: a person tapped
+  something), `'idle'` only for the countdown reaching 0 on its own.
+  `js/talk-history.js` also listens for `pagehide` itself
+  (`window.addEventListener('pagehide', function () { end('left'); })`) so a
+  reload, tab close, or kiosk restart still closes out the conversation —
+  this is the only one of the four reasons not driven by an explicit
+  `onEndConversation()` call from `talk.html`.
+- **Fire-and-forget, by design (global constraint):** `saveMessage`/`end`
+  POST JSON to `php/api/save_conversation.php` with `fetch(..., {keepalive:
+  true})` (so the request can survive the page unloading right after End),
+  never `await`ed by any caller, and every failure path — a rejected fetch,
+  a thrown synchronous `TypeError` from an overridden `fetch`, a non-2xx
+  status, unparsable JSON, or a body that isn't `{success:true}` — ends in
+  exactly one `console.warn`, never a thrown error and never any UI (no
+  modal, no toast, no retry). Verified with `window.fetch` forced to reject
+  and separately forced to resolve a 500: the bubble still appears, the
+  confirm modal still closes, End still navigates, and only the one expected
+  `console.warn` line appears (`.git/sdd/conv-task-4-report.md`).
+- **A per-page `client_key`** (32 lowercase hex chars from
+  `crypto.getRandomValues`, made once at script-parse time) stands in for a
+  server-assigned conversation id, since the page can never wait for a
+  response before it might unload — see `docs/system/BACKEND.md`'s
+  `save_conversation.php` section. **Opening the screen and leaving without
+  ever confirming a message sends zero requests** — `saveMessage`/`end` both
+  no-op until at least one message has been confirmed (`confirmed === 0`
+  guard), and `end` additionally no-ops if it already ran once (`ended` flag,
+  so `pagehide` after an explicit End sends nothing more).
+- **Never a read.** `js/talk-history.js` only ever calls `saveMessage`/`end`;
+  there is no function in it, or anywhere else in `talk.html`, that fetches
+  past conversation data. Past conversations are reachable only from
+  `reports.html`'s Conversations tab, after its PIN — see Part 2 below.
+
+**Not exercised with real hardware this phase:** the actual
+`js/talk-speaking.js`→`onTranscript()` and `js/talk-signing.js:127`→`onText`
+calls from a real microphone/camera round trip — the available
+browser-automation environments block real device capture. Both were
+verified by code review, `node --check`, and a temporary debug hook driving
+the exact same downstream code, then fully reverted
+(`.git/sdd/conv-task-4-report.md`); a real signed turn is flagged for the
+owner to verify on real hardware (`docs/system/DEBT.md` item 85).
+
 ### 1. Owns these files
 
 - `talk.html` — the entire feature: markup, one inline `<style>` block, one
@@ -951,11 +1089,13 @@ load, together with the queue's own).
 A four-screen, three-modal conversation flow between a Deaf person (signs)
 and a hearing person (speaks/types), all inside one document that never
 reloads between turns — screens and modals are shown/hidden by attribute and
-class changes only, never by navigation or `innerHTML` rebuild. Messages are
-canned/fake in this phase (a small string pool, `talk.html` search
-`SIGNED_CANNED_POOL`/`SPOKEN_CANNED_POOL`) for two of the three ways a
-message can be produced; typed text is real. Nothing reaches the thread
-without passing through a confirm step first.
+class changes only, never by navigation or `innerHTML` rebuild. Messages were
+canned/fake in the original build (a small string pool, `talk.html` search
+`SIGNED_CANNED_POOL`/`SPOKEN_CANNED_POOL`); as of the 2026-09-21 merges (§3a,
+§3b) all three ways a message can be produced — signed, spoken, typed — are
+real. Nothing reaches the thread without passing through a confirm step
+first, and, as of the 2026-09-25 saved-conversations phase (§3c), every
+message that clears that confirm step is also saved to the database.
 
 ### 3. How it works (state model)
 
@@ -994,7 +1134,11 @@ without passing through a confirm step first.
   inside `renderConfirmModal`'s "Add to Conversation" handler
   (talk.html:1183 area). It caps the thread at 30 `.bubble-row` children by
   real DOM removal (`talk.html:1237`, `THREAD_BUBBLE_CAP = 30` at
-  talk.html:1138), not hiding, and pins scroll to the newest bubble.
+  talk.html:1138), not hiding, and pins scroll to the newest bubble. As of
+  the 2026-09-25 saved-conversations phase (§3c), the comment above that cap
+  — "older messages still live in the database, just not here" — is now
+  literally true: `appendBubble()`'s one real call site also saves the
+  message before the DOM cap can ever discard it.
 - **The persistent thread** (`#thread` → `#thread-list`, talk.html:102) is
   one element, never duplicated: `display:none` on `who-first`, `96px` tall
   on `signing`/`speaking` (talk.html:110), `320px` tall on `thread`

@@ -105,7 +105,9 @@ so a later session does not re-litigate them:
 7. **Three incompatible hardcoded deployment-path conventions coexist.**
    - `js/script.js:847-849` dynamically detects `/SKR` vs `/Sining_kamay` in
      `location.pathname`.
-   - `js/db-api.js:11`, `js/db-local.js:9`, `js/gesture-data.js:6`,
+   - `js/db-api.js:11` (**deleted 2026-09-25**, saved-conversations phase
+     Task 6, along with the file — see `docs/system/BACKEND.md` "translations
+     dropped"), `js/db-local.js:9`, `js/gesture-data.js:6`,
      `js/gesture-training-ui.js:245,1065` hardcode `/Sining_kamay/` only, with no
      `/SKR` awareness.
    - `reports.html:613-615` hardcodes `/Sining_kamay/` and branches on
@@ -222,10 +224,15 @@ so a later session does not re-litigate them:
 16. **No shared error-response contract across PHP endpoints.** Three different
     JSON error shapes are in use: `{"success":false,"message":...}`
     (`auth.php`, `admin_api.php`, `core_api.php`), `{"error":...}`
-    (`connect.php`, `save_translation.php`, `get_translations.php`,
-    `save_history.php`), and `{"success":false,"error":...}` (`save_gesture.php`,
-    `bulk_importer_api.php`, `reports.php`). Any frontend code switching between
-    endpoints must special-case each shape.
+    (`connect.php`, `save_history.php`), and `{"success":false,"error":...}`
+    (`save_gesture.php`, `bulk_importer_api.php`, `reports.php`,
+    `save_conversation.php`, `conversations.php`). Any frontend code switching
+    between endpoints must special-case each shape. (`save_translation.php`
+    and `get_translations.php`, formerly also in the `{"error":...}` group,
+    were deleted 2026-09-25 with the `translations` table — see
+    `docs/system/BACKEND.md`. The two new saved-conversations endpoints join
+    the third, most common shape; see item 84 for the one remaining
+    `{"error":...}` case, `connect.php`'s own DB-down response.)
 
 17. **Stale CSS rules matching a redesigned-away dashboard.**
     `css/style.css:458-493,507-596` style classes (`.title-sining`, `.title-kamay`,
@@ -947,14 +954,27 @@ so a later session does not re-litigate them:
     is a safety improvement, not a new risk — recorded here so a later
     session doesn't read the failure as a regression.
 
+    **Update (2026-09-25, saved-conversations phase) — scope extended, owner
+    decision:** the same "no server-side auth" gap applies to the two new
+    endpoints, `php/api/save_conversation.php` and `php/api/conversations.php`
+    (both files' own header comments say so). `conversations.php` in
+    particular is a full list/detail/delete/clear_all endpoint behind nothing
+    but `reports.html`'s client-side PIN — see item 79 for the specifics.
+    Kept open by owner decision at proposal time
+    (`docs/reports/2026-09-25-saved-conversations-step1.md` section (d): "It
+    has the same gate as `reports.php` today, which is none on the server
+    side"), consistent with every other admin endpoint this item already
+    covers.
+
 73. **Medium, open: fresh-machine/Pi setup — the tracked `.sql` dumps are
     pre-normalization and not importable with the current code.** Both
     `sining_kamay_db.sql` and `db-schema/sining_kamay_db_backup.sql` predate
     the 2026-09-24 schema-normalization phase (they still have
     `esl_signs`/`fsl_signs`, `gestures.word`,
     `gesture_recordings.sample_count`/`gesture_type`/`thumbnail`), and
-    `save_gesture.php` and the other endpoints now expect the normalized
-    4-table shape. `db-schema/migrations/2026-09-24-normalize.php` cannot
+    `save_gesture.php` and the other endpoints now expect the current
+    5-table shape (4 tables after the 2026-09-24 normalization; `conversations`/
+    `messages` added and `translations` dropped 2026-09-25). `db-schema/migrations/2026-09-24-normalize.php` cannot
     convert either dump into the current shape: it requires the `category`
     column added in the 2026-09-23 gesture-categorization phase (neither dump
     has it), and its default `--snapshot` path is a hardcoded Windows path.
@@ -1000,6 +1020,112 @@ so a later session does not re-litigate them:
     dashboard mid-check — this is the designed idle-timeout behavior
     (`docs/system/DECISIONS.md`, "Idle countdown length"), not a defect,
     recorded here so a future test session doesn't mistake it for one.
+
+78. **Low, open (saved-conversations phase, 2026-09-25, accepted design):
+    tapping End within the message-save round trip can leave `ended_at`
+    NULL.** `js/talk-history.js`'s `saveMessage()` and `end()` are two
+    independent fire-and-forget requests to `php/api/save_conversation.php`
+    (`docs/reports/2026-09-25-saved-conversations-step1.md` section (b), "the
+    known edge case"). If a person taps End Conversation in the brief window
+    while the just-added message's `action:"message"` request is still in
+    flight, the `action:"end"` request can reach the server first; `end`'s
+    `UPDATE conversations SET ended_at = ... WHERE client_key = ? AND
+    ended_at IS NULL` (`php/api/save_conversation.php:136-148`) then matches
+    0 rows, because the conversation row doesn't exist yet (it's created by
+    the still-pending `message` insert). No message is lost — the `message`
+    request still lands — but the conversation is left with `ended_at IS
+    NULL`, and Reports shows it as "Not ended" even though the person did
+    tap End. Owner-reviewed and accepted as a known edge case, not fixed
+    (`.git/sdd/progress.md`, Task 4 minors).
+
+79. **Low, open: `php/api/save_conversation.php` and
+    `php/api/conversations.php` have no server-side auth.** Extends item 72's
+    scope — item 72 stays open. `save_conversation.php` is write-only and
+    never echoes back conversation content, so its lack of auth cannot be
+    used to read past conversations; `conversations.php` is a full
+    list/detail/delete/clear_all endpoint gated only by `reports.html`'s
+    client-side PIN (`CORRECT_PIN`, same posture as `reports.php` and every
+    other admin endpoint item 72 already covers) — any client on the network
+    that can reach Apache can list, read, delete, or `clear_all` every saved
+    conversation without the PIN.
+
+80. **Low, open: a bfcache (back/forward cache) restore of `talk.html` can
+    reuse an already-ended `client_key`.** `js/talk-history.js` generates its
+    `clientKey` once, at script-parse time, and the `pagehide` listener that
+    sends `end('left')` fires on a bfcache-eligible navigation too. If the
+    browser later restores the page from bfcache (a `pageshow` with
+    `event.persisted === true`, which this file does not listen for) instead
+    of re-running the script, the in-memory `clientKey`/`confirmed`/`ended`
+    variables are untouched from before the navigation, so a new message
+    confirmed on the restored page would call `saveMessage()` against an
+    already-`ended` `client_key` — the server accepts it as an ordinary
+    `action:"message"` (it doesn't check `ended_at`), so the message is
+    saved and visible in Reports, but under a conversation Reports already
+    shows as ended. Not exercised or fixed this phase — the verification
+    Chrome sessions used (headless CDP, the in-app Browser pane) do not
+    reliably exhibit bfcache restores the way a real touchscreen Chromium
+    session might.
+
+81. **Low, open: `fetch(..., {keepalive:true})`'s body-size cap (64 KiB in
+    Chromium) is under `messages.text`'s own 65,535-byte limit.** Chromium
+    silently drops (does not send, does not error) a `keepalive` request
+    whose body exceeds roughly 64 KiB; `save_conversation.php` accepts `text`
+    up to `strlen($text) <= 65535` bytes (`php/api/save_conversation.php:73-75`).
+    A message near the top of that range, once wrapped in the JSON request
+    body (`client_key`, `seq`, `speaker`, `source`, `sign_language`, `text`),
+    can cross the `keepalive` cap and never reach the server at all —
+    `js/talk-history.js`'s `post()` would see this as an ordinary rejected
+    `fetch` (a `console.warn`, no UI). In practice a message this long is far
+    beyond anything a spoken/typed/signed turn produces in this app, but the
+    two limits are not aligned and nothing enforces the tighter one
+    client-side. Not fixed this phase — flagged as a docs note per the
+    whole-phase review.
+
+82. **Low, open, pre-existing (not introduced by this phase): `php/connect.php`
+    never calls `mysqli_set_charset`.** All UTF-8 (`utf8mb4`) behavior for
+    `conversations`/`messages` (and every other table) currently depends on
+    the MariaDB server's own default connection charset matching the
+    tables' `utf8mb4` `DEFAULT CHARSET`. Works today (confirmed by every
+    ESL/FSL label and every conversation message saved during verification
+    round-tripping correctly), but should be checked explicitly once this
+    runs on the Raspberry Pi's own MariaDB install, which may have a
+    different default.
+
+83. **Low, open: `php/api/conversations.php`'s list (`GET`, no `id`) has no
+    `LIMIT`/pagination.** `fetch_conversations()` (`php/api/conversations.php:37-70`)
+    returns every row in `conversations` in one response, unlike
+    `get_translations.php` (deleted this phase, but which had a `?limit=`
+    default of 50/max 200). Not a problem yet at the row counts this phase's
+    verification produced (`.git/sdd/progress.md`, Controller verification:
+    3 conversations), but there is nothing to stop the Reports Conversations
+    list and its supporting query from growing without bound.
+
+84. **Low, open, pre-existing pattern (not introduced by this phase):
+    `php/connect.php`'s DB-down response is HTTP 200 with a bare
+    `{"error":...}` body, not `{"success":false,"error":...}`, and
+    `save_conversation.php` opens the DB connection (via
+    `require_once __DIR__ . '/../connect.php'`) before checking the request
+    method.** Both endpoints' clients cope: `js/talk-history.js`'s `post()`
+    treats any body without `success === true` as a failure and only
+    `console.warn`s, and a non-POST request to `save_conversation.php` still
+    gets a working (if slower than necessary) 405 after the connection is
+    made. Matches the "inconsistent error-response shape" pattern already
+    tracked in item 16 above; recorded here specifically for the two new
+    endpoints.
+
+85. **Not a defect, verification gap (owner to close): the signed Let's Talk
+    turn was not exercised with a real camera sign during this phase's
+    verification.** Every other message-source path (typed, and spoken via a
+    real Vosk transcription of a fake-microphone WAV) was driven through the
+    real UI end to end; the signed path was verified by code review plus a
+    temporary, fully-reverted debug hook that called the exact same
+    `onText(text, meta)` callback `js/talk-signing.js:127` calls, not by an
+    actual camera + k-NN recognition producing a sign
+    (`.git/sdd/conv-task-4-report.md`, `.git/sdd/progress.md` "Controller
+    verification"). The browser-automation environments available
+    (headless Chrome via CDP, the in-app Browser pane) both block real
+    camera/microphone device access. Needs a person with a camera and a
+    trained sign, on a machine with real hardware, to close out.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead
