@@ -6,8 +6,10 @@
 // cannot be applied literally here, because save_conversation.php's client_key must match
 // /^[0-9a-f]{32}$/ (hex only) and 'z' is not a hex digit — a literal "zz..." key would always be
 // rejected as a bad-key-format case, which defeats the point of a probe key. Instead probe keys
-// use the hex-valid, still visually-distinctive prefix "dead" (all of d/e/a/d are valid hex
-// digits), and cleanup matches on that prefix instead of 'zz%'. See conv-task-2-report.md.
+// use the hex-valid, still visually-distinctive prefix "deadbeef00000000" (16 hex chars) followed
+// by 16 random hex chars, and cleanup matches on that full 16-char prefix instead of 'zz%' — long
+// enough that cleanup can never realistically collide with a real random client_key. See
+// conv-task-2-report.md (original "dead" prefix) and conv-task-3-report.md (lengthened prefix).
 import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import path from 'node:path';
@@ -50,12 +52,14 @@ export function callPhp({ script, method = 'POST', body, raw, query = '' } = {})
   return { status, json, raw: bodyPart, stderr: r.stderr.toString('utf8') };
 }
 
-// Hex-valid probe client_key: "dead" + 28 random hex chars = 32 chars total, matches
-// /^[0-9a-f]{32}$/ and is trivially greppable/cleanable.
+// Hex-valid probe client_key: "deadbeef00000000" (16 hex chars) + 16 random hex chars = 32 chars
+// total, matches /^[0-9a-f]{32}$/ and is trivially greppable/cleanable.
+export const PROBE_PREFIX = 'deadbeef00000000';
+
 export function probeKey() {
-  return ('dead' + crypto.randomBytes(14).toString('hex')).slice(0, 32);
+  return (PROBE_PREFIX + crypto.randomBytes(8).toString('hex')).slice(0, 32);
 }
 
 export function cleanupProbes() {
-  exec("DELETE FROM conversations WHERE client_key LIKE 'dead%'");
+  exec(`DELETE FROM conversations WHERE client_key LIKE '${PROBE_PREFIX}%'`);
 }
