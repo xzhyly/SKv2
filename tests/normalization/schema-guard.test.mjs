@@ -20,7 +20,7 @@ import { callEndpoint, fixtureFrames, fixtureVideo, repo } from '../multi-sample
 import { query } from '../categorization/db.mjs';
 
 const LABEL = 'zz_schemaguard_probe';
-const EXPECTED_TABLES = ['gesture_recordings', 'gestures', 'translations', 'users'];
+const EXPECTED_TABLES = ['conversations', 'gesture_recordings', 'gestures', 'messages', 'translations', 'users'];
 
 function cleanupProbe() {
   callEndpoint({ body: { action: 'delete_gesture', label: LABEL }, stub: false });
@@ -54,7 +54,7 @@ function fkExists() {
 
 function assertSyncedSchemaIntact() {
   assert.deepEqual(showTables(), EXPECTED_TABLES.slice().sort(),
-    'SHOW TABLES must be exactly {gesture_recordings, gestures, translations, users} after a sync');
+    'SHOW TABLES must be exactly {conversations, gesture_recordings, gestures, messages, translations, users} after a sync');
 
   const gestureCols = columnsOf('gestures');
   assert.equal(gestureCols.includes('word'), false, 'gestures.word must not be recreated by the sync');

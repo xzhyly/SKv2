@@ -67,3 +67,37 @@ CREATE TABLE IF NOT EXISTS translations (
   confidence DOUBLE NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ─────────────────────────────────────────────────────────────
+-- 4. SAVED CONVERSATIONS (Let's Talk history)
+-- ─────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS `conversations` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `client_key` char(32) NOT NULL,
+  `started_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `ended_at` timestamp NULL DEFAULT NULL,
+  `end_reason` enum('ended','idle','left') DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_conversations_client_key` (`client_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS `messages` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `conversation_id` int(11) NOT NULL,
+  `seq` int(11) NOT NULL,
+  `speaker` enum('signer','hearing') NOT NULL,
+  `source` enum('sign','speech','typed') NOT NULL,
+  `sign_language` enum('ESL','FSL') DEFAULT NULL,
+  `text` text NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_messages_conversation_seq` (`conversation_id`,`seq`),
+  CONSTRAINT `fk_messages_conversation` FOREIGN KEY (`conversation_id`)
+    REFERENCES `conversations` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `chk_messages_speaker_source` CHECK (
+    (`speaker` = 'signer'  AND `source` = 'sign') OR
+    (`speaker` = 'hearing' AND `source` IN ('speech','typed'))),
+  CONSTRAINT `chk_messages_sign_language` CHECK (
+    (`speaker` = 'signer') = (`sign_language` IS NOT NULL))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
