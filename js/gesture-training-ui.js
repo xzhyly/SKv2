@@ -841,17 +841,6 @@ function startLivePrediction(forTranslation=false) {
               document.getElementById('tlBigOutput').innerHTML = `<span class="word">${finalSentence}</span>`;
               speakWord(finalSentence, signLang);
               showToast(signLang === 'fil' ? '⏹ Tapos! Binabasa...' : '⏹ Done! Speaking...');
-              try {
-                await DB_API.saveTranslation({
-                  sourceType: 'sign_to_text',
-                  signLabel: 'sentence',
-                  translatedText: finalSentence,
-                  language: signLang === 'fil' ? 'fil-PH' : 'en-US',
-                  confidence: conf
-                });
-              } catch(e) {
-                console.error("Failed to save translation history:", e);
-              }
             } else {
               document.getElementById('tlHistory').innerHTML = `<span class="tl-empty">${signLang === 'fil' ? 'Walang salitang narekord.' : 'No words recorded.'}</span>`;
               document.getElementById('tlBigOutput').innerHTML = `<span class="tl-big-empty">${signLang === 'fil' ? 'Wala pang naipong salita.' : 'No words yet.'}</span>`;

@@ -628,19 +628,6 @@ async function tlProcessAndFinishSentence() {
     
     // Basahin nang malakas ang BUONG pangungusap
     speakWord(finalSentence, signLang);
-    
-    // I-save ang buong pangungusap sa DB History
-    try {
-      await DB_API.saveTranslation({
-        sourceType: 'sign_to_text',
-        signLabel: 'sentence',
-        translatedText: finalSentence,
-        language: signLang === 'fil' ? 'fil-PH' : 'en-US',
-        confidence: 0.95
-      });
-    } catch(e) {
-      console.error("Failed to save translation history:", e);
-    }
   } else {
     if (box) box.innerHTML = `<span class="tl-out-empty">${signLang==='fil'?'Walang salitang narekord sa pangungusap.':'No words recorded in sentence.'}</span>`;
   }
@@ -856,22 +843,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (overlay) overlay.style.display = 'none';
   }
 
-  try {
-    // Ping DB to light up the connection status dot
-    await DB_API.getTranslations({ limit: 1 });
-    const dot = document.getElementById('tlDbStatusDot');
-    if (dot) {
-      dot.className = 'tl-title-dot connected';
-      if (tlModelReady) {
-        dot.title = `Database connected & ${initLang} model ready (cached)!`;
-      } else {
-        dot.title = 'Connected to Database';
-      }
-    }
-  } catch(e) {
-    console.warn("DB check on load failed:", e);
-  }
-  
   // Initialize skeleton toggle preference on startup
   window.showSkeleton = localStorage.getItem('sining_kamay_show_skeleton') !== 'false';
   const toggleBtn = document.getElementById('tlSkeletonToggle');
