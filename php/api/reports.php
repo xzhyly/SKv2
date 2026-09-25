@@ -48,25 +48,15 @@ function fetch_gestures($conn, $signLanguage, $subFolder) {
 $esl = fetch_gestures($conn, 'ESL', 'en');
 $fsl = fetch_gestures($conn, 'FSL', 'fil');
 
-$translations = fetch_rows(
-    $conn,
-    "SELECT id, source_type, sign_label, translated_text, language, confidence, created_at
-       FROM translations
-      ORDER BY created_at DESC, id DESC
-      LIMIT 200"
-);
-
 echo json_encode([
     "success" => true,
     "summary" => [
         "esl" => count($esl),
         "fsl" => count($fsl),
-        "translations" => count($translations),
     ],
     "data" => [
         "esl" => $esl,
         "fsl" => $fsl,
-        "translations" => $translations,
     ],
 ]);
 

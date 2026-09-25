@@ -54,22 +54,7 @@ CREATE TABLE IF NOT EXISTS `gesture_recordings` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ─────────────────────────────────────────────────────────────
--- 3. TRANSLATIONS HISTORY
--- ─────────────────────────────────────────────────────────────
-
--- Core real-time translated phrases logger (from db-api / camera predict)
-CREATE TABLE IF NOT EXISTS translations (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  source_type VARCHAR(50) NOT NULL, -- "sign_to_text" | "text_to_sign"
-  sign_label VARCHAR(255) NOT NULL,
-  translated_text VARCHAR(255) NOT NULL,
-  language VARCHAR(20) NOT NULL DEFAULT 'en-US',
-  confidence DOUBLE NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- ─────────────────────────────────────────────────────────────
--- 4. SAVED CONVERSATIONS (Let's Talk history)
+-- 3. SAVED CONVERSATIONS (Let's Talk history)
 -- ─────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS `conversations` (
