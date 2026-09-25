@@ -1,8 +1,9 @@
 <?php
-// Admin-facing endpoint for reports.html's saved-conversations view (Task 4 wires the client).
-// Reads and deletes only — talk.html/index.html must never call this (see .git/sdd/conv-global.md:
-// "Past conversations must never be readable from talk.html, index.html or any kiosk-facing
-// screen"). No server-side auth here, same as reports.php (DEBT 72 stays open).
+// Admin-facing endpoint for reports.html's saved-conversations view (Task 5 wires the client).
+// Reads and deletes only — talk.html/index.html must never call this (see
+// docs/reports/2026-09-25-saved-conversations-step1.md: "Past conversations must never be
+// readable from talk.html, index.html or any kiosk-facing screen"). No server-side auth here,
+// same as reports.php (DEBT 72 stays open).
 //
 // GET (no id)   -> {success, conversations:[{id, started_at, ended_at, end_reason,
 //                   duration_seconds, message_count, first_message}]}

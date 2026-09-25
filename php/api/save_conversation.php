@@ -1,7 +1,7 @@
 <?php
 // Kiosk-facing, write-only endpoint for talk.html's saved-conversation logging (Task 4 wires the
 // client). Never reads conversation data back — every success response is exactly
-// {"success":true}. See .git/sdd/conv-global.md and .git/sdd/conv-task-2-brief.md.
+// {"success":true}. See docs/reports/2026-09-25-saved-conversations-step1.md.
 //
 // Must never block/delay/break the live conversation: talk.html calls this fire-and-forget
 // (fetch(..., {keepalive:true})) and only console.warns on failure. This file itself stays

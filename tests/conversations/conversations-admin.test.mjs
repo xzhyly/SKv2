@@ -220,6 +220,11 @@ test('delete with a bad id -> 400', () => {
 // --- POST clear_all ---
 
 test('clear_all removes every conversation and message (only when all rows are probes)', (t) => {
+  if (process.env.SK_ALLOW_CLEAR_ALL !== '1') {
+    t.skip('set SK_ALLOW_CLEAR_ALL=1 to run; it deletes every conversation');
+    return;
+  }
+
   const rows = query('SELECT client_key FROM conversations');
   const allProbes = rows.every((r) => r.client_key.startsWith(PROBE_PREFIX));
   if (!allProbes) {

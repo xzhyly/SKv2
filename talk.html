@@ -1947,7 +1947,7 @@
 
       TalkSpeaking.init({
         onChange: refreshTranslate,
-        onTranscript: function () { speakingFromMic = true; },
+        onTranscript: function () { speakingFromMic = input.value.trim() !== ''; },
         onMicError: function () {
           openModal('error', {
             heading: 'Microphone not available',
