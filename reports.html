@@ -79,12 +79,19 @@
     td .pill{white-space:normal;overflow-wrap:anywhere}
     /* Conversations tab: Date/time · Duration · Messages · First message (wraps, no ellipsis
        per the comment above) · Ended · Delete. Column 1 sized for the widest timestamp
-       ("Sep 30, 2026, 12:44 PM" measures 156px at 12px Inter + 20px padding, DOM-measured);
-       column 3 sized for its own uppercase header text ("MESSAGES" measures 87px with the
+       formatDateTime() can actually produce: a headless-Chrome sweep of every month x every
+       day-of-month x every hour x every minute x AM/PM, plus every year the DB can store
+       (conversations.started_at is a MySQL TIMESTAMP column, valid only through
+       2038-01-19; digit glyphs in Inter are not uniform width, so the year part isn't
+       assumed constant either - swept 2026-2037), found "May 30, 2034, 10:44 AM" as the
+       true worst case, DOM-measured at 139.4px text (rectWidth 139.421875px, scrollWidth
+       139px) -> +20px padding +8px buffer = 167.4px, rounded up to the nearest even
+       integer = 168px.
+       Column 3 sized for its own uppercase header text ("MESSAGES" measures 87px with the
        th's letter-spacing/weight, DOM-measured) rather than the (shorter) cell values, since
        neither may hide text behind an ellipsis on a touchscreen. Space comes out of First
        message, which wraps instead of truncating. */
-    #tab-conversations th:nth-child(1){width:160px}
+    #tab-conversations th:nth-child(1){width:168px}
     #tab-conversations th:nth-child(2){width:92px}
     #tab-conversations th:nth-child(3){width:92px}
     #tab-conversations th:nth-child(5){width:92px}
