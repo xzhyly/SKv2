@@ -25,6 +25,11 @@
     toast: null,
     ui: {},
     savedCategories: { ESL: {}, FSL: {} }, // last loadSavedGestureDataset()'s json.categories
+    // Video-based gesture capture (createVideoDetector / onHandResults, js/video-landmarks.js):
+    detectorMode: false, // true while a createVideoDetector() detector "owns" onResults
+    pendingDetectResolve: null, // resolves the in-flight detect(canvas) promise
+    pendingDetectReject: null, // rejects the in-flight detect(canvas) promise
+    handSubscribers: [], // onHandResults() subscribers, called with (results) outside detector mode
   };
 
   function notify(message) {
@@ -249,10 +254,30 @@
       minTrackingConfidence: 0.65,
     });
     state.hands.onResults((results) => {
+      // Video-based gesture capture: while a createVideoDetector() detector owns onResults,
+      // route results straight to the pending detect(canvas) promise and stop - no
+      // latestLandmarks update, no skeleton drawing, no captureFrameIfRecording (owner brief,
+      // Task 4).
+      if (state.detectorMode) {
+        const resolve = state.pendingDetectResolve;
+        state.pendingDetectResolve = null;
+        state.pendingDetectReject = null;
+        if (resolve) resolve(results);
+        return;
+      }
+
       const hands = results.multiHandLandmarks || [];
       state.latestLandmarks = hands.length > 0 ? hands : null;
       captureFrameIfRecording();
-      
+
+      state.handSubscribers.forEach((fn) => {
+        try {
+          fn(results);
+        } catch (e) {
+          console.warn('[gesture-data] onHandResults subscriber threw:', e);
+        }
+      });
+
       // Draw skeleton on tlCanvas1 if it exists (active in translation screen)
       const canvas = document.getElementById('tlCanvas1');
       if (canvas) {
@@ -451,6 +476,105 @@
     pauseHandLoop();
     await state.hands.initialize();
     return true;
+  }
+
+  // Video-based gesture capture (owner brief, Task 4): lets js/video-landmarks.js's
+  // extractVideoLandmarks() reuse the page's ONE existing MediaPipe Hands instance instead of
+  // creating a second one. Pauses the live hand loop (if it was running), waits for any
+  // in-flight send() to finish, then switches onResults into "detector mode" so each
+  // detect(canvas) call gets routed the next onResults callback directly.
+  async function createVideoDetector() {
+    if (!state.hands) {
+      throw new Error(
+        'createVideoDetector() requires MediaPipe Hands to already be set up (call setupMediaPipe() first)'
+      );
+    }
+
+    const wasLoopRunning = !state.loopPaused;
+    pauseHandLoop();
+
+    // Short polling wait for any send() already in flight, with a timeout so a stuck send
+    // can't hang detector creation forever.
+    const pollStart = Date.now();
+    while (state.sendInFlight && Date.now() - pollStart < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    state.detectorMode = true;
+    let released = false;
+
+    function detect(canvas) {
+      return new Promise((resolve, reject) => {
+        if (released) {
+          reject(new Error('detect() called after release()'));
+          return;
+        }
+
+        const timeoutId = setTimeout(() => {
+          if (state.pendingDetectReject === wrappedReject) {
+            state.pendingDetectResolve = null;
+            state.pendingDetectReject = null;
+          }
+          reject(new Error('detect() timed out waiting for MediaPipe results'));
+        }, 10000);
+
+        const wrappedResolve = (results) => {
+          clearTimeout(timeoutId);
+          resolve(results);
+        };
+        const wrappedReject = (err) => {
+          clearTimeout(timeoutId);
+          reject(err);
+        };
+
+        state.pendingDetectResolve = wrappedResolve;
+        state.pendingDetectReject = wrappedReject;
+
+        try {
+          const maybePromise = state.hands.send({ image: canvas });
+          if (maybePromise && typeof maybePromise.catch === 'function') {
+            maybePromise.catch((err) => {
+              if (state.pendingDetectReject === wrappedReject) {
+                state.pendingDetectResolve = null;
+                state.pendingDetectReject = null;
+                wrappedReject(err);
+              }
+            });
+          }
+        } catch (err) {
+          state.pendingDetectResolve = null;
+          state.pendingDetectReject = null;
+          wrappedReject(err);
+        }
+      });
+    }
+
+    function reset() {
+      state.hands.reset();
+    }
+
+    function release() {
+      if (released) return;
+      released = true;
+      state.detectorMode = false;
+      state.pendingDetectResolve = null;
+      state.pendingDetectReject = null;
+      if (wasLoopRunning) resumeHandLoop();
+    }
+
+    return { reset, detect, release };
+  }
+
+  // onHandResults(fn): subscribe to onResults callbacks outside detector mode. fn(results) is
+  // called after latestLandmarks is updated for the frame. Returns an unsubscribe function.
+  // Subscriber exceptions are caught and console.warn'ed (a bad subscriber must never break the
+  // live hand loop).
+  function onHandResults(fn) {
+    state.handSubscribers.push(fn);
+    return function unsubscribe() {
+      const idx = state.handSubscribers.indexOf(fn);
+      if (idx !== -1) state.handSubscribers.splice(idx, 1);
+    };
   }
 
   function captureFrameIfRecording() {
@@ -790,6 +914,8 @@
     preloadMediaPipe,
     pauseHandLoop,
     resumeHandLoop,
+    createVideoDetector,
+    onHandResults,
     getLatestLandmarks,
     extractLandmarkFeatures,
     saveGestureSample,

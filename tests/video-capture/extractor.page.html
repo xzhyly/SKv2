@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><title>video-landmarks extractor check</title>
+<!-- gesture-data.js's locateFile computes a PAGE-RELATIVE "js/lib/mediapipe/..." path,
+     matching production where every page (index.html, gesture-training.html, ...) lives at
+     repo root. This page lives under tests/video-capture/, so <base> makes relative URLs -
+     including gesture-data.js's own, computed at runtime - resolve exactly as they would from
+     a page served at http://localhost/SKR/, without touching gesture-data.js itself. -->
+<base href="/SKR/">
+</head>
+<body>
+<!-- Hidden video element gesture-data.js's setupMediaPipe()/init() looks up
+     (getElementById("videoFeed") || getElementById("video")), exactly as the real recording
+     screen does, so the extractor runs against the ONE real shared MediaPipe Hands instance.
+     It is given a real, looping, playing clip (not a live camera) so runHandLoop's
+     `readyState >= 2` gate is satisfied and hands.send() actually fires while the live loop
+     is running - needed to verify the loop resumes (send-count check) after release(). -->
+<video id="videoFeed" muted playsinline loop style="display:none"></video>
+<!-- Source clip + recording canvas, used only to build the synthetic MediaRecorder WebM
+     in-page (same technique as .git/sdd/spike.html's makeRecording). -->
+<video id="srcClip" muted playsinline style="display:none"></video>
+<canvas id="recCanvas" width="320" height="240" style="display:none"></canvas>
+
+<script>
+// Count Hands.prototype.send() calls before any Hands instance exists, so both the live
+// runHandLoop's sends and the extractor's detector.detect() sends are observable from outside
+// gesture-data.js's closure (no test-only hook needed inside it).
+window._sendCount = 0;
+window.__patchSendCounter = function (HandsClass) {
+  const orig = HandsClass.prototype.send;
+  HandsClass.prototype.send = function (input) {
+    window._sendCount++;
+    return orig.call(this, input);
+  };
+};
+</script>
+<script src="js/lib/mediapipe/hands.js"></script>
+<script>window.__patchSendCounter(window.Hands);</script>
+<script src="js/capture-core.js"></script>
+<script src="js/gesture-data.js"></script>
+<script src="js/video-landmarks.js"></script>
+<script>
+// Driven by extractor-check.mjs over CDP. Every function below returns a plain
+// JSON-serializable value (Runtime.evaluate returnByValue).
+
+// Builds a synthetic MediaRecorder WebM: 3 plays of clipUrl with 1.5s black gaps at 320x240,
+// same recipe as .git/sdd/spike.html's makeRecording. Stores the Blob on window.recBlob and
+// returns metadata (never the Blob itself - it can't cross Runtime.evaluate's JSON boundary).
+window.makeRecording = async function (clipUrl, gapMs, fps) {
+  gapMs = gapMs || 1500;
+  fps = fps || 30;
+  const src = document.getElementById('srcClip');
+  src.src = clipUrl;
+  await new Promise((resolve, reject) => {
+    src.addEventListener('loadeddata', resolve, { once: true });
+    src.addEventListener('error', reject, { once: true });
+  });
+
+  const c = document.getElementById('recCanvas');
+  const ctx = c.getContext('2d');
+  const stream = c.captureStream(fps);
+  const mr = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+  const chunks = [];
+  mr.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data);
+  };
+
+  let drawing = true;
+  const tick = () => {
+    if (!drawing) return;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 320, 240);
+    if (!src.paused) {
+      const vw = src.videoWidth, vh = src.videoHeight;
+      const dh = 320 / (vw / vh);
+      ctx.drawImage(src, 0, (240 - dh) / 2, 320, dh);
+    }
+  };
+  const iv = setInterval(tick, 1000 / fps);
+
+  mr.start();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  await wait(gapMs);
+  for (let i = 0; i < 3; i++) {
+    src.currentTime = 0;
+    await src.play();
+    await new Promise((r) => src.addEventListener('ended', r, { once: true }));
+    src.pause();
+    await wait(gapMs);
+  }
+  drawing = false;
+  clearInterval(iv);
+  const stopped = new Promise((r) => (mr.onstop = r));
+  mr.stop();
+  await stopped;
+
+  window.recBlob = new Blob(chunks, { type: 'video/webm' });
+  return { bytes: window.recBlob.size, clipDuration: src.duration };
+};
+
+// Reads window.recBlob as a base64 string so the CDP driver can write it to disk (for the
+// ffmpeg no-cues/no-duration copy). Never used to send the video anywhere over the network.
+window.recBlobBase64 = async function () {
+  const buf = new Uint8Array(await window.recBlob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < buf.length; i += 8192) {
+    s += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
+  }
+  return btoa(s);
+};
+
+// Loads a base64-encoded webm (e.g. the ffmpeg no-cues copy fetched from the temp folder) into
+// window.recBlob so runExtract() can use it the same way as the in-page recording.
+window.loadBlobFromUrl = async function (url) {
+  const res = await fetch(url);
+  window.recBlob = await res.blob();
+  return window.recBlob.size;
+};
+
+// Sets up MediaPipe on the hidden #videoFeed element exactly as the real recording screen
+// would (GestureDataRecorder.setupMediaPipe), then gives that element a real playing/looping
+// clip so runHandLoop's readyState gate is satisfied and the live loop actually calls send().
+window.setupMp = async function (clipUrl) {
+  const video = document.getElementById('videoFeed');
+  video.src = clipUrl;
+  await new Promise((resolve, reject) => {
+    video.addEventListener('loadeddata', resolve, { once: true });
+    video.addEventListener('error', reject, { once: true });
+  });
+  await video.play();
+  const ok = await window.GestureDataRecorder.setupMediaPipe(video);
+  return { ok: !!ok };
+};
+
+// Runs one extractVideoLandmarks() pass over window.recBlob using a fresh createVideoDetector().
+// opts: { inputWidth, inputHeight, abortAfterFrames }.
+window.runExtract = async function (opts) {
+  opts = opts || {};
+  const detector = await window.GestureDataRecorder.createVideoDetector();
+  let controller = null;
+  let signal;
+  if (opts.abortAfterFrames) {
+    controller = new AbortController();
+    signal = controller.signal;
+  }
+  const progressCalls = [];
+  const t0 = performance.now();
+  try {
+    const result = await window.VideoLandmarks.extractVideoLandmarks(window.recBlob, {
+      detector,
+      inputWidth: opts.inputWidth,
+      inputHeight: opts.inputHeight,
+      signal,
+      onProgress: (done, total) => {
+        progressCalls.push([done, total]);
+        if (controller && done >= opts.abortAfterFrames) controller.abort();
+      },
+    });
+    const totalMs = Math.round(performance.now() - t0);
+    return { ok: true, result, totalMs, progressCalls: progressCalls.length };
+  } catch (err) {
+    const totalMs = Math.round(performance.now() - t0);
+    return {
+      ok: false,
+      errorName: err && err.name,
+      errorMessage: err && err.message,
+      totalMs,
+      progressCalls: progressCalls.length,
+    };
+  } finally {
+    detector.release();
+  }
+};
+
+// Feeds an extractVideoLandmarks() result through GestureCaptureCore.segmentFrames() exactly
+// as the offline-segmentation caller (a later task) will: hands.length > 0 => handPresent.
+window.checkSegmentation = function (result) {
+  const frames = result.frames.map((f) => ({ t: f.t, handPresent: f.hands.length > 0 }));
+  const seg = window.GestureCaptureCore.segmentFrames(frames, { endMs: result.durationMs });
+  return { ok: seg.ok, repsCount: seg.ok ? seg.reps.length : undefined, reason: seg.reason };
+};
+
+window.getSendCount = function () {
+  return window._sendCount;
+};
+
+// Waits ms, then returns the send count observed at that point (used to check the live loop
+// resumes and keeps calling hands.send() after release()).
+window.waitAndGetSendCount = function (ms) {
+  return new Promise((resolve) => setTimeout(() => resolve(window._sendCount), ms));
+};
+</script>
+</body>
+</html>
