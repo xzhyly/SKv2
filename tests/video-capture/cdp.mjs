@@ -57,6 +57,11 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
   const pending = new Map();
   const consoleMessages = []; // { type, text }
   const exceptions = []; // string
+  // Network.requestWillBeSent log, only populated once a caller calls enableNetwork() (Task 6's
+  // e2e.mjs uses this to independently confirm no request ever carries video_base64/video_path,
+  // at the CDP level rather than via a page-side fetch wrapper). Left empty and unused by any
+  // existing check, so this is a no-op for callers that never enable it.
+  const networkRequests = []; // { requestId, method, url, postData, hasPostData }
 
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
@@ -70,6 +75,15 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
       consoleMessages.push({ type: m.params.type, text: args.join(' ') });
     } else if (m.method === 'Runtime.exceptionThrown') {
       exceptions.push(JSON.stringify(m.params.exceptionDetails).slice(0, 500));
+    } else if (m.method === 'Network.requestWillBeSent') {
+      const req = m.params.request || {};
+      networkRequests.push({
+        requestId: m.params.requestId,
+        method: req.method,
+        url: req.url,
+        postData: req.postData !== undefined ? req.postData : null,
+        hasPostData: !!req.hasPostData,
+      });
     }
   };
 
@@ -122,6 +136,25 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
     return exceptions.slice();
   }
 
+  // Opt-in: enables the CDP Network domain so networkRequests starts filling and
+  // getNetworkRequests()/getRequestPostData() become meaningful. No effect on existing callers
+  // that never invoke it.
+  async function enableNetwork() {
+    await send('Network.enable');
+  }
+
+  function getNetworkRequests() {
+    return networkRequests.slice();
+  }
+
+  // For a request whose postData was too large to inline on requestWillBeSent (hasPostData true,
+  // postData null), fetch it explicitly. Returns null if unavailable (e.g. request already
+  // evicted from Chrome's buffer).
+  async function getRequestPostData(requestId) {
+    const r = await send('Network.getRequestPostData', { requestId });
+    return r.result && r.result.postData !== undefined ? r.result.postData : null;
+  }
+
   async function close() {
     try {
       ws.close();
@@ -134,5 +167,16 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
     } catch {}
   }
 
-  return { navigate, evaluate, send, getConsoleErrors, getExceptions, close, proc };
+  return {
+    navigate,
+    evaluate,
+    send,
+    getConsoleErrors,
+    getExceptions,
+    close,
+    proc,
+    enableNetwork,
+    getNetworkRequests,
+    getRequestPostData,
+  };
 }
