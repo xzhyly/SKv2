@@ -316,7 +316,7 @@ function refreshSampleCountLine() {
   if (!line) return;
   const label = currentLabelClean();
   const { samples, frames } = sampleInfoFor(label, selectedSignSet());
-  if (startBtn) startBtn.textContent = samples > 0 ? 'Record another sample' : 'Start Capture';
+  if (startBtn) startBtn.textContent = 'Record 3 samples';
   line.classList.toggle('done', samples >= SAMPLE_TARGET);
   if (!label) { line.textContent = ''; return; }
   let text;
@@ -1226,280 +1226,43 @@ function formulateSmartSentence(wordsArray, lang) {
   return sentence + (isQuestion ? '?' : '.');
 }
 
-// ── Countdown and Video Preview Features ──
-let mediaRecorder = null;
-let recordedChunks = [];
-let previewBlobUrl = null;
-let currentCaptureMeta = null;
+// ── Step 1: "Record 3 samples" (video-based gesture capture) ──
+// The recording itself (countdown, MediaRecorder, live guidance, review, landmark extraction,
+// the 3 saves) lives in js/gesture-capture-ui.js (window.GestureCaptureUI). This file only
+// checks the form's preconditions and opens it, and takes the "samples saved" callback back.
+function cameraHasLiveVideo() {
+  const s = videoFeed ? videoFeed.srcObject : null;
+  return !!(s && typeof s.getVideoTracks === 'function' &&
+            s.getVideoTracks().some(t => t.readyState === 'live'));
+}
 
-function runCountdown(onComplete) {
-  const overlay = document.getElementById('countdownOverlay');
-  const numberEl = document.getElementById('countdownNumber');
-  if (!overlay || !numberEl) {
-    onComplete();
+function openRecordingMode() {
+  const label = currentLabelClean();
+  if (!label) { showToast('Enter a gesture name first.'); return; }
+  if (!cameraHasLiveVideo()) { showToast('⚠️ Please enable the camera first!'); return; }
+  if (typeof window.closeKeyboard === 'function') window.closeKeyboard();
+  if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
+  const catRadio = document.querySelector('input[name="gestureCategory"]:checked');
+  if (!window.GestureCaptureUI || typeof window.GestureCaptureUI.open !== 'function') {
+    console.error('[gesture-training-ui] GestureCaptureUI is not loaded.');
     return;
   }
-
-  overlay.classList.add('show');
-  let count = 3;
-  numberEl.textContent = count;
-
-  const interval = setInterval(() => {
-    count--;
-    if (count > 0) {
-      numberEl.textContent = count;
-    } else if (count === 0) {
-      numberEl.textContent = "GO!";
-    } else {
-      clearInterval(interval);
-      overlay.classList.remove('show');
-      onComplete();
-    }
-  }, 1000);
-}
-
-function startMediaRecording() {
-  recordedChunks = [];
-  if (!stream) {
-    console.warn("No active camera stream for MediaRecorder.");
-    return;
-  }
-
-  try {
-    const options = { mimeType: 'video/webm;codecs=vp8' };
-    mediaRecorder = new MediaRecorder(stream, options);
-  } catch (e) {
-    try {
-      mediaRecorder = new MediaRecorder(stream);
-    } catch (err) {
-      console.error("Failed to initialize MediaRecorder:", err);
-      return;
-    }
-  }
-
-  mediaRecorder.ondataavailable = (event) => {
-    if (event.data && event.data.size > 0) {
-      recordedChunks.push(event.data);
-    }
-  };
-
-  mediaRecorder.onstop = () => {
-    console.log("MediaRecorder stopped. Chunks:", recordedChunks.length);
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-
-    // Expose blob globally so gesture-data.js can read it during confirmAndSave
-    window.currentPreviewBlob = blob;
-
-    if (previewBlobUrl) {
-      URL.revokeObjectURL(previewBlobUrl);
-    }
-    previewBlobUrl = URL.createObjectURL(blob);
-    const previewVideo = document.getElementById('capturePreviewVideo');
-    if (previewVideo) {
-      previewVideo.classList.add('mirrored'); // Mirror webcam recording!
-      previewVideo.src = previewBlobUrl;
-      previewVideo.load();
-      
-      // Now show the preview panel and play after the src is loaded
-      document.getElementById('step1CaptureControls').style.display = 'none';
-      document.getElementById('step1PreviewControls').classList.add('active');
-      
-      previewVideo.play().catch(e => console.warn("Failed autoplaying preview video:", e));
-    }
-  };
-
-  mediaRecorder.start();
-}
-
-function resetCaptureUI() {
-  document.getElementById('step1CaptureControls').style.display = 'flex';
-  document.getElementById('step1PreviewControls').classList.remove('active');
-  const previewVideo = document.getElementById('capturePreviewVideo');
-  if (previewVideo) {
-    previewVideo.pause();
-    previewVideo.src = '';
-    previewVideo.classList.remove('mirrored');
-    previewVideo.style.transform = ''; // Reset CSS zoom transform
-  }
-  if (previewBlobUrl) {
-    URL.revokeObjectURL(previewBlobUrl);
-    previewBlobUrl = null;
-  }
-  currentCaptureMeta = null;
-
-  // Reset Zoom UI and values
-  const previewZoom = document.getElementById('previewZoom');
-  const previewZoomVal = document.getElementById('previewZoomVal');
-  if (previewZoom) previewZoom.value = 100;
-  if (previewZoomVal) previewZoomVal.textContent = '100%';
-  currentZoom = 1;
-  panX = 0;
-  panY = 0;
-}
-
-// ── Video Preview Zoom and Pan Logic ──
-let currentZoom = 1;
-let panX = 0;
-let panY = 0;
-let isDragging = false;
-let startX = 0;
-let startY = 0;
-
-function updateVideoTransform() {
-  const previewVideo = document.getElementById('capturePreviewVideo');
-  if (!previewVideo) return;
-  const isMirrored = previewVideo.classList.contains('mirrored');
-  const scaleX = isMirrored ? -1 : 1;
-  previewVideo.style.transform = `scale(${currentZoom}) translate(${panX / currentZoom}px, ${panY / currentZoom}px) scaleX(${scaleX})`;
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  const previewContainer = document.querySelector('.tr-preview-video-container');
-  const previewVideo = document.getElementById('capturePreviewVideo');
-  const previewZoom = document.getElementById('previewZoom');
-  const previewZoomVal = document.getElementById('previewZoomVal');
-
-  if (previewZoom) {
-    previewZoom.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value);
-      currentZoom = val / 100;
-      if (previewZoomVal) {
-        previewZoomVal.textContent = `${val}%`;
-      }
-      if (currentZoom <= 1) {
-        panX = 0;
-        panY = 0;
-        if (previewContainer) previewContainer.style.cursor = 'default';
-      } else {
-        if (previewContainer) previewContainer.style.cursor = 'grab';
-      }
-      updateVideoTransform();
-    });
-  }
-
-  if (previewContainer && previewVideo) {
-    const startDrag = (clientX, clientY) => {
-      if (currentZoom <= 1) return;
-      isDragging = true;
-      previewContainer.style.cursor = 'grabbing';
-      startX = clientX - panX;
-      startY = clientY - panY;
-    };
-
-    const moveDrag = (clientX, clientY) => {
-      if (!isDragging) return;
-      panX = clientX - startX;
-      panY = clientY - startY;
-
-      // Clamp panning boundaries to keep the video in view
-      const limitX = (currentZoom - 1) * (previewContainer.clientWidth / 2);
-      const limitY = (currentZoom - 1) * (previewContainer.clientHeight / 2);
-      panX = Math.max(-limitX, Math.min(limitX, panX));
-      panY = Math.max(-limitY, Math.min(limitY, panY));
-
-      updateVideoTransform();
-    };
-
-    const endDrag = () => {
-      if (isDragging) {
-        isDragging = false;
-        previewContainer.style.cursor = currentZoom > 1 ? 'grab' : 'default';
-      }
-    };
-
-    // Mouse Controls
-    previewContainer.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      startDrag(e.clientX, e.clientY);
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      moveDrag(e.clientX, e.clientY);
-    });
-
-    window.addEventListener('mouseup', endDrag);
-
-    // Touch Controls (Tablet / Touch Kiosk Support)
-    previewContainer.addEventListener('touchstart', (e) => {
-      const touch = e.touches[0];
-      startDrag(touch.clientX, touch.clientY);
-    });
-
-    window.addEventListener('touchmove', (e) => {
-      const touch = e.touches[0];
-      moveDrag(touch.clientX, touch.clientY);
-    });
-
-    window.addEventListener('touchend', endDrag);
-  }
-});
-
-// Hook into GestureDataRecorder.startRecording to inject countdown
-function hookStartRecording() {
-  if (window.GestureDataRecorder && typeof window.GestureDataRecorder.startRecording === 'function') {
-    const origStart = window.GestureDataRecorder.startRecording;
-    window.GestureDataRecorder.startRecording = function (label) {
-      if (!stream) {
-        showToast("⚠️ Please enable the camera first!");
-        return;
-      }
-      resetCaptureUI();
-      runCountdown(() => {
-        startMediaRecording();
-        origStart(label);
-      });
-    };
-  } else {
-    setTimeout(hookStartRecording, 50);
-  }
-}
-hookStartRecording();
-
-// Capture callbacks
-window.onGestureCaptureStop = () => {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
-};
-
-window.onGestureCaptureCancelled = () => {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
-  resetCaptureUI();
-};
-
-window.onGestureCaptureReady = (label, signLanguage) => {
-  currentCaptureMeta = { label, signLanguage };
-  const prev = document.getElementById('previewSampleLine');
-  if (prev) prev.textContent = `This will be sample ${sampleInfoFor(label, String(signLanguage).toUpperCase() === 'FSL' ? 'FSL' : 'ESL').samples + 1} of “${label}”.`;
-};
-
-// Wire confirm and retry preview controls immediately
-const saveBtn = document.getElementById('savePreviewBtn');
-const retryBtn = document.getElementById('retryPreviewBtn');
-
-if (saveBtn) {
-  saveBtn.addEventListener('click', async () => {
-    if (window.GestureDataRecorder && typeof window.GestureDataRecorder.confirmAndSave === 'function') {
-      const res = await window.GestureDataRecorder.confirmAndSave();
-      if (res && res.success) {
-        noteSampleSaved(res);
-        resetCaptureUI();
-        refreshSampleCountLine();
-      }
-    }
+  window.GestureCaptureUI.open({
+    label,
+    signSet: selectedSignSet(),
+    category: catRadio ? catRadio.value : 'word',
+    stream: videoFeed.srcObject,
   });
 }
 
-if (retryBtn) {
-  retryBtn.addEventListener('click', () => {
-    if (window.GestureDataRecorder && typeof window.GestureDataRecorder.discardCapture === 'function') {
-      window.GestureDataRecorder.discardCapture();
-    }
-    resetCaptureUI();
-  });
-}
+// Called once by js/gesture-capture-ui.js after all 3 samples of a recording are saved (and the
+// dataset reloaded): res = { label, signLanguage, labelSampleCount, frameCount }.
+window.onCaptureSamplesSaved = (res) => {
+  noteSampleSaved(res);
+  refreshSampleCountLine();
+};
 
-
-
+(function wireRecordButton() {
+  const btn = document.getElementById('startGestureDataBtn');
+  if (btn) btn.addEventListener('click', openRecordingMode);
+})();

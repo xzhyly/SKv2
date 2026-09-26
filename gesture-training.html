@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Train Gestures ✿ Sining Kamay</title>
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.6">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.7">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
   <script src="js/lib/tf.min.js" defer></script>
   <script src="js/lib/mediapipe/hands.js" defer></script>
   <script src="js/gesture-data.js" defer></script>
+  <script src="js/capture-core.js" defer></script>
+  <script src="js/video-landmarks.js" defer></script>
   <script src="js/gesture-category.js" defer></script>
   <script src="js/camera-helper.js" defer></script>
   <script src="js/speech-synthesis.js" defer></script>
@@ -99,7 +101,7 @@
       <ul class="tr-instr-bullets">
         <li><span class="tr-bullet-num">1</span>Type a gesture name, or leave it blank to auto-label from your video's filename.</li>
         <li><span class="tr-bullet-num">2</span>Record live using the camera, OR click **Upload & Process Video** to import a video.</li>
-        <li><span class="tr-bullet-num">3</span>Review the preview (use zoom/panning if needed), save the sample, then continue.</li>
+        <li><span class="tr-bullet-num">3</span>Press <strong>Record 3 samples</strong>, sign the gesture 3 times with a rest between, then review and save.</li>
       </ul>
       <button class="tr-next-btn" onclick="showStepContent(1)">Next →</button>
     </div>
@@ -147,11 +149,6 @@
     <div class="tr-right-panel">
       <div class="tr-cam-lbl">Camera Feed</div>
       <div class="tr-cam-frame" id="cameraFrame">
-        <!-- Countdown Overlay -->
-        <div id="countdownOverlay" class="tr-countdown-overlay">
-          <div id="countdownNumber" class="tr-countdown-number">3</div>
-        </div>
-
         <video id="videoFeed" autoplay playsinline muted></video>
         <div class="tr-cam-placeholder" id="cameraPlaceholder">
           <div class="tr-cam-icon">📷</div>
@@ -197,7 +194,7 @@
     <div class="tr-left-panel">
       <!-- Step 1 -->
       <div id="leftStep1" class="tr-left-content active">
-        <!-- Capture Controls (hidden during preview) -->
+        <!-- Capture Controls -->
         <div id="step1CaptureControls" style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
           <div class="tr-section-lbl">Gesture Sample Capture</div>
           <div id="gestureDatasetCard" data-gesture-recorder>
@@ -222,18 +219,7 @@
                 <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="phrase"> Phrase</label>
               </div>
             </div>
-            <div class="tr-cap-btns" style="margin-top:2px">
-              <button id="startGestureDataBtn" data-gesture-start class="tr-cap-btn" type="button">Start Capture</button>
-              <button id="stopGestureDataBtn" data-gesture-stop class="tr-cap-btn" type="button" disabled>Finish Capture</button>
-            </div>
-            <div class="tr-lm-card" id="gestureDataStatus" role="status" aria-live="polite" style="margin-top:2px">
-              <div class="tr-lm-row">
-                <span>Landmark frames</span>
-                <span class="tr-lm-count" id="gestureDataFrameCount" data-gesture-frame-count>0</span>
-              </div>
-              <div class="tr-lm-bar"><div class="tr-lm-fill"></div></div>
-              <div class="tr-lm-status" id="gestureDataStatusText" data-gesture-status-text>Ready to capture hand samples</div>
-            </div>
+            <button id="startGestureDataBtn" class="tr-record-btn" type="button">Record 3 samples</button>
           </div>
 
           <!-- Hidden container kept for data syncing -->
@@ -257,28 +243,6 @@
           </div>
           <button type="button" class="tr-train-btn" style="margin-top: 6px;" onclick="trClickPill(2)">Next: Train AI →</button>
           <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(1)">← Back to Instructions</button>
-        </div>
-
-        <!-- Preview Controls (shown during preview) -->
-        <div id="step1PreviewControls" class="tr-preview-panel">
-          <div class="tr-preview-title">📹 Confirm Gesture Recording</div>
-          <div id="previewSampleLine" class="tr-sample-line"></div>
-          <div class="tr-preview-video-container">
-            <video id="capturePreviewVideo" class="tr-preview-video" autoplay loop muted playsinline></video>
-          </div>
-          <div class="tr-preview-zoom-ctrl" style="margin-top: 2px; display: flex; align-items: center; gap: 8px; width: 100%;">
-            <span style="font-size: 11px; font-weight: 700; color: var(--navy);">🔍 Zoom:</span>
-            <input type="range" id="previewZoom" min="100" max="250" value="100" style="flex: 1; height: 4px; accent-color: var(--orange); cursor: pointer;">
-            <span id="previewZoomVal" style="font-size: 11px; font-weight: 700; color: var(--muted); min-width: 32px; text-align: right;">100%</span>
-          </div>
-          <div class="tr-preview-actions">
-            <button type="button" class="tr-preview-btn save" id="savePreviewBtn">
-              ✅ Save Gesture
-            </button>
-            <button type="button" class="tr-preview-btn retry" id="retryPreviewBtn">
-              🔄 Try Again
-            </button>
-          </div>
         </div>
       </div>
 
@@ -385,6 +349,37 @@
   </div>
 </div>
 
+<!-- Full-screen recording mode for Step 1's "Record 3 samples" (js/gesture-capture-ui.js) -->
+<div id="gcMode" class="gc-mode" data-state="closed" role="dialog" aria-modal="true" aria-label="Record 3 samples" hidden>
+  <div class="gc-top">
+    <div class="gc-chip" id="gcChip"></div>
+    <button type="button" class="gc-btn gc-cancel" id="gcCancel">Cancel</button>
+  </div>
+  <div class="gc-body">
+    <div class="gc-stage" id="gcStage">
+      <video id="gcLive" class="gc-video" autoplay playsinline muted></video>
+      <video id="gcReview" class="gc-video" playsinline muted loop hidden></video>
+      <button type="button" class="gc-start" id="gcStart">START</button>
+      <div class="gc-countdown" id="gcCountdown" hidden></div>
+    </div>
+    <div class="gc-side">
+      <div class="gc-rec" id="gcRec" hidden><span class="gc-rec-dot"></span><span class="gc-rec-lbl">REC</span><span id="gcRecTime">0:00</span></div>
+      <div class="gc-prompt" id="gcPrompt" hidden></div>
+      <div class="gc-dots" id="gcDots" hidden><span class="gc-dot"></span><span class="gc-dot"></span><span class="gc-dot"></span></div>
+      <div class="gc-hand" id="gcHand" hidden><span class="gc-hand-dot"></span><span id="gcHandText">No hand</span></div>
+      <div class="gc-hint" id="gcHint" role="status" aria-live="polite" hidden></div>
+      <div class="gc-msg" id="gcMsg" role="status" aria-live="polite" hidden></div>
+      <div class="gc-progress" id="gcProgress" hidden><div class="gc-progress-fill" id="gcProgressFill"></div></div>
+      <div class="gc-actions" id="gcActions" hidden>
+        <button type="button" class="gc-btn gc-primary" id="gcSave">Save</button>
+        <button type="button" class="gc-btn gc-primary" id="gcRetrySave">Retry save</button>
+        <button type="button" class="gc-btn gc-secondary" id="gcRedo">Redo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/gesture-capture-ui.js" defer></script>
 <script src="js/gesture-training-ui.js" defer></script>
 <script src="js/virtual-keyboard.js" defer></script>
 

@@ -1,10 +1,7 @@
 (function () {
-  const FRAME_TARGET = 30;
-  // v2 capture was capped at FRAME_TARGET = 30 frames; this keeps a long v3 rep from
+  // v2 capture was capped at 30 frames (the removed FRAME_TARGET); this keeps a long v3 rep from
   // outweighing v2 samples in knnPredict's top-5 mean; the keyframes phase replaces it.
   const MAX_ROWS_PER_RAW_SAMPLE = 30;
-  const FRAME_MIN = 1;
-  const FRAME_MAX = 40;
   const SAVE_ENDPOINT = (location.protocol === "file:")
     ? "http://localhost/Sining_kamay/php/api/save_gesture.php"
     : "php/api/save_gesture.php";
@@ -13,17 +10,11 @@
     hands: null,
     cameraLoop: null,
     latestLandmarks: null,
-    recording: false,
     processingVideo: false,
-    label: "",
-    frames: [],
-    lastFrameAt: 0,
     loopPaused: false,
     sendInFlight: false,
-    frameIntervalMs: 90,
     video: null,
     toast: null,
-    ui: {},
     savedCategories: { ESL: {}, FSL: {} }, // last loadSavedGestureDataset()'s json.categories
     // Video-based gesture capture (createVideoDetector / onHandResults, js/video-landmarks.js):
     detectorMode: false, // true while a createVideoDetector() detector "owns" onResults
@@ -98,53 +89,6 @@
     state.toastTimer = setTimeout(() => {
       state.toast.style.opacity = "0";
     }, 2400);
-  }
-
-  function getRecorderPanels() {
-    const panels = Array.from(document.querySelectorAll("[data-gesture-recorder]"));
-    if (panels.length) {
-      return panels.map((panel) => ({
-        labelInput: panel.querySelector("[data-gesture-label]"),
-        languageInput: panel.querySelector("[data-gesture-language]:checked"),
-        startBtn: panel.querySelector("[data-gesture-start]"),
-        stopBtn: panel.querySelector("[data-gesture-stop]"),
-        status: panel.querySelector(".dataset-status"),
-        statusText: panel.querySelector("[data-gesture-status-text]"),
-        frameCount: panel.querySelector("[data-gesture-frame-count]"),
-      }));
-    }
-
-    return [{
-      labelInput: document.getElementById("gestureLabelInput"),
-      languageInput: document.querySelector("[data-gesture-language]:checked"),
-      startBtn: document.getElementById("startGestureDataBtn"),
-      stopBtn: document.getElementById("stopGestureDataBtn"),
-      status: document.getElementById("gestureDataStatus"),
-      statusText: document.getElementById("gestureDataStatusText"),
-      frameCount: document.getElementById("gestureDataFrameCount"),
-    }];
-  }
-
-  function setRecorderUi(partial = {}) {
-    state.ui.panels = getRecorderPanels();
-    state.ui.panels.forEach(({ labelInput, startBtn, stopBtn, status, statusText, frameCount }) => {
-      if (statusText && partial.message) statusText.textContent = partial.message;
-      if (frameCount) frameCount.textContent = `${state.frames.length}`;
-      if (status) {
-        status.classList.toggle("idle", !state.recording);
-        const fill = status.querySelector(".tr-lm-fill");
-        if (fill) {
-          const percent = Math.min((state.frames.length / FRAME_TARGET) * 100, 100);
-          fill.style.width = `${percent}%`;
-        }
-      }
-      if (startBtn) startBtn.disabled = state.recording;
-      if (stopBtn) stopBtn.disabled = !state.recording;
-      if (labelInput) {
-        labelInput.disabled = state.recording;
-        if (partial.label) labelInput.value = partial.label;
-      }
-    });
   }
 
   function cleanLabel(label) {
@@ -289,8 +233,7 @@
     state.hands.onResults((results) => {
       // Video-based gesture capture: while a createVideoDetector() detector owns onResults,
       // route results straight to the pending detect(canvas) promise and stop - no
-      // latestLandmarks update, no skeleton drawing, no captureFrameIfRecording (owner brief,
-      // Task 4).
+      // latestLandmarks update, no skeleton drawing (owner brief, Task 4).
       if (state.detectorMode) {
         // This result settles the one outstanding hands.send() call detect() issued. If a
         // detect() promise is still waiting for it, resolve it; otherwise it already
@@ -309,7 +252,6 @@
 
       const hands = results.multiHandLandmarks || [];
       state.latestLandmarks = hands.length > 0 ? hands : null;
-      captureFrameIfRecording();
 
       state.handSubscribers.forEach((fn) => {
         try {
@@ -410,10 +352,6 @@
     });
 
     runHandLoop();
-    const isTranslateOnly = new URLSearchParams(location.search).get('screen') === 'translate';
-    if (!isTranslateOnly) {
-      notify('Press "G" to record a labeled gesture sample.');
-    }
     return true;
   }
 
@@ -668,171 +606,22 @@
     };
   }
 
-  function captureFrameIfRecording() {
-    if (!state.recording || state.frames.length >= FRAME_TARGET) return;
-    const now = Date.now();
-    if (now - state.lastFrameAt < state.frameIntervalMs) return;
-    const landmarks = getLatestLandmarks();
-    if (!landmarks) return;
+  // SAVE_META_KEYS: the v3 raw-sample metadata keys an optional `meta` object may carry into
+  // the payload (video-based gesture capture, js/gesture-capture-ui.js). Any other key in
+  // `meta` is ignored, so it can never override label/sign_language/frames.
+  const SAVE_META_KEYS = ["formatVersion", "source", "repIndex", "videoWidth", "videoHeight", "fps", "input"];
 
-    state.frames.push({
-      index: state.frames.length,
-      timestamp: now,
-      landmarks: flattenLandmarks(state.latestLandmarks),
-    });
-    state.lastFrameAt = now;
-    setRecorderUi({ message: `Recording "${state.label}"...` });
-
-    if (state.frames.length >= FRAME_TARGET) {
-      stopRecording();
-    }
-  }
-
-  function startRecording(label) {
-    const panels = getRecorderPanels();
-    const input = panels.map((panel) => panel.labelInput).find((el) => el && el.value.trim());
-    const selectedLanguage = (panels.map((panel) => panel.languageInput).find(Boolean)?.value || "ESL").toUpperCase();
-    const clean = cleanLabel(label || (input && input.value) || prompt("Gesture label, for example hello or thank_you:"));
-    if (!clean) {
-      notify("Recording cancelled. A label is required.");
-      setRecorderUi({ message: "Enter a label before capture" });
-      return;
-    }
-    setRecorderUi({ label: clean });
-    if (!state.hands) {
-      setupMediaPipe();
-    }
-    state.recording = true;
-    state.label = clean;
-    state.signLanguage = selectedLanguage === "FSL" ? "FSL" : "ESL";
-    state.frames = [];
-    state.lastFrameAt = 0;
-    setRecorderUi({ message: `Recording "${clean}"...`, label: clean });
-    notify(`Recording "${clean}"... hold the gesture steady.`);
-  }
-
-  async function stopRecording() {
-    if (!state.recording) return;
-    state.recording = false;
-
-    // Trigger capture-stopped callback so UI can stop recording video
-    if (typeof window.onGestureCaptureStop === "function") {
-      window.onGestureCaptureStop();
-    }
-
-    if (state.frames.length < FRAME_MIN) {
-      notify(`Only ${state.frames.length} landmark frames captured. Try again.`);
-      state.frames = [];
-      setRecorderUi({ message: "Capture too short. Try again." });
-      if (typeof window.onGestureCaptureCancelled === "function") {
-        window.onGestureCaptureCancelled();
-      }
-      return;
-    }
-
-    if (state.frames.length > FRAME_MAX) {
-      state.frames = state.frames.slice(0, FRAME_MAX);
-    }
-
-    // Trigger preview mode in UI instead of autosaving
-    if (typeof window.onGestureCaptureReady === "function") {
-      window.onGestureCaptureReady(state.label, state.signLanguage);
-    } else {
-      // Fallback: save immediately if no preview logic is attached
-      await confirmAndSave();
-    }
-  }
-
-  async function confirmAndSave() {
-    const savedLabel = state.label, savedLang = state.signLanguage;
-    if (state.frames.length === 0 || !state.label) {
-      notify("No gesture data captured to save.");
-      return { success: false };
-    }
-
-    // Grab the recorded video blob from the UI layer (set by gesture-training-ui.js)
-    let videoBase64 = null;
-    const videoPath = window.currentPreviewPath || null;
-    if (!videoPath && window.currentPreviewBlob instanceof Blob) {
-      try {
-        videoBase64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload  = () => resolve(reader.result); // includes data-URI prefix
-          reader.onerror = reject;
-          reader.readAsDataURL(window.currentPreviewBlob);
-        });
-      } catch (e) {
-        console.warn('[gesture-data] Could not convert video blob to base64:', e);
-      }
-    }
-
-    const checkedCategory = document.querySelector('input[name="gestureCategory"]:checked');
-    const category = checkedCategory ? checkedCategory.value : null;
-
-    try {
-      const result = await saveGestureSample(state.label, state.frames, state.signLanguage, videoBase64, videoPath, category);
-      if (result.success) {
-        notify(`🎉 Saved ${state.frames.length} frames for "${state.label}".`);
-        setRecorderUi({ message: `Saved "${state.label}"` });
-
-        // Auto-invalidate Sign-to-Text model cache
-        const lang = (state.signLanguage || 'ESL').toUpperCase();
-        const modelKey = `indexeddb://sining-kamay-model-${lang}`;
-        const labelsKey = `sining_kamay_labels_${lang}`;
-        try {
-          if (window.tf && typeof tf.io !== 'undefined' && typeof tf.io.removeModel === 'function') {
-            await tf.io.removeModel(modelKey);
-          }
-        } catch (e) {
-          // Model may not exist yet — safe to ignore
-        }
-        localStorage.removeItem(labelsKey);
-
-        if (typeof window.reloadDataset === "function") {
-          await window.reloadDataset();
-        }
-        if (typeof window.showToast === "function") {
-          const videoMsg = result.videoAsset ? ` Video saved to ${result.videoAsset}.` : '';
-          window.showToast(`🎉 Gesture "${state.label}" saved!${videoMsg} Sign-to-Text will retrain on next visit.`, 5000);
-        }
-        
-        // Reset state
-        state.frames = [];
-        state.label  = "";
-        window.currentPreviewBlob = null;
-        window.currentPreviewPath = null;
-        return { success: true, videoAsset: result.videoAsset, label: savedLabel, signLanguage: savedLang,
-                 frameCount: result.frameCount, labelSampleCount: result.labelSampleCount,
-                 videoSkipped: !!result.videoSkipped, category: result.category };
-      } else {
-        notify("Gesture save failed.");
-        setRecorderUi({ message: "Gesture save failed" });
-        return { success: false };
-      }
-    } catch (err) {
-      console.error("[gesture-data] Save failed:", err);
-      notify(`Gesture save failed: ${err.message}`);
-      setRecorderUi({ message: `Save failed: ${err.message}` });
-      if (typeof window.showToast === "function") {
-        window.showToast(`⚠️ Error: ${err.message}`, 6000);
-      }
-      return { success: false };
-    }
-  }
-
-  function discardCapture() {
-    state.frames = [];
-    state.label = "";
-    setRecorderUi({ message: "Capture discarded" });
-    notify("Gesture capture discarded.");
-  }
-
-  async function saveGestureSample(label, frames, signLanguage = "ESL", videoBase64 = null, videoPath = null, category = null) {
+  async function saveGestureSample(label, frames, signLanguage = "ESL", videoBase64 = null, videoPath = null, category = null, meta = null) {
     const payload = {
       label:         cleanLabel(label),
       sign_language: signLanguage === "FSL" ? "FSL" : "ESL",
       frames,
     };
+    if (meta && typeof meta === "object") {
+      SAVE_META_KEYS.forEach((key) => {
+        if (meta[key] !== undefined) payload[key] = meta[key];
+      });
+    }
     if (videoBase64) {
       payload.video_base64 = videoBase64;
     }
@@ -924,70 +713,7 @@
     return recordingsToTrainingRows(gestures);
   }
 
-  function installHotkey() {
-    if (window.SK_DISABLE_GESTURE_HOTKEY) return;
-    const isTranslateOnly = new URLSearchParams(location.search).get('screen') === 'translate';
-    if (isTranslateOnly) return;
-    document.addEventListener("keydown", (event) => {
-      if (event.key.toLowerCase() !== "g") return;
-      if (event.repeat) return;
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
-      if (state.recording) {
-        if (window.GestureDataRecorder && typeof window.GestureDataRecorder.stopRecording === 'function') {
-          window.GestureDataRecorder.stopRecording();
-        } else {
-          stopRecording();
-        }
-      } else {
-        if (window.GestureDataRecorder && typeof window.GestureDataRecorder.startRecording === 'function') {
-          window.GestureDataRecorder.startRecording();
-        } else {
-          startRecording();
-        }
-      }
-    });
-  }
-
-  function installUiControls() {
-    setRecorderUi({ message: "Ready to capture landmark frames" });
-
-    state.ui.panels.forEach(({ labelInput, startBtn, stopBtn }) => {
-      if (startBtn) {
-        startBtn.addEventListener("click", () => {
-          if (window.GestureDataRecorder && typeof window.GestureDataRecorder.startRecording === 'function') {
-            window.GestureDataRecorder.startRecording(labelInput ? labelInput.value : "");
-          } else {
-            startRecording(labelInput ? labelInput.value : "");
-          }
-        });
-      }
-      if (stopBtn) {
-        stopBtn.addEventListener("click", () => {
-          if (window.GestureDataRecorder && typeof window.GestureDataRecorder.stopRecording === 'function') {
-            window.GestureDataRecorder.stopRecording();
-          } else {
-            stopRecording();
-          }
-        });
-      }
-      if (labelInput) {
-        labelInput.addEventListener("keydown", (event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            if (window.GestureDataRecorder && typeof window.GestureDataRecorder.startRecording === 'function') {
-              window.GestureDataRecorder.startRecording(labelInput.value);
-            } else {
-              startRecording(labelInput.value);
-            }
-          }
-        });
-      }
-    });
-  }
-
   async function init() {
-    installHotkey();
-    installUiControls();
     const video = document.getElementById("videoFeed") || document.getElementById("video");
     if (video) {
       video.addEventListener("loadeddata", () => setupMediaPipe(video), { once: true });
@@ -997,10 +723,6 @@
 
   window.GestureDataRecorder = {
     init,
-    startRecording,
-    stopRecording,
-    confirmAndSave,
-    discardCapture,
     setupMediaPipe,
     preloadMediaPipe,
     pauseHandLoop,

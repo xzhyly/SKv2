@@ -12,7 +12,9 @@ import { join } from 'node:path';
 
 const CHROME_PATH = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 
-export async function launchChrome({ port = 9333, width = 1024, height = 600 } = {}) {
+// extraArgs: additional Chrome command-line flags (e.g. the fake-camera flags used by
+// capture-ui-check.mjs).
+export async function launchChrome({ port = 9333, width = 1024, height = 600, extraArgs = [] } = {}) {
   const profileDir = mkdtempSync(join(tmpdir(), 'vc-cdp-'));
   const proc = spawn(
     CHROME_PATH,
@@ -24,6 +26,7 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600 } =
       '--disable-background-media-suspend',
       '--disable-renderer-backgrounding',
       `--window-size=${width},${height}`,
+      ...extraArgs,
       'about:blank',
     ],
     { stdio: 'ignore' }
@@ -131,5 +134,5 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600 } =
     } catch {}
   }
 
-  return { navigate, evaluate, getConsoleErrors, getExceptions, close, proc };
+  return { navigate, evaluate, send, getConsoleErrors, getExceptions, close, proc };
 }
