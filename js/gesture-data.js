@@ -1,5 +1,8 @@
 (function () {
   const FRAME_TARGET = 30;
+  // v2 capture was capped at FRAME_TARGET = 30 frames; this keeps a long v3 rep from
+  // outweighing v2 samples in knnPredict's top-5 mean; the keyframes phase replaces it.
+  const MAX_ROWS_PER_RAW_SAMPLE = 30;
   const FRAME_MIN = 1;
   const FRAME_MAX = 40;
   const SAVE_ENDPOINT = (location.protocol === "file:")
@@ -662,6 +665,24 @@
 
   function recordingToFeatureRows(sample) {
     const frames = sample && Array.isArray(sample.frames) ? sample.frames : [];
+    const isRaw = frames.some((frame) => Array.isArray(frame && frame.hands));
+
+    if (isRaw) {
+      const rows = frames
+        .filter((frame) => Array.isArray(frame.hands) && frame.hands.length > 0)
+        .map((frame) => flattenLandmarks(frame.hands.map((h) => h.landmarks)))
+        .filter((row) => Array.isArray(row) && row.length === 126);
+
+      const n = rows.length;
+      if (n <= MAX_ROWS_PER_RAW_SAMPLE) return rows;
+
+      const subsampled = [];
+      for (let i = 0; i < MAX_ROWS_PER_RAW_SAMPLE; i++) {
+        subsampled.push(rows[Math.round((i * (n - 1)) / (MAX_ROWS_PER_RAW_SAMPLE - 1))]);
+      }
+      return subsampled;
+    }
+
     return frames
       .map((frame) => flattenLandmarks(frame.landmarks || frame))
       .filter((row) => Array.isArray(row) && row.length === 126);
