@@ -683,6 +683,17 @@ so a later session does not re-litigate them:
     `tf.io.removeModel` in `confirmAndSave`. The spec lists it in the sign
     stack so the queue loads it; dropping it is a later, measured change.
 
+    **Update (2026-09-26, video-based gesture capture): `confirmAndSave` no
+    longer exists — historical reference only.** It was `gesture-training.html`
+    Step 1's old live-capture save handler, removed along with the rest of
+    that flow (Q8, `docs/system/DECISIONS.md`; grep-confirmed absent from the
+    whole repo). The guarded `tf.io.removeModel` call this item describes now
+    lives in `js/gesture-capture-ui.js`'s `invalidateCaches()`
+    (`:601-608`), which every recording save calls the same way
+    `confirmAndSave` used to (cache invalidation for the sign-set's k-NN
+    model/labels) — this item's underlying finding (`tf.min.js` still looks
+    otherwise unused on the live path) is unchanged, only the call site moved.
+
 49. **Low severity, open: a hung item stalls the loading queue and the Guide
     gate forever.** `js/talk-loader.js` handles rejections and throws but has
     no per-item timeout; a `Vosk.createModel` or database fetch that never
