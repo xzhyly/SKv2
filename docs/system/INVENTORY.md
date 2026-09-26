@@ -35,7 +35,7 @@ and listing all 300+ leaf files individually would not add ownership information
 |---|---|---|
 | [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3). **Dashboard only since 2026-09-21** — `#translator-pane` and its scripts were retired; the line count is now 93 |
 | [archive/sign-to-text.html](../../archive/sign-to-text.html) | 120 | **Archived 2026-09-21** (merged into `talk.html`; see `archive/SIGN-TO-TEXT.md`) — was the sign-to-text screen shell |
-| [gesture-training.html](../../gesture-training.html) | 380 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26) |
+| [gesture-training.html](../../gesture-training.html) | 387 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26; 2026-09-26: Step 1's old countdown/preview capture UI replaced by the full-screen `#gcMode` — see `docs/system/DECISIONS.md`) |
 | [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
 | [learn-signs.html](../../learn-signs.html) | 93 | Learner reference screen, linked from index.html |
 | [diagnostic.html](../../diagnostic.html) | 193 | Standalone diagnostics page; no inbound/outbound links found (see §6) |
@@ -54,8 +54,11 @@ and listing all 300+ leaf files individually would not add ownership information
 |---|---|---|
 | [archive/script.js](../../archive/script.js) | 1094 | **Archived 2026-09-21** (commit `c94d62c`) with index.html's `#translator-pane`; its pipeline was ported to `js/sign-player.js` / `js/talk-speaking.js` (see `archive/TEXT-TO-SIGN-PANE.md`) |
 | [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `talk.html` via `js/talk-loader.js` since 2026-09-21 (was `sign-to-text.html`); k-NN/label/sentence logic |
-| [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1360 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26) |
-| [js/gesture-data.js](../../js/gesture-data.js) | 708 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML; gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed) |
+| [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1267 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26; 2026-09-26: Step 1's countdown/preview capture logic removed, replaced by a thin `openRecordingMode()` that opens `js/gesture-capture-ui.js`, see `docs/system/DECISIONS.md`) |
+| [js/gesture-data.js](../../js/gesture-data.js) | 759 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML (and `talk.html`); gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed; 2026-09-26: `FRAME_TARGET`/`captureFrameIfRecording()`/the "G" hotkey removed, `createVideoDetector()`/`onHandResults()`/`letterboxRect()`/`saveGestureSample()` meta-fields/`recordingToFeatureRows()` subsampling added — see `docs/system/DECISIONS.md`) |
+| [js/capture-core.js](../../js/capture-core.js) | 234 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; DOM-free `window.GestureCaptureCore` — the REST/SIGN hand-presence segmenter (`createSegmenter`, `segmentFrames`) shared by the live recording UI and offline video segmentation. Also runnable under node (`module.exports`) |
+| [js/video-landmarks.js](../../js/video-landmarks.js) | 245 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; `window.VideoLandmarks.extractVideoLandmarks()` turns a recorded video Blob into per-frame MediaPipe landmarks by seeking frame-by-frame, via a caller-supplied detector (`js/gesture-data.js`'s `createVideoDetector()`). `seekTimes()` is also runnable under node |
+| [js/gesture-capture-ui.js](../../js/gesture-capture-ui.js) | 657 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; the full-screen "Record 3 samples" mode (`#gcMode`) — Ready → Countdown → Recording → Review → Processing → Saving → Done state machine, `window.GestureCaptureUI = {open, close}` |
 | js/db-api.js | 148 | **Deleted 2026-09-25** (saved-conversations phase, Task 6, option A). Was: loaded by camera-translator.html/diagnostic.html/gesture-training.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
 | js/db-local.js | 65 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wrapped `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
 | [js/talk-history.js](../../js/talk-history.js) | 109 | **New 2026-09-25** (saved-conversations phase, Task 4). Loaded by `talk.html`; fire-and-forget save client for `php/api/save_conversation.php` — `window.TalkHistory.saveMessage()`/`.end()` |
@@ -87,7 +90,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | [php/auth.php](../../php/auth.php) | 95 | Auth logic; **no frontend caller found in this repo** (see §6) |
 | [php/admin_api.php](../../php/admin_api.php) | 196 | Admin API; **no frontend caller found in this repo** (see §6) |
 | php/api/core_api.php | 177 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: "unified api router" per `js/db-local.js:10`; backed `db-local.js` |
-| [php/api/save_gesture.php](../../php/api/save_gesture.php) | 585 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe`. Rewritten 2026-09-24 for the normalized `gestures`/`gesture_recordings` schema (`label`/`frame_count`, `asset_path`, no `esl_signs`/`fsl_signs`) |
+| [php/api/save_gesture.php](../../php/api/save_gesture.php) | 604 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe`. Rewritten 2026-09-24 for the normalized `gestures`/`gesture_recordings` schema (`label`/`frame_count`, `asset_path`, no `esl_signs`/`fsl_signs`); 2026-09-26: accepts a compact-JSON `mediapipe_hands_raw_v3` format alongside v2, frame cap raised 120→301 (see `docs/system/BACKEND.md`) |
 | php/api/save_translation.php | 99 | **Deleted 2026-09-25** (saved-conversations phase, Task 6). Was: translation save endpoint; called from `js/db-api.js` |
 | php/api/get_translations.php | 65 | **Deleted 2026-09-25** (same phase). Was: translation fetch endpoint; called from `js/db-api.js` |
 | [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** (DB cleanup, `BACKEND.md`) |
@@ -102,7 +105,7 @@ and listing all 300+ leaf files individually would not add ownership information
 |---|---|---|
 | [css/style.css](../../css/style.css) | 596 | Loaded by index.html; base/dashboard styling |
 | [css/virtual-keyboard.css](../../css/virtual-keyboard.css) | 101 | Loaded by index.html/camera-translator.html/gesture-training.html; keyboard widget styling |
-| [css/gesture-training.css](../../css/gesture-training.css) | 1012 | Loaded by gesture-training.html |
+| [css/gesture-training.css](../../css/gesture-training.css) | 1032 | Loaded by gesture-training.html (2026-09-26: `.gc-*` rules for `#gcMode`'s full-screen recording UI added, `:956-1032`) |
 | [css/sign-to-text.css](../../css/sign-to-text.css) | 338 | Orphaned since `sign-to-text.html` was archived 2026-09-21 (`DEBT.md` item 50) |
 | [css/fonts.css](../../css/fonts.css) | 10 | Added Phase 2; loaded by index.html, camera-translator.html, gesture-training.html, sign-to-text.html, reports.html, learn-signs.html — self-hosted Inter `@font-face` |
 
@@ -191,6 +194,28 @@ tests/normalization/schema-guard.test.mjs tests/conversations/*.test.mjs` —
 measured 2026-09-25: 79 tests, 78 pass, 1 skipped (`clear_all` without the
 env var); `tests/normalization/migration.test.mjs` separately, 13/13.
 
+### `tests/video-capture/` (new 2026-09-26, video-based gesture capture phase)
+
+| File | Owns |
+|---|---|
+| tests/video-capture/segmenter.test.mjs | Node unit tests for `js/capture-core.js`'s `createSegmenter()`/`segmentFrames()` — the REST/SIGN state machine, in isolation, no DOM |
+| tests/video-capture/seek-times.test.mjs | Node unit tests for `js/video-landmarks.js`'s pure `seekTimes()` helper (the off-by-one drift the accumulating-loop version had, see `docs/system/DECISIONS.md`) |
+| tests/video-capture/feature-rows.test.mjs | Node unit tests for `js/gesture-data.js`'s `recordingToFeatureRows()` v3 subsampling (`MAX_ROWS_PER_RAW_SAMPLE = 30`) and the unchanged v2 branch |
+| tests/video-capture/save-raw.test.mjs | Live-DB/disk tests for `php/api/save_gesture.php` accepting a v3 (`formatVersion: 3`) raw sample: compact-JSON storage, the 301-frame cap, response shape |
+| tests/video-capture/extractor.page.html | Browser-only harness page for `extractor-check.mjs` — runs one `extractVideoLandmarks()` pass over a recorded Blob using a fresh `createVideoDetector()` |
+| tests/video-capture/extractor-check.mjs | Headless-Chrome (CDP) driver for `extractor.page.html` — 28 checks against a real MediaPipe extraction of a fake-camera recording |
+| tests/video-capture/capture-ui-check.mjs | Headless-Chrome (CDP) driver exercising `js/gesture-capture-ui.js`'s full state machine (Ready → Countdown → Recording → Review → Processing → Saving → Done, plus Cancel/Redo/error paths) against `gesture-training.html` — 74 checks |
+| tests/video-capture/e2e.mjs | End-to-end driver: a full fake-camera recording through `gesture-training.html`'s real UI to 3 saved samples, then Train AI / Predict — 52 checks, includes the golden-sample-files regression (210 existing sample files / 3,232 rows byte-identical to `813bfbe`) |
+| tests/video-capture/cdp.mjs | Shared minimal Chrome DevTools Protocol client used by the `*-check.mjs`/`e2e.mjs` drivers above (headless Chrome launch, page navigation, console/network capture) |
+| tests/video-capture/load-gesture-data.mjs | Shared helper: loads `js/gesture-data.js` (and friends) under node via `createRequire`/a DOM shim, for the node-side unit tests above |
+| tests/video-capture/README.md | How to run each file in this directory and what a fake camera device (`hello.webm`) is used for |
+
+Run: `node --test --test-concurrency=1 tests/video-capture/*.test.mjs` (45/45,
+measured Task 6); `extractor-check.mjs`/`capture-ui-check.mjs`/`e2e.mjs` are
+plain node scripts (not `node --test` files) run individually — 28/74/52
+checks respectively, all PASS as of the Task 6 e2e run
+(`.git/sdd/vc-task-6-report.md`).
+
 ### `.superpowers/` (4 files)
 
 Session artifacts from a prior agent-assisted work session (`sdd/progress.md`,
@@ -211,7 +236,18 @@ Per-page script load order (in document order, from each HTML file's `<script sr
 - **index.html**: no scripts since 2026-09-21 (was `js/vosk.js` → `js/script.js?v=5` → `js/virtual-keyboard.js`; `js/vosk.js` is now loaded by `js/talk-loader.js` for `talk.html`)
 - **camera-translator.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/db-local.js` → `js/virtual-keyboard.js`
 - **sign-to-text.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/sign-to-text-ui.js`
-- **gesture-training.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js` → `js/camera-helper.js` → `js/speech-synthesis.js` → `js/db-local.js` → `js/gesture-training-ui.js` → `js/virtual-keyboard.js`
+- **gesture-training.html** (current, `gesture-training.html:10-17,382-384` —
+  corrected 2026-09-26; `js/db-api.js`/`js/db-local.js` no longer exist,
+  deleted 2026-09-24/25, see `docs/system/BACKEND.md`): `js/lib/tf.min.js` →
+  `js/lib/mediapipe/hands.js` → `js/gesture-data.js` → `js/capture-core.js` →
+  `js/video-landmarks.js` → `js/gesture-category.js` → `js/camera-helper.js` →
+  `js/speech-synthesis.js` → … (body) → `js/gesture-capture-ui.js` →
+  `js/gesture-training-ui.js` → `js/virtual-keyboard.js`. `js/capture-core.js`
+  and `js/video-landmarks.js` are new 2026-09-26 (video-based gesture capture
+  phase); `js/gesture-capture-ui.js` is new the same phase and loads after
+  `#gcMode`'s markup, before `js/gesture-training-ui.js`, since the latter's
+  `wireRecordButton()` (`js/gesture-training-ui.js:1264-1267`) reads
+  `window.GestureCaptureUI` at parse time.
 - **diagnostic.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js`
 - **reports.html**, **learn-signs.html**: no `<script src>` tags found
 

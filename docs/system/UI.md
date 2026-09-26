@@ -196,7 +196,13 @@ below. None of that ran.
   (`js/gesture-data.js:115-134`); two hands are concatenated into 126
   (`js/gesture-data.js:136-148`, zero-padded if one hand absent).
 - Frame capture during "Add Data": target 30 frames (`FRAME_TARGET=30`), min 1, max
-  40, sampled every 90 ms (`js/gesture-data.js:2-4,18`).
+  40, sampled every 90 ms (was `js/gesture-data.js:2-4,18` at the time this section
+  was written; **stale citation, not live code** — this was the old
+  camera-translator.html/sign-to-text-ui.js live-capture pipeline, and
+  `FRAME_TARGET`/`captureFrameIfRecording()` were both removed from
+  `js/gesture-data.js` entirely by the 2026-09-26 video-based gesture
+  capture phase, see `docs/system/DECISIONS.md`; only a comment at
+  `js/gesture-data.js:2` still refers to the removed constant, for context).
 - Landmark→pixel fallback feature extractor (when no landmarks available) uses a
   16×12 canvas = 192 grayscale values (`js/camera-helper.js:2-4`; duplicated inline
   in `camera-translator.html:918,1003-1010`).
@@ -461,25 +467,75 @@ below. None of that ran.
   (gesture-training-ui.js:502-505) when nothing new needs compiling. The 50-epoch
   label is not reflected in the actual training logic — reason not documented in
   code.
-- Countdown before gesture recording: 3-2-1 at **1000ms** per tick
-  (gesture-training-ui.js:1219-1233).
-- **Step 1 (Add Data), multi-sample recording (2026-09-22 gesture-training
-  multi-sample phase):** a live per-word sample-count line
-  (`#sampleCountLine`, gesture-training.html:209) and a matching preview-panel
-  line (`#previewSampleLine`, gesture-training.html:257) are driven by
-  `refreshSampleCountLine()` (gesture-training-ui.js:237); the count comes
-  from a per-(sign set, label) tally kept in `savedSampleInfo`, rebuilt from
-  the dataset on every load/reload and updated in place from each save's
-  response. `SAMPLE_TARGET = 5` (gesture-training-ui.js:207), and the line
-  moves through three states as the count grows: "is a new word — no samples
-  yet," "N sample(s) saved … aim for 5," and "✓ Target reached; more are
-  optional" once the `.done` threshold check (gesture-training-ui.js:244,
-  ternary at :247-248) is met. The Start button relabels itself "Record
-  another sample" once the word already has ≥1 saved sample (was always
-  "Start Capture"). Styling: `.tr-sample-line`
-  (css/gesture-training.css:1012-1014); this shipped alongside a CSS
-  cache-bust bump from `v=1.0.5` to `css/gesture-training.css?v=1.0.6`
-  (gesture-training.html:8; see the cache-busting bullet below).
+- **Step 1 (Add Data) recording flow — replaced 2026-09-26 (video-based
+  gesture capture phase).** Below describes the flow as it now is; the older
+  countdown-then-frame-sampling flow this replaced is described afterward,
+  for anyone reading an older report or diff against it.
+  - **Current flow: record first, extract offline, save 3 reps.** The Add
+    Data form's one button (`#startGestureDataBtn`, "Record 3 samples",
+    `gesture-training.html:222`) calls `openRecordingMode()`
+    (`js/gesture-training-ui.js:1233-1253`), which reads the Gesture Name,
+    Sign Set and Type from the form and opens a full-screen mode
+    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:156-176`;
+    markup `#gcMode`, `gesture-training.html:353`) that owns the rest of the
+    flow end to end: **Ready** → **Countdown** (3-2-1 at 1000ms/tick,
+    `js/gesture-capture-ui.js:229-245`) → **Recording** (a `MediaRecorder`
+    capture of the live camera stream, guided live by the shared
+    `GestureCaptureCore` segmenter reading `js/gesture-data.js`'s hand
+    results — REST → SIGN 1 of 3 → SIGN 2 of 3 → SIGN 3 of 3, hand-driven
+    with no fixed per-rep timer, `js/capture-core.js`) → **Review** (the
+    recorded clip plays back with the live rep count, Save disabled unless
+    exactly 3 reps were found) → **Processing** (`js/video-landmarks.js`'s
+    `extractVideoLandmarks()` seeks the recording frame-by-frame at
+    `PROCESS_FPS` 15 through the one shared MediaPipe `Hands` instance,
+    then `js/capture-core.js`'s `segmentFrames()` re-derives the 3 rep
+    boundaries offline — the real gate, not the live count) → **Saving**
+    (3 sequential POSTs to `save_gesture.php`, one v3 raw sample per rep,
+    never any video) → **Done**, closing the mode and toasting "N of 3
+    samples saved for "label"."). Every exit (Done, Redo, Cancel, a hard
+    error, or the page unloading) discards the recording, its Blob/object
+    URL, and any held detector — the video never leaves the browser. See
+    `docs/system/DECISIONS.md` ("video-based gesture capture phase") for
+    every threshold, the offline-vs-live gate, and the measured Task 6 e2e
+    numbers.
+  - **The per-word sample-count line survives from the older flow,
+    unchanged in behavior.** `#sampleCountLine` (`gesture-training.html:205`)
+    is still driven by `refreshSampleCountLine()`
+    (`gesture-training-ui.js:313-327`); the count still comes from a
+    per-(sign set, label) tally kept in `savedSampleInfo`, rebuilt from the
+    dataset on every load/reload (`rebuildSampleInfo()`, `:298-304`) and
+    updated after each save via `window.onCaptureSamplesSaved`
+    (`js/gesture-training-ui.js:1259-1262`, called by
+    `js/gesture-capture-ui.js:625-631` once `reloadDataset()` has already
+    recounted the new samples — no `frameCount` is passed here, so the line's
+    "(N frames)" figure comes entirely from that recount, not from the save
+    response). `SAMPLE_TARGET = 5` (`gesture-training-ui.js:267`), and the
+    line still moves through three states as the count grows: "is a new
+    word — no samples yet," "N sample(s) saved … aim for 5," and "✓ Target
+    reached; more are optional" (`:320-326`). Styling unchanged:
+    `.tr-sample-line` (`css/gesture-training.css:1012-1014`).
+  - **What the button itself does is different from the older flow's
+    "Record another sample" relabeling.** The button's text is now the
+    static "Record 3 samples" set once in markup
+    (`gesture-training.html:222`) and reasserted by
+    `refreshSampleCountLine()` on every call (`startBtn.textContent =
+    'Record 3 samples'`, `gesture-training-ui.js:319`) — it no longer
+    relabels itself based on the word's existing sample count, since the new
+    flow always records exactly 3 reps per invocation regardless of how many
+    samples the word already has.
+  - **Older flow (removed 2026-09-26), for reference only — not live
+    code.** Before this phase, Step 1 had no full-screen mode: a countdown
+    (3-2-1 at 1000ms/tick, was `gesture-training-ui.js:1219-1233`) started a
+    live per-frame capture loop directly inside the training screen's own
+    DOM (`#step1PreviewControls`, `#countdownOverlay` — both removed), the
+    Start button read "Start Capture" for a word's first sample and
+    relabeled itself "Record another sample" once it had ≥1 saved sample,
+    and a zoom/pan preview panel (`#previewSampleLine`,
+    `gesture-training.html:257` at the time) showed the just-captured
+    frames before saving. None of `gesture-training-ui.js:1219-1233`,
+    `#step1PreviewControls`, or `#countdownOverlay` exist in the current
+    file/markup — grep-confirmed absent from `gesture-training.html` and
+    `css/gesture-training.css`.
 - **Step 1 gained a Type selector, and the dataset table/modal is now
   grouped by it (gesture-categorization phase, 2026-09-23):** a 4-way
   segmented control — Word / Letter / Number / Phrase
@@ -574,10 +630,13 @@ below. None of that ran.
   inline duplicate implementation).
 - Cache-busting/version query strings: `js/script.js?v=5` (index.html:750,
   before `js/script.js` was archived — see the Part 2 update note at the top
-  of this section), `css/gesture-training.css?v=1.0.6` (bumped from `v=1.0.5`
-  by the 2026-09-22 gesture-training multi-sample phase) and
-  `css/virtual-keyboard.css?v=1.0.5` (gesture-training.html:8-9). No version
-  string on `css/style.css`, `js/gesture-training-ui.js`, or `js/vosk.js`.
+  of this section), `css/gesture-training.css?v=1.0.7` (bumped from `v=1.0.5`
+  by the 2026-09-22 gesture-training multi-sample phase, then to `v=1.0.7`
+  by the 2026-09-26 video-based gesture capture phase's `#gcMode` styling)
+  and `css/virtual-keyboard.css?v=1.0.5` (gesture-training.html:8-9). No
+  version string on `css/style.css`, `js/gesture-training-ui.js`,
+  `js/capture-core.js`, `js/video-landmarks.js`, `js/gesture-capture-ui.js`,
+  or `js/vosk.js`.
 - Save-gesture endpoint path branches on protocol: when
   `location.protocol === "file:"` it hardcodes `http://localhost` + (`/SKR` if the
   pathname contains `/SKR`, else `/Sining_kamay`) + `/php/api/save_gesture.php`
@@ -702,6 +761,18 @@ below. None of that ran.
   but not others (e.g. `DB_API.saveTranslation` at :714 is called unguarded inside
   a try/catch) — if any of those five files is missing/renamed, training/
   translation features degrade or throw, caught only where try/catch exists.
+  **Addendum (2026-09-26, video-based gesture capture):** `gesture-training.html`
+  now also loads `js/capture-core.js` and `js/video-landmarks.js` (right after
+  `js/gesture-data.js`, before `js/gesture-category.js`, `gesture-training.html:
+  12-15`) and `js/gesture-capture-ui.js` (after `gesture-training.html`'s
+  `#gcMode` markup, before `js/gesture-training-ui.js`, `gesture-training.html:
+  382-383`) — see `docs/system/INVENTORY.md` for the full current load order.
+  `js/gesture-capture-ui.js` requires all three of `window.GestureCaptureCore`,
+  `window.VideoLandmarks` and `window.GestureDataRecorder` to be loaded before
+  `openRecordingMode()` can call `GestureCaptureUI.open()`
+  (`js/gesture-capture-ui.js:159-162` logs and no-ops otherwise); this list is
+  additive only — no existing script in the load order was removed or reordered
+  relative to what it already depended on.
 - **gesture-training-ui.js → php/api/save_gesture.php** (delete) — uses a
   hardcoded `/Sining_kamay/` fallback path (gesture-training-ui.js:244-246) that
   does **not** match the dynamic `/SKR`-or-`/Sining_kamay` detection used in

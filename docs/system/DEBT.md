@@ -352,6 +352,17 @@ so a later session does not re-litigate them:
     a video now keep the first take's clip instead of re-encoding a new one
     on every save (see `DECISIONS.md`, "the transcode rule").
 
+    **Update (2026-09-26, video-based gesture capture): the live capture half
+    of this item has itself now been replaced, not restored.** The old
+    countdown/frame-sampling live-capture path was removed and rebuilt as the
+    record-first/extract-later flow described in `docs/system/DECISIONS.md`
+    ("video-based gesture capture phase") — `js/capture-core.js`,
+    `js/video-landmarks.js`, `js/gesture-capture-ui.js`. Upload/import from an
+    existing video file is still not built; it is the next planned phase and
+    is expected to reuse `js/video-landmarks.js`'s `extractVideoLandmarks()`
+    (already parameterized for a `File` source and a configurable input
+    canvas size, Addition B).
+
 27. **Low severity, cleanup during the UI revision: `Nunito` is now
     unreachable dead weight in font stacks.** `camera-translator.html:19,40`,
     `css/sign-to-text.css:9,30`, `css/gesture-training.css:19`, and
@@ -798,6 +809,19 @@ so a later session does not re-litigate them:
     finding 6) — explicitly out of scope for this phase (see the plan's
     Scope section) and not addressed here.
 
+    **Update (2026-09-26, video-based gesture capture): v3 samples change the
+    per-sample payload size this item measured.** v2 samples were pretty-
+    printed, capped at 30 frames (the old `FRAME_TARGET`); v3 samples are
+    compact JSON (`php/api/save_gesture.php:485-489`) holding up to
+    `MAX_ROWS_PER_RAW_SAMPLE` (30) subsampled rows per rep for training
+    purposes, but the on-disk sample file itself can carry up to
+    `MAX_FRAMES_PER_SAMPLE` (301) raw per-landmark frames
+    (`php/api/save_gesture.php:39`) — measured (Task 6 e2e) at ~14.9 KB per
+    17-frame rep on disk, i.e. bigger per frame than v2's, though a typical
+    rep has far fewer frames than the 301 cap. `reloadDataset()`'s post-save
+    payload cost (this item's main finding) is not re-measured against v3
+    data specifically.
+
 64. **Low severity, open: `delete_gesture` leaves the label's display clip
     behind.** `php/api/save_gesture.php:401-438`'s `delete_gesture` action
     removes the label's `sample_*.json` files and its `gesture_recordings`/
@@ -884,6 +908,17 @@ so a later session does not re-litigate them:
     physical keyboard and `talk.html` disables the hotkey. Found by the
     2026-09-23 final review; not fixed.
 
+    **RESOLVED 2026-09-26 (video-based gesture capture).** The old
+    live-capture code this hotkey lived in — `startRecording()`,
+    `captureFrameIfRecording()`, `FRAME_TARGET` — was removed outright
+    (Q8, `docs/system/DECISIONS.md`); grep-confirmed no `prompt(`/hotkey code
+    remains anywhere in `js/gesture-data.js`. Recording now only starts
+    through the Add Data form's "Record 3 samples" button
+    (`gesture-training.html:222` → `openRecordingMode()`,
+    `js/gesture-training-ui.js:1233-1253`), which reads the label, Sign Set
+    and Type straight from the form's own inputs — there is no `prompt()`
+    path left to skip Type auto-select.
+
 70. **Low severity, open: the Type is read at confirm time, not capture
     time.** `confirmAndSave()` reads the checked `gestureCategory` radio when
     the preview is saved; if the operator edits the name or Sign Set between
@@ -891,6 +926,17 @@ so a later session does not re-litigate them:
     while the save still targets the captured label/set. Found by the
     2026-09-23 final review; not fixed (the plan specified save-time
     reading).
+
+    **RESOLVED 2026-09-26 (video-based gesture capture).** Label, Sign Set
+    and Type are now captured once, when the recording mode opens:
+    `openRecordingMode()` (`js/gesture-training-ui.js:1233-1253`) reads
+    `currentLabelClean()`, `selectedSignSet()` and the checked
+    `gestureCategory` radio into the `opts` passed to
+    `GestureCaptureUI.open()`, which stores them as `session`
+    (`js/gesture-capture-ui.js:163-168`) before the countdown/recording/
+    review/save flow runs. The full-screen mode has no path back to the
+    form's fields until it closes, so there is nothing left to edit
+    mid-flow that could disagree with what gets saved.
 
 71. **Low severity, latent: a label present in both ESL and FSL shows one
     category, and `delete_gesture` deletes one `gestures` row.**
@@ -1126,6 +1172,112 @@ so a later session does not re-litigate them:
     (headless Chrome via CDP, the in-app Browser pane) both block real
     camera/microphone device access. Needs a person with a camera and a
     trained sign, on a machine with real hardware, to close out.
+
+86. **Low severity, open (video-based gesture capture, 2026-09-26):
+    `save_gesture.php`'s display-clip code is unused by the new recording
+    flow.** The video-transcode branch (`php/api/save_gesture.php:494-564`,
+    triggered by a non-empty `video_base64`) is now dead weight for every
+    *new* label: `js/gesture-capture-ui.js`'s save calls
+    (`saveGestureSample(...)`, `:558-569`) never send `video_base64`/
+    `video_path` — measured directly (Task 6 e2e): 0 of 31 save requests
+    carried either field, and the `assets/signs/` directory listing was
+    identical before and after a full recording. A label recorded for the
+    first time through Step 1 therefore gets no display clip: Reports' View
+    Asset stays empty and `asset_path` stays NULL for it. The branch still
+    matters for old v2-era labels that already have a clip on disk
+    (`find_label_video()`'s skip-if-exists rule, `:511-517`, still runs on
+    every save, it just never finds new base64 video to act on). Will be
+    removed when the planned caricature/avatar feature replaces display
+    clips outright.
+
+87. **Low severity, open (video-based gesture capture, 2026-09-26): Pi
+    performance is entirely unmeasured for the new recording flow.** Not
+    measured on the target hardware: seek cost on VP8 WebM with sparse
+    keyframes on a Pi 4 CPU (`extractVideoLandmarks()`'s per-frame
+    `video.currentTime` seek loop, `js/video-landmarks.js:183-196`); the
+    live hand-tracking loop's results/s during recording, while a VP8
+    `MediaRecorder` encode and up to 2-3 `<video>` elements (camera preview,
+    `#gcLive`, the review clip) are live at once; whether live vs. offline
+    rep boundaries agree within the `STOP_TAIL_MS` 500ms margin
+    (`js/capture-core.js:17`) on slower hardware; and whether
+    `RESULTS_WATCHDOG_MS` 5000 (`js/capture-core.js:19`) is long enough on a
+    Pi under load. Possible mitigation, not applied: `MediaRecorder`'s
+    `videoKeyFrameIntervalDuration` option (not set anywhere in
+    `js/gesture-capture-ui.js`'s `new MediaRecorder(...)` call, `:253-264`),
+    which would make seeking more evenly spaced. The Pi's MariaDB
+    `max_allowed_packet` is also unknown; a compact 301-frame two-hand v3
+    sample is estimated at ~0.5 MB by the whole-phase reviewer — an
+    **estimate, not measured**.
+
+88. **Low severity, open (video-based gesture capture, 2026-09-26): v3 reps
+    include the hand's entering/leaving frames.** A rep's boundary is the
+    first/last hand-*present* frame (`closeRepAt()`, `js/capture-core.js:
+    43-61`, using `lastHandMs`), and the subsampler (`js/gesture-data.js:
+    690-693`) evenly samples across a rep's rows by index — the formula
+    `Math.round(i*(n-1)/(MAX_ROWS_PER_RAW_SAMPLE-1))` is guaranteed to
+    include row index 0 and `n-1`, i.e. the very first and last hand-present
+    frames of the rep are always kept. Those transition frames (hand still
+    rising into or dropping out of frame) may look similar across many
+    labels, which could raise cross-label similarity in `knnPredict` (scores
+    by the mean of the top-5 cosine similarities, `gesture-training-ui.js:
+    310`). Owner decision pending: trim the edges vs. accept this until the
+    keyframes phase replaces the even-subsampling scheme.
+
+89. **Low severity, open (video-based gesture capture, 2026-09-26): no
+    overall recording-length cap.** `js/capture-core.js`'s `CAPTURE`
+    constants (`:10-20`) bound a single rep (`MAX_REP_MS` 20000) and
+    hand-tracking staleness (`RESULTS_WATCHDOG_MS` 5000), but nothing bounds
+    the whole REST → SIGN 1 → SIGN 2 → SIGN 3 recording's total wall-clock
+    length if the signer takes their time resting between reps. Owner
+    decision pending.
+
+90. **Low severity, open (video-based gesture capture, 2026-09-26): "Retry
+    save" is not idempotent.** `php/api/save_gesture.php` writes the sample
+    JSON file to disk (`file_put_contents`, `:490`) before the DB insert
+    (`save_gesture_word_to_db()`/`save_gesture_recording_to_db()`, `:567`,
+    `:580`). A DB failure, or a lost HTTP response, followed by
+    `js/gesture-capture-ui.js`'s "Retry save" (`:82-84`, re-running
+    `runSaves()`, which re-POSTs any rep whose `saved` flag is still false)
+    can leave a duplicate rep file on disk if the first attempt's file write
+    actually succeeded but the response was never seen — the next disk→DB
+    sync (`sync_disk_to_db`) would then add it as an extra
+    `gesture_recordings` row. Pre-existing write-then-insert order (not new
+    this phase); newly reachable now that a failed save can be retried by
+    the user from the UI.
+
+91. **Low severity, open (video-based gesture capture, 2026-09-26): if a
+    wedged detector send left the live hand loop paused, the watchdog
+    reports it but Redo does not resume the loop.** `toReady()`/`resetWork()`
+    (`js/gesture-capture-ui.js:222-227`, `:193-204`) releases the held
+    detector via `detector.release()`
+    (`js/gesture-data.js:579-599`), but `release()` only resumes the live
+    loop once `detectorSendPending` clears (`finishReleaseIfReady()`,
+    `:488-503`) — a `hands.send()` that never settles (no `onResults`, no
+    resolved/rejected promise) leaves that flag pending forever, so the live
+    loop stays paused even after Redo. Reload the page to recover.
+
+92. **Low severity, open, pre-existing (video-based gesture capture,
+    2026-09-26, noticed not introduced): an orphan file,
+    `saved_gestures_fsl/sample_1784112605537_bec003.json`, sits at the FSL
+    dataset root with no label folder** (confirmed still present on disk).
+    `list_samples()`'s per-label glob only reads
+    `saved_gestures_fsl/<label>/sample_*.json`, so this file is never listed,
+    synced, or served — dead weight, not a functional problem.
+
+93. **Low severity, open (video-based gesture capture, 2026-09-26): the Step
+    1 sample line's "(N frames)" count is raw v3 frames, not training rows,
+    and its Save-disabled check is currently unreachable.** The count comes
+    from each sample's `frameCount` (`php/api/save_gesture.php:453`, summed
+    at `gesture-training-ui.js:303`/`:310`) — the raw per-landmark frame
+    count for the rep, including in-rep frames with no hand, not the ≤30
+    training rows `recordingToFeatureRows()` (`js/gesture-data.js:677-695`)
+    actually feeds to `knnPredict`. Separately, `reviewCount`
+    (`js/gesture-capture-ui.js:415`, `:450`) is always exactly
+    `REQUIRED_REPS` (3) by the time Save is reachable —
+    `segmentFrames()` only returns `ok:true` when `repsFound ===
+    REQUIRED_REPS` (`js/capture-core.js:211-219`) — so the `n !==
+    C().REQUIRED_REPS` disabled-check at `:450` is a defensive branch that
+    can't currently be hit, not a live gate.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead
