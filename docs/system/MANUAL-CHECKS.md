@@ -388,3 +388,32 @@ phase").
       Step 1 with the Type row present. Expected: `#leftStep1` does not
       scroll off-screen and the Start Capture button is fully visible
       without scrolling, same as before the Type row was added.
+
+## Video-based gesture capture — record, review, extract (2026-09-26)
+
+Owner check for `gesture-training.html` Step 1 after the video-capture phase
+(`docs/reports/2026-09-26-video-capture-final.md`). Automated runs used a fake
+camera fed from `assets/signs/en/hello.webm`; this check is the first run with a
+real person signing in front of a real camera.
+
+- [ ] **Record one real sign with your own camera and confirm the 3 saved
+      samples.** Open `http://localhost/SKR/gesture-training.html`, enter the
+      PIN, go to Step 1, enable the camera, type a new test word (e.g.
+      `zz_owner_check`), pick the Sign Set and Type, and tap **Record 3
+      samples** → **START**. After 3, 2, 1: keep your hands down until the
+      prompt changes from **REST** to **SIGN 1 of 3**, sign once, lower your
+      hands, and repeat for SIGN 2 and SIGN 3. Expected:
+      - the prompt advances only when your hands appear and disappear, the dots
+        fill in, and "Hand visible" / "No hand" follows your hands;
+      - recording stops by itself about half a second after the third sign's
+        rest, and Review shows your recording looping and "3 signs found";
+      - **Save** shows "Processing… NN%", then "Saving 1 of 3…" to "3 of 3"
+        with **no Cancel button** while saving, then the screen closes with
+        "3 samples saved for “zz_owner_check”.";
+      - `saved_gestures/zz_owner_check/` (or `saved_gestures_fsl/…`) now holds
+        exactly 3 new `sample_*.json` files, each with `"formatVersion":3`,
+        `"source":"video-live"` and `"repIndex"` 1, 2 and 3;
+      - nothing new appeared in `assets/signs/en/` or `assets/signs/fil/`.
+      Note how long Processing took and the recording length, for comparison
+      with the laptop's measured 6,113 ms for an 11.9 s recording.
+      Afterwards, delete `zz_owner_check` from View Active Gesture Dataset.
