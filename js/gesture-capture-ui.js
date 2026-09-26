@@ -19,9 +19,15 @@
   'use strict';
 
   var CATEGORY_NAMES = { word: 'Word', letter: 'Letter', number: 'Number', phrase: 'Phrase' };
+  var MSG = {
+    cameraStopped: 'The camera stopped. Please try again.',
+    tooLong: 'That sign took longer than 20 seconds. Please redo.',
+    noRest: 'No rest was found at the start. Please redo.',
+  };
+  var START_TIMEOUT_MS = 3000; // recorder 'start' must fire within this, else camera-stopped
 
   var el = null; // DOM refs, resolved once by bindDom()
-  var mode = 'closed'; // closed | ready | countdown | recording | review | processing | saving | error
+  var mode = 'closed'; // closed | ready | countdown | recording | review | processing | saving | finishing | error
   var gen = 0; // bumped on every exit/reset; async continuations started earlier compare against it
   var session = null; // { label, signSet, category, stream } captured at open() time
   var countdownTimer = null;
@@ -68,7 +74,7 @@
       redo: byId('gcRedo'),
     };
     if (!el.root) { el = null; return null; }
-    el.cancel.addEventListener('click', close);
+    el.cancel.addEventListener('click', onCancel);
     el.start.addEventListener('click', startCountdown);
     el.save.addEventListener('click', saveRecording);
     el.redo.addEventListener('click', toReady);
@@ -241,7 +247,7 @@
   function startRecording() {
     if (mode !== 'countdown') return;
     var stream = session.stream;
-    if (!streamIsLive(stream)) { showError('The camera stopped. Please try again.'); return; }
+    if (!streamIsLive(stream)) { showError(MSG.cameraStopped); return; }
 
     var recorder;
     try {
@@ -251,7 +257,7 @@
         recorder = new MediaRecorder(stream);
       } catch (e2) {
         console.warn('[gesture-capture-ui] MediaRecorder could not start:', e2);
-        showError('The camera stopped. Please try again.');
+        showError(MSG.cameraStopped);
         return;
       }
     }
@@ -264,6 +270,7 @@
       unsub: null,
       tailTimer: null,
       clockTimer: null,
+      startTimer: null,
       done: false,
       discarded: false,
       tracks: stream.getVideoTracks(),
@@ -272,7 +279,7 @@
     rec = r;
 
     r.onTrackEnded = function () {
-      if (rec === r && !r.discarded) failRecording('The camera stopped. Please try again.');
+      if (rec === r && !r.discarded) failRecording(MSG.cameraStopped);
     };
     r.tracks.forEach(function (t) { t.addEventListener('ended', r.onTrackEnded); });
 
@@ -281,10 +288,11 @@
     };
     recorder.onerror = function (e) {
       console.warn('[gesture-capture-ui] MediaRecorder error:', e && e.error ? e.error : e);
-      if (rec === r && !r.discarded) failRecording('The camera stopped. Please try again.');
+      if (rec === r && !r.discarded) failRecording(MSG.cameraStopped);
     };
     recorder.onstart = function () {
       if (rec !== r || r.discarded) return;
+      if (r.startTimer) { clearTimeout(r.startTimer); r.startTimer = null; }
       r.originMs = performance.now(); // the recording's time origin
       r.unsub = recorderApi().onHandResults(function (results) { onHand(r, results); });
       r.clockTimer = setInterval(function () {
@@ -303,9 +311,13 @@
     renderGuidance(r, 0, false);
     try {
       recorder.start();
+      r.startTimer = setTimeout(function () {
+        r.startTimer = null;
+        if (rec === r && !r.discarded && r.originMs === null) failRecording(MSG.cameraStopped);
+      }, START_TIMEOUT_MS);
     } catch (e) {
       console.warn('[gesture-capture-ui] MediaRecorder.start failed:', e);
-      failRecording('The camera stopped. Please try again.');
+      failRecording(MSG.cameraStopped);
     }
   }
 
@@ -318,7 +330,7 @@
 
     var res = r.seg.push(t, present);
     if (res.event === 'rep-too-long') {
-      failRecording('That sign took longer than 20 seconds. Please redo.');
+      failRecording(MSG.tooLong);
       return;
     }
     renderGuidance(r, t, present);
@@ -355,6 +367,7 @@
     if (r.unsub) { r.unsub(); r.unsub = null; }
     if (r.tailTimer) { clearTimeout(r.tailTimer); r.tailTimer = null; }
     if (r.clockTimer) { clearInterval(r.clockTimer); r.clockTimer = null; }
+    if (r.startTimer) { clearTimeout(r.startTimer); r.startTimer = null; }
     if (r.onTrackEnded) {
       r.tracks.forEach(function (t) { t.removeEventListener('ended', r.onTrackEnded); });
       r.onTrackEnded = null;
@@ -368,17 +381,20 @@
       r.recorder.stop(); // -> onstop -> finishRecording
     } catch (e) {
       console.warn('[gesture-capture-ui] MediaRecorder.stop failed:', e);
-      failRecording('The camera stopped. Please try again.');
+      failRecording(MSG.cameraStopped);
     }
   }
 
   function finishRecording(r) {
     if (rec !== r) return;
+    // A camera track that really ends can make the recorder stop on its own, and this onstop can
+    // run before the track's 'ended' listener: never review a partial recording.
+    if (!r.done || !streamIsLive(session.stream)) { failRecording(MSG.cameraStopped); return; }
     rec = null;
     var type = (r.recorder.mimeType || 'video/webm').split(';')[0];
     var b = new Blob(r.chunks, { type: type });
     r.chunks = [];
-    if (!b.size) { showError('The camera stopped. Please try again.'); return; }
+    if (!b.size) { showError(MSG.cameraStopped); return; }
     blob = b;
     reviewCount = r.seg.state().repsDone;
     showReview();
@@ -501,8 +517,8 @@
 
   function segmentFailureMessage(seg) {
     var total = C().REQUIRED_REPS;
-    if (seg.reason === 'rep-too-long') return 'That sign took longer than 20 seconds. Please redo.';
-    if (seg.reason === 'no-rest') return 'No rest was found at the start. Please redo.';
+    if (seg.reason === 'rep-too-long') return MSG.tooLong;
+    if (seg.reason === 'no-rest') return MSG.noRest;
     var n = seg.repsFound;
     // too-many-reps can also mean "3 closed reps plus a 4th still open at the end".
     if (seg.reason === 'too-many-reps' && n <= total) n = total + 1;
@@ -541,49 +557,76 @@
         p.lastRes = res;
       } catch (e) {
         if (myGen !== gen) return;
-        var savedN = p.reps.filter(function (x) { return x.saved; }).length;
+        var savedN = savedCount(p);
         mode = 'error';
         view({
           live: true,
           msg: 'Saved ' + savedN + ' of ' + total + '. Sign ' + r.repIndex + ' was not saved: ' +
-            (e && e.message ? e.message : String(e)) + '.',
+            withStop(e && e.message ? e.message : String(e)),
           msgError: true,
           actions: ['retrySave'],
         });
         return;
       }
     }
-    await finishDone(p, myGen);
+    await finishSaved(p, myGen);
   }
 
-  async function finishDone(p, myGen) {
-    var lang = p.signSet;
+  function savedCount(p) {
+    return p ? p.reps.filter(function (x) { return x.saved; }).length : 0;
+  }
+
+  function withStop(text) {
+    return /[.!?]$/.test(text) ? text : text + '.';
+  }
+
+  // Invalidates the Sign-to-Text model + labels caches for a sign set (as the removed
+  // confirmAndSave did). Resolves once the (guarded) IndexedDB removal settles.
+  async function invalidateCaches(lang) {
+    try { localStorage.removeItem('sining_kamay_labels_' + lang); } catch (e) { /* storage blocked */ }
     try {
       if (window.tf && window.tf.io && typeof window.tf.io.removeModel === 'function') {
         await window.tf.io.removeModel('indexeddb://sining-kamay-model-' + lang);
       }
     } catch (e) { /* the model may not exist yet - safe to ignore */ }
-    try { localStorage.removeItem('sining_kamay_labels_' + lang); } catch (e) { /* storage blocked */ }
+  }
 
+  // Post-save steps, run once when a recording leaves the mode with at least one rep saved:
+  // after all 3 saves (Done) or on Cancel after a hard save failure. Invalidate caches, reload the
+  // dataset (which rebuilds the per-label sample/frame tally from the server), refresh the sample
+  // line, close, toast.
+  async function finishSaved(p, myGen) {
+    var total = p.reps.length;
+    var n = savedCount(p);
+    mode = 'finishing';
+    view({ live: true, msg: el.msg.textContent, msgError: el.msg.classList.contains('error'), cancel: false });
+    await invalidateCaches(p.signSet);
     if (typeof window.reloadDataset === 'function') {
       try { await window.reloadDataset(); } catch (e) { console.warn('[gesture-capture-ui] reloadDataset failed:', e); }
     }
     if (myGen !== gen) return;
-
-    var frameCount = p.reps.reduce(function (sum, r) {
-      return sum + ((r.res && r.res.frameCount) || r.frames.length);
-    }, 0);
+    // No frameCount here: reloadDataset() already counted the new samples' frames.
     if (typeof window.onCaptureSamplesSaved === 'function') {
       window.onCaptureSamplesSaved({
         label: p.label,
-        signLanguage: lang,
+        signLanguage: p.signSet,
         labelSampleCount: p.lastRes ? p.lastRes.labelSampleCount : undefined,
-        frameCount: frameCount,
       });
     }
     var label = p.label;
     close();
-    toast('3 samples saved for “' + label + '”.');
+    toast((n === total ? total : n + ' of ' + total) + ' samples saved for “' + label + '”.');
+  }
+
+  function onCancel() {
+    if (mode === 'error' && savedCount(pending) > 0) { finishSaved(pending, gen); return; }
+    close();
+  }
+
+  // pagehide cannot await: invalidate the caches (fire-and-forget) if any rep was saved, then close.
+  function onPageHide() {
+    if (savedCount(pending) > 0) invalidateCaches(pending.signSet);
+    close();
   }
 
   // ── Errors ──
@@ -592,7 +635,7 @@
     view({ live: true, msg: message, msgError: true, actions: ['redo'] });
   }
 
-  window.addEventListener('pagehide', close);
+  window.addEventListener('pagehide', onPageHide);
 
-  window.GestureCaptureUI = { open: open, close: close };
+  window.GestureCaptureUI = { open: open, close: close, streamIsLive: streamIsLive };
 })();

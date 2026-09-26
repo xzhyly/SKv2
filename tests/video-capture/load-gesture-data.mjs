@@ -8,11 +8,11 @@
 // Only stub what the file touches at load time (module scope + init()'s synchronous path):
 // document.createElement (an offscreen <canvas> at module scope), document.readyState,
 // document.getElementById/querySelector/querySelectorAll (all return "nothing found" so
-// init()'s UI wiring and video lookup no-op), document.addEventListener, location.search/
+// init()'s video lookup no-op), document.addEventListener, location.search/
 // protocol, and URLSearchParams. This intentionally does NOT stub anything from
-// setupMediaPipe/runHandLoop/recording (window.Hands, canvas 2D context drawing, etc.) since
+// setupMediaPipe/runHandLoop (window.Hands, canvas 2D context drawing, etc.) since
 // those never run when getElementById("videoFeed"|"video") returns null. Keeping the stub
-// this narrow means it keeps working after Task 5 removes the live-capture functions: a
+// this narrow means it kept working after Task 5 removed the live-capture functions: the
 // smaller gesture-data.js still only touches this same small set of DOM entry points at load.
 import vm from 'node:vm';
 
@@ -36,7 +36,7 @@ function makeStubDocument() {
 // window.GestureDataRecorder object it installs.
 export function loadGestureData(source) {
   const window = {
-    SK_DISABLE_GESTURE_HOTKEY: true, // skip installHotkey's keydown listener entirely
+    SK_DISABLE_GESTURE_HOTKEY: true, // harmless: gesture-data.js no longer reads it (its G hotkey was removed in Task 5)
   };
   const document = makeStubDocument();
   const location = { search: '', protocol: 'http:', href: 'http://localhost/' };

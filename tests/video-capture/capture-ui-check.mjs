@@ -22,6 +22,11 @@
 //     "Retry save" re-sends only reps 2 and 3;
 //   - no save request carries video_base64 / video_path; each carries formatVersion 3;
 //   - Cancel during Processing aborts (no save request, overlay closed, live loop resumes);
+//   - (fix round 1) the sample line's frame number equals the sum of the saved samples' frames;
+//     Done and Cancel-after-hard-save-failure both invalidate the caches once and run
+//     reloadDataset once; Cancel after a hard failure toasts "N of 3 samples saved for ...";
+//     a real track stop() during Recording ends in the camera-stopped error, never Review;
+//     the countdown-to-recording time is 2800-3600 ms;
 //   - 0 console errors / uncaught exceptions;
 //   - the test label (zz_video_capture_t5) is deleted afterwards (delete_gesture);
 //   - Train AI (Step 2) still completes after the removals.
@@ -132,6 +137,34 @@ const PAGE_HELPERS = `
   };
   window.__t5.handResults = 0;
   GestureDataRecorder.onHandResults(() => { window.__t5.handResults++; });
+  // saveGestureSample wrapper: logs every call; window.__t5.shouldFail(repIndex, n) forces a failure
+  // with window.__t5.failMessage. savedFrames sums the frames of calls that reached the network.
+  window.__t5.shouldFail = null;
+  window.__t5.failMessage = 'forced test failure';
+  window.__t5.savedFrames = 0;
+  const origSave = GestureDataRecorder.saveGestureSample;
+  let nSave = 0;
+  GestureDataRecorder.saveGestureSample = function (label, frames, lang, vb, vp, cat, meta) {
+    nSave++;
+    const repIndex = meta && meta.repIndex;
+    window.__t5.saveCalls.push({ n: nSave, repIndex, vb, vp, frames: frames.length });
+    if (window.__t5.shouldFail && window.__t5.shouldFail(repIndex, nSave)) return Promise.reject(new Error(window.__t5.failMessage));
+    return origSave.apply(this, arguments).then((res) => { window.__t5.savedFrames += frames.length; return res; });
+  };
+  // Count the post-save steps.
+  window.__t5.reloads = 0;
+  const origReload = window.reloadDataset;
+  window.reloadDataset = function () { window.__t5.reloads++; return origReload.apply(this, arguments); };
+  window.__t5.removeModel = [];
+  if (window.tf && tf.io && tf.io.removeModel) {
+    const origRemove = tf.io.removeModel.bind(tf.io);
+    tf.io.removeModel = function (key) { window.__t5.removeModel.push(key); return origRemove(key); };
+  }
+  window.__t5.line = () => {
+    const t = document.getElementById('sampleCountLine').textContent;
+    const m = t.match(/(\\d+) samples? saved \\((\\d+) frames\\)/);
+    return { text: t, samples: m ? +m[1] : null, frames: m ? +m[2] : null };
+  };
 })();
 true;
 `;
@@ -191,11 +224,13 @@ async function main() {
     await setLabel('');
     await click('startGestureDataBtn');
     await sleep(150);
-    check('empty label -> toast', (await toast()) === 'Enter a gesture name first.', JSON.stringify(await toast()));
+    const t1 = await toast();
+    check('empty label -> toast', t1 === 'Enter a gesture name first.', JSON.stringify(t1));
     await setLabel(LABEL);
     await click('startGestureDataBtn');
     await sleep(150);
-    check('camera off -> toast', (await toast()) === '⚠️ Please enable the camera first!', JSON.stringify(await toast()));
+    const t2 = await toast();
+    check('camera off -> toast', t2 === '⚠️ Please enable the camera first!', JSON.stringify(t2));
     check('overlay not opened by precondition failures', (await state()) === 'closed');
 
     console.log('--- camera ---');
@@ -238,7 +273,7 @@ async function main() {
     const cd = await ev(`({ m: window.__t5.measure(44), n: document.getElementById('gcCountdown').textContent })`);
     check('Countdown: shows 3, scrollWidth 1024, no small buttons', cd.n === '3' && cd.m.scrollWidth === 1024 && cd.m.small.length === 0, JSON.stringify({ n: cd.n, sw: cd.m.scrollWidth }));
     const recMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'recording'`, 5000, 50);
-    check('Recording starts after 3,2,1 (~3000 ms from START)', recMs >= 0, `${300 + recMs} ms after START`);
+    check('Recording starts after 3,2,1 (2800-3600 ms from START)', recMs >= 0 && 300 + recMs >= 2800 && 300 + recMs <= 3600, `${300 + recMs} ms after START`);
     await sleep(1200);
     const recording = await ev(`window.__t5.measure(44)`);
     console.log('  Recording:', JSON.stringify(recording));
@@ -272,17 +307,7 @@ async function main() {
     check('Review video: blob URL, muted, loop, playing, mirrored', /^blob:/.test(reviewVideo.src) && reviewVideo.loop && reviewVideo.muted && !reviewVideo.paused && reviewVideo.transform.startsWith('matrix(-1'), JSON.stringify(reviewVideo));
 
     // Force the 2nd save call to fail once (first attempt of rep 2).
-    await ev(`(() => {
-      const orig = GestureDataRecorder.saveGestureSample;
-      let n = 0;
-      GestureDataRecorder.saveGestureSample = function (label, frames, lang, vb, vp, cat, meta) {
-        n++;
-        window.__t5.saveCalls.push({ n, repIndex: meta && meta.repIndex, vb, vp, frames: frames.length });
-        if (n === 2) return Promise.reject(new Error('forced test failure'));
-        return orig.apply(this, arguments);
-      };
-      return true;
-    })()`);
+    await ev(`window.__t5.shouldFail = (rep, n) => n === 2; localStorage.setItem('sining_kamay_labels_ESL', 'x'); true`);
     await click('gcSave');
     const procMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'processing' && /Processing… [1-9]/.test(document.getElementById('gcMsg').textContent)`, 20000, 50);
     const processing = await ev(`window.__t5.measure(56)`);
@@ -301,24 +326,31 @@ async function main() {
       JSON.stringify(saveErr.buttons));
     check('save failure: no overlaps', saveErr.overlaps.length === 0, JSON.stringify(saveErr.overlaps));
 
+    await ev(`window.__t5.shouldFail = null; true`);
     await click('gcRetrySave');
     const doneMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'closed'`, 60000, 100);
     check('Retry save -> all saved, overlay closed', doneMs >= 0, `${doneMs} ms`);
     await sleep(200);
     const done = await ev(`({ toast: document.getElementById('sk-toast').textContent, line: document.getElementById('sampleCountLine').textContent,
       btn: document.getElementById('startGestureDataBtn').textContent, calls: window.__t5.saveCalls, bodies: window.__t5.bodies.filter(b => /save_gesture/.test(b.url)),
+      line2: window.__t5.line(), savedFrames: window.__t5.savedFrames, reloads: window.__t5.reloads, removeModel: window.__t5.removeModel,
+      labelsKey: localStorage.getItem('sining_kamay_labels_ESL'),
       states: window.__t5.states, reviewSrc: document.getElementById('gcReview').getAttribute('src'), liveSrc: !!document.getElementById('gcLive').srcObject })`);
     console.log('  saveCalls:', JSON.stringify(done.calls));
     console.log('  state log:', JSON.stringify(done.states));
     check('Done toast', done.toast === `3 samples saved for “${LABEL}”.`, done.toast);
-    check('sample line updated (3 samples + Train AI note)', /3 samples saved/.test(done.line) && /Run Train AI/.test(done.line), done.line);
+    check('sample line: 3 samples, frames === sum of the 3 saved samples, Train AI note',
+      done.line2.samples === 3 && done.line2.frames === done.savedFrames && /Run Train AI/.test(done.line), `${done.line} (saved frames sum ${done.savedFrames})`);
+    check('Done: caches invalidated once, reloadDataset once',
+      done.reloads === 1 && JSON.stringify(done.removeModel) === '["indexeddb://sining-kamay-model-ESL"]' && done.labelsKey === null,
+      JSON.stringify({ reloads: done.reloads, removeModel: done.removeModel, labelsKey: done.labelsKey }));
     check('save calls: rep 1, rep 2 (failed), rep 2, rep 3; no video args',
       JSON.stringify(done.calls.map((c) => c.repIndex)) === '[1,2,2,3]' && done.calls.every((c) => c.vb === null && c.vp === null), JSON.stringify(done.calls.map((c) => c.repIndex)));
     const posts = done.bodies;
     check('3 POSTs sent, none with video, all formatVersion 3 / source video-live',
       posts.length === 3 && posts.every((b) => !b.hasVideo && b.formatVersion === 3 && b.source === 'video-live'), JSON.stringify(posts));
-    const savingEntries = done.states.filter((s) => s.startsWith('saving'));
-    check('Cancel hidden during every saving state', savingEntries.length > 0 && savingEntries.every((s) => s.endsWith('cancel-hidden')), JSON.stringify(savingEntries));
+    const savingEntries = done.states.filter((s) => s.startsWith('saving') || s.startsWith('finishing'));
+    check('Cancel hidden during every saving/finishing state', savingEntries.length > 0 && savingEntries.every((s) => s.endsWith('cancel-hidden')), JSON.stringify(savingEntries));
     check('discard: review src cleared, live srcObject released', done.reviewSrc === null && !done.liveSrc, JSON.stringify({ reviewSrc: done.reviewSrc, liveSrc: done.liveSrc }));
 
     console.log('--- run 2: camera-stopped error state ---');
@@ -358,6 +390,50 @@ async function main() {
     const after3 = await ev(`({ state: document.getElementById('gcMode').getAttribute('data-state'), posts: window.__t5.bodies.length, hr: window.__t5.handResults })`);
     check('Cancel during Processing: closed, no save request, live loop resumed',
       after3.state === 'closed' && after3.posts === postsBefore && after3.hr > hrBefore, JSON.stringify({ ...after3, hrBefore }));
+
+    console.log('--- run 4: hard save failure on saves 2 and 3, then Cancel ---');
+    await ev(`window.__t5.shouldFail = (rep) => rep >= 2; window.__t5.failMessage = 'forced test failure.'; localStorage.setItem('sining_kamay_labels_ESL', 'x'); true`);
+    const before4 = await ev(`({ reloads: window.__t5.reloads, removes: window.__t5.removeModel.length, calls: window.__t5.saveCalls.length })`);
+    await click('startGestureDataBtn');
+    await sleep(500);
+    await click('gcStart');
+    const rev4 = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'review'`, 120000, 150);
+    check('run 4 reached Review', rev4 >= 0, `${rev4} ms`);
+    await click('gcSave');
+    await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'error'`, 180000, 100);
+    const err4 = await ev(`window.__t5.measure(56)`);
+    check('hard failure message (no double period)', err4.msg === 'Saved 1 of 3. Sign 2 was not saved: forced test failure.', err4.msg);
+    await click('gcCancel');
+    const closed4 = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'closed'`, 30000, 100);
+    await sleep(200);
+    const after4 = await ev(`({ toast: document.getElementById('sk-toast').textContent, line: window.__t5.line(), savedFrames: window.__t5.savedFrames,
+      reloads: window.__t5.reloads, removes: window.__t5.removeModel.length, labelsKey: localStorage.getItem('sining_kamay_labels_ESL'),
+      calls: window.__t5.saveCalls.slice(${before4.calls}).map(c => c.repIndex), states: window.__t5.states.slice(-3) })`);
+    console.log('  after Cancel:', JSON.stringify(after4));
+    check('Cancel after hard failure closes', closed4 >= 0, `${closed4} ms`);
+    check('Cancel after hard failure: toast "1 of 3 samples saved"', after4.toast === `1 of 3 samples saved for “${LABEL}”.`, after4.toast);
+    check('Cancel after hard failure: caches invalidated + reloadDataset ran once',
+      after4.reloads === before4.reloads + 1 && after4.removes === before4.removes + 1 && after4.labelsKey === null,
+      JSON.stringify({ before4, reloads: after4.reloads, removes: after4.removes, labelsKey: after4.labelsKey }));
+    check('Cancel after hard failure: sample line 4 samples, frames === sum of all saved samples',
+      after4.line.samples === 4 && after4.line.frames === after4.savedFrames, `${after4.line.text} (saved frames sum ${after4.savedFrames})`);
+    check('run 4 save calls: rep 1 then rep 2 (failed), rep 3 never attempted', JSON.stringify(after4.calls) === '[1,2]', JSON.stringify(after4.calls));
+    await ev(`window.__t5.shouldFail = null; true`);
+
+    console.log('--- run 5: real track end during Recording ---');
+    await click('startGestureDataBtn');
+    await sleep(500);
+    await click('gcStart');
+    await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'recording'`, 6000, 50);
+    await sleep(1500);
+    await ev(`document.getElementById('videoFeed').srcObject.getVideoTracks()[0].stop(); true`);
+    const err5ms = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') !== 'recording'`, 10000, 50);
+    const err5 = await ev(`window.__t5.measure(56)`);
+    check('real track stop -> camera-stopped error, never Review', err5.state === 'error' && err5.msg === 'The camera stopped. Please try again.', `${err5.state} / ${err5.msg} (${err5ms} ms)`);
+    await click('gcCancel');
+    await sleep(200);
+    check('Record with a stopped camera -> camera toast',
+      await ev(`document.getElementById('startGestureDataBtn').click(), document.getElementById('gcMode').getAttribute('data-state') === 'closed' && document.getElementById('sk-toast').textContent === '⚠️ Please enable the camera first!'`));
   } finally {
     try {
       console.log('--- cleanup ---');

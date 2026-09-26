@@ -1230,23 +1230,20 @@ function formulateSmartSentence(wordsArray, lang) {
 // The recording itself (countdown, MediaRecorder, live guidance, review, landmark extraction,
 // the 3 saves) lives in js/gesture-capture-ui.js (window.GestureCaptureUI). This file only
 // checks the form's preconditions and opens it, and takes the "samples saved" callback back.
-function cameraHasLiveVideo() {
-  const s = videoFeed ? videoFeed.srcObject : null;
-  return !!(s && typeof s.getVideoTracks === 'function' &&
-            s.getVideoTracks().some(t => t.readyState === 'live'));
-}
-
 function openRecordingMode() {
   const label = currentLabelClean();
   if (!label) { showToast('Enter a gesture name first.'); return; }
-  if (!cameraHasLiveVideo()) { showToast('⚠️ Please enable the camera first!'); return; }
-  if (typeof window.closeKeyboard === 'function') window.closeKeyboard();
-  if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
-  const catRadio = document.querySelector('input[name="gestureCategory"]:checked');
   if (!window.GestureCaptureUI || typeof window.GestureCaptureUI.open !== 'function') {
     console.error('[gesture-training-ui] GestureCaptureUI is not loaded.');
     return;
   }
+  if (!window.GestureCaptureUI.streamIsLive(videoFeed ? videoFeed.srcObject : null)) {
+    showToast('⚠️ Please enable the camera first!');
+    return;
+  }
+  if (typeof window.closeKeyboard === 'function') window.closeKeyboard();
+  if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
+  const catRadio = document.querySelector('input[name="gestureCategory"]:checked');
   window.GestureCaptureUI.open({
     label,
     signSet: selectedSignSet(),
@@ -1255,8 +1252,10 @@ function openRecordingMode() {
   });
 }
 
-// Called once by js/gesture-capture-ui.js after all 3 samples of a recording are saved (and the
-// dataset reloaded): res = { label, signLanguage, labelSampleCount, frameCount }.
+// Called once by js/gesture-capture-ui.js when a recording leaves the mode with 1-3 samples saved,
+// AFTER window.reloadDataset() has rebuilt savedSampleInfo from the server (so the new samples'
+// frames are already counted): res = { label, signLanguage, labelSampleCount } - no frameCount,
+// so noteSampleSaved adds 0 frames and only sets the sample count + "Run Train AI" note.
 window.onCaptureSamplesSaved = (res) => {
   noteSampleSaved(res);
   refreshSampleCountLine();
