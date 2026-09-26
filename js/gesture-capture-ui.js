@@ -21,6 +21,7 @@
   var CATEGORY_NAMES = { word: 'Word', letter: 'Letter', number: 'Number', phrase: 'Phrase' };
   var MSG = {
     cameraStopped: 'The camera stopped. Please try again.',
+    notReady: 'Hand tracking is not ready. Please try again.',
     tooLong: 'That sign took longer than 20 seconds. Please redo.',
     noRest: 'No rest was found at the start. Please redo.',
   };
@@ -271,6 +272,7 @@
       tailTimer: null,
       clockTimer: null,
       startTimer: null,
+      watchdogTimer: null,
       done: false,
       discarded: false,
       tracks: stream.getVideoTracks(),
@@ -295,6 +297,7 @@
       if (r.startTimer) { clearTimeout(r.startTimer); r.startTimer = null; }
       r.originMs = performance.now(); // the recording's time origin
       r.unsub = recorderApi().onHandResults(function (results) { onHand(r, results); });
+      armWatchdog(r);
       r.clockTimer = setInterval(function () {
         el.recTime.textContent = formatElapsed(performance.now() - r.originMs);
       }, 250);
@@ -323,6 +326,7 @@
 
   function onHand(r, results) {
     if (rec !== r || r.discarded || r.originMs === null) return;
+    armWatchdog(r);
     var t = performance.now() - r.originMs;
     var present = !!(results && results.multiHandLandmarks && results.multiHandLandmarks.length > 0);
     setHand(present);
@@ -338,6 +342,17 @@
       r.done = true;
       r.tailTimer = setTimeout(function () { stopForReview(r); }, C().STOP_TAIL_MS);
     }
+  }
+
+  // Hand-tracking readiness watchdog: (re)armed at the time origin and on every live result.
+  // If no result arrives for RESULTS_WATCHDOG_MS (MediaPipe still loading, or the live loop
+  // paused), the recording is discarded instead of sitting on "REST / No hand" forever.
+  function armWatchdog(r) {
+    if (r.watchdogTimer) clearTimeout(r.watchdogTimer);
+    r.watchdogTimer = setTimeout(function () {
+      r.watchdogTimer = null;
+      if (rec === r && !r.discarded) failRecording(MSG.notReady);
+    }, C().RESULTS_WATCHDOG_MS);
   }
 
   function renderGuidance(r, t, present) {
@@ -368,6 +383,7 @@
     if (r.tailTimer) { clearTimeout(r.tailTimer); r.tailTimer = null; }
     if (r.clockTimer) { clearInterval(r.clockTimer); r.clockTimer = null; }
     if (r.startTimer) { clearTimeout(r.startTimer); r.startTimer = null; }
+    if (r.watchdogTimer) { clearTimeout(r.watchdogTimer); r.watchdogTimer = null; }
     if (r.onTrackEnded) {
       r.tracks.forEach(function (t) { t.removeEventListener('ended', r.onTrackEnded); });
       r.onTrackEnded = null;

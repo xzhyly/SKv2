@@ -66,6 +66,7 @@ test('CAPTURE is frozen and has the exact documented values', () => {
     PROCESS_FPS: 15,
     STOP_TAIL_MS: 500,
     MAX_FRAMES_PER_REP: 301,
+    RESULTS_WATCHDOG_MS: 5000,
   });
   assert.equal(CAPTURE.MAX_FRAMES_PER_REP, Math.floor(CAPTURE.MAX_REP_MS / (1000 / CAPTURE.PROCESS_FPS)) + 1);
   assert.throws(() => {

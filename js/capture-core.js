@@ -16,6 +16,7 @@
     PROCESS_FPS: 15,
     STOP_TAIL_MS: 500,
     MAX_FRAMES_PER_REP: 301,
+    RESULTS_WATCHDOG_MS: 5000, // live recording fails if hand-tracking results stop for this long
   });
 
   // createSegmenter(constants) -> a fresh state machine instance.

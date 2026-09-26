@@ -492,6 +492,13 @@
       if (state.detectorFinishReleaseIfReady === finishReleaseIfReady) {
         state.detectorFinishReleaseIfReady = null;
       }
+      // Drop the tracking state left over from the last video frame so the live loop starts
+      // fresh on camera frames (whole-phase review).
+      try {
+        state.hands.reset();
+      } catch (e) {
+        console.warn('[gesture-data] hands.reset() after detector release failed:', e);
+      }
       if (wasLoopRunning) resumeHandLoop();
     }
 

@@ -27,6 +27,9 @@
 //     reloadDataset once; Cancel after a hard failure toasts "N of 3 samples saved for ...";
 //     a real track stop() during Recording ends in the camera-stopped error, never Review;
 //     the countdown-to-recording time is 2800-3600 ms;
+//   - (fix round 2) with the live loop paused right after the countdown, the hand-tracking
+//     watchdog shows "Hand tracking is not ready. Please try again." within 5-7 s, sends no
+//     request, and Redo returns to Ready;
 //   - 0 console errors / uncaught exceptions;
 //   - the test label (zz_video_capture_t5) is deleted afterwards (delete_gesture);
 //   - Train AI (Step 2) still completes after the removals.
@@ -135,6 +138,11 @@ const PAGE_HELPERS = `
       chip: document.getElementById('gcChip').textContent,
     };
   };
+  // Log every toast: the page's async dataset load can overwrite #sk-toast within ms, so
+  // precondition toasts are asserted from this log rather than the element's current text.
+  window.__t5.toasts = [];
+  const origToast = window.showToast;
+  window.showToast = function (m) { window.__t5.toasts.push(String(m)); return origToast.apply(this, arguments); };
   window.__t5.handResults = 0;
   GestureDataRecorder.onHandResults(() => { window.__t5.handResults++; });
   // saveGestureSample wrapper: logs every call; window.__t5.shouldFail(repIndex, n) forces a failure
@@ -222,15 +230,17 @@ async function main() {
     check('form scrollWidth === 1024', form.scrollWidth === 1024, String(form.scrollWidth));
 
     await setLabel('');
+    await ev(`window.__t5.toasts.length = 0; true`);
     await click('startGestureDataBtn');
     await sleep(150);
-    const t1 = await toast();
-    check('empty label -> toast', t1 === 'Enter a gesture name first.', JSON.stringify(t1));
+    const t1 = await ev(`window.__t5.toasts.join(' | ')`);
+    check('empty label -> toast', t1.split(' | ').includes('Enter a gesture name first.'), JSON.stringify(t1));
     await setLabel(LABEL);
+    await ev(`window.__t5.toasts.length = 0; true`);
     await click('startGestureDataBtn');
     await sleep(150);
-    const t2 = await toast();
-    check('camera off -> toast', t2 === '⚠️ Please enable the camera first!', JSON.stringify(t2));
+    const t2 = await ev(`window.__t5.toasts.join(' | ')`);
+    check('camera off -> toast', t2.split(' | ').includes('⚠️ Please enable the camera first!'), JSON.stringify(t2));
     check('overlay not opened by precondition failures', (await state()) === 'closed');
 
     console.log('--- camera ---');
@@ -373,6 +383,40 @@ async function main() {
     await click('gcCancel');
     await sleep(200);
     check('Cancel -> closed', (await state()) === 'closed');
+
+    console.log('--- run 2b: hand-tracking watchdog (live loop paused when recording starts) ---');
+    {
+      const posts0 = await ev(`window.__t5.bodies.length`);
+      await click('startGestureDataBtn');
+      await sleep(500);
+      await click('gcStart');
+      await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'recording'`, 6000, 20);
+      await ev(`GestureDataRecorder.pauseHandLoop(); true`);
+      const t0 = Date.now();
+      const wdMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'error'`, 10000, 50);
+      const elapsed = Date.now() - t0;
+      const wd = await ev(`window.__t5.measure(56)`);
+      console.log('  Watchdog error:', JSON.stringify(wd));
+      check('watchdog: exact error within 5-7 s of pausing the live loop',
+        wdMs >= 0 && wd.msg === 'Hand tracking is not ready. Please try again.' && elapsed >= 4500 && elapsed <= 7000, `${wd.msg} after ${elapsed} ms`);
+      check('watchdog: Redo + Cancel, >= 56 tall, scrollWidth 1024, no overlaps',
+        wd.buttons.some((b) => b.id === 'gcRedo') && wd.buttons.some((b) => b.id === 'gcCancel') && wd.small.length === 0 && wd.scrollWidth === 1024 && wd.overlaps.length === 0,
+        JSON.stringify(wd.buttons));
+      check('watchdog: no request sent', (await ev(`window.__t5.bodies.length`)) === posts0);
+      await click('gcRedo');
+      await sleep(200);
+      check('watchdog: Redo -> Ready', (await state()) === 'ready');
+      // The app never pauses the live loop itself, so its Redo path does not resume it; the test
+      // paused it deliberately and resumes it here.
+      await ev(`GestureDataRecorder.resumeHandLoop(); true`);
+      const hr0 = await ev(`window.__t5.handResults`);
+      await sleep(1500);
+      const hr1 = await ev(`window.__t5.handResults`);
+      check('watchdog: live loop resumed (by the test) and results flow again', hr1 > hr0, `${hr0} -> ${hr1}`);
+      await click('gcCancel');
+      await sleep(200);
+      check('watchdog: Cancel -> closed', (await state()) === 'closed');
+    }
 
     console.log('--- run 3: Cancel during Processing ---');
     const postsBefore = await ev(`window.__t5.bodies.length`);
