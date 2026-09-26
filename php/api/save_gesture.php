@@ -34,6 +34,10 @@ function clean_label($label) {
     return trim($label, '_-');
 }
 
+// Mirrors js/capture-core.js MAX_FRAMES_PER_REP (301 = floor(MAX_REP_MS / (1000 / PROCESS_FPS)) + 1)
+// — a v3 sample is one rep's frames, so it shares that same ceiling.
+const MAX_FRAMES_PER_SAMPLE = 301;
+
 function get_ffmpeg_path() {
     $test = shell_exec('ffmpeg -version 2>&1');
     if (strpos($test, 'ffmpeg version') !== false) {
@@ -395,8 +399,19 @@ if (!is_array($frames)) {
 if (count($frames) < 1) {
     fail('At least one landmark frame is required');
 }
-if (count($frames) > 120) {
-    fail('Too many frames in one sample; expected 20-40 frames', 413);
+if (count($frames) > MAX_FRAMES_PER_SAMPLE) {
+    fail('Too many frames in one sample (max 301)', 413);
+}
+
+$formatVersion = (int)($body['formatVersion'] ?? 0);
+$isV3 = $formatVersion === 3;
+
+if ($isV3) {
+    foreach ($frames as $i => $frame) {
+        if (!is_array($frame) || !isset($frame['t']) || !is_numeric($frame['t']) || !isset($frame['hands']) || !is_array($frame['hands'])) {
+            fail("Invalid v3 frame at index $i");
+        }
+    }
 }
 
 // ── Save landmark JSON to appropriate folder based on sign language ──
@@ -427,16 +442,51 @@ $priorSampleCount = count(glob($resolvedLabelDir . DIRECTORY_SEPARATOR . 'sample
 $filename = 'sample_' . round(microtime(true) * 1000) . '_' . bin2hex(random_bytes(3)) . '.json';
 $path     = $resolvedLabelDir . DIRECTORY_SEPARATOR . $filename;
 
-$recording = [
-    'label'       => $label,
-    'createdAt'   => gmdate('c'),
-    'frameCount'  => count($frames),
-    'format'      => 'mediapipe_hands_landmarks_v2',
-    'signLanguage'=> $signLanguage,
-    'frames'      => $frames,
-];
+if ($isV3) {
+    $inputBody = is_array($body['input'] ?? null) ? $body['input'] : [];
+    $rectBody  = is_array($inputBody['contentRect'] ?? null) ? $inputBody['contentRect'] : [];
+    $numOrZero = function ($v) { return is_numeric($v) ? $v + 0 : 0; };
 
-$encoded = json_encode($recording, JSON_PRETTY_PRINT);
+    $recording = [
+        'label'        => $label,
+        'createdAt'    => gmdate('c'),
+        'frameCount'   => count($frames),
+        'format'       => 'mediapipe_hands_raw_v3',
+        'formatVersion'=> 3,
+        'signLanguage' => $signLanguage,
+        'source'       => (string)($body['source'] ?? 'video-live'),
+        'repIndex'     => (int)($body['repIndex'] ?? 0),
+        'videoWidth'   => (int)($body['videoWidth'] ?? 0),
+        'videoHeight'  => (int)($body['videoHeight'] ?? 0),
+        'fps'          => $numOrZero($body['fps'] ?? 0),
+        'input'        => [
+            'width'       => $numOrZero($inputBody['width'] ?? 0),
+            'height'      => $numOrZero($inputBody['height'] ?? 0),
+            'contentRect' => [
+                'x' => $numOrZero($rectBody['x'] ?? 0),
+                'y' => $numOrZero($rectBody['y'] ?? 0),
+                'w' => $numOrZero($rectBody['w'] ?? 0),
+                'h' => $numOrZero($rectBody['h'] ?? 0),
+            ],
+        ],
+        'frames'       => $frames,
+    ];
+} else {
+    $recording = [
+        'label'       => $label,
+        'createdAt'   => gmdate('c'),
+        'frameCount'  => count($frames),
+        'format'      => 'mediapipe_hands_landmarks_v2',
+        'signLanguage'=> $signLanguage,
+        'frames'      => $frames,
+    ];
+}
+
+// v3 raw samples can carry up to 301 frames of full per-landmark data; JSON_PRETTY_PRINT's
+// indentation alone can push that past MariaDB's default max_allowed_packet (1 MiB) when the
+// same string is also written to gesture_recordings.landmark_json. v2's shape/format stays
+// byte-for-byte pretty-printed as before — only the new v3 path is stored compact.
+$encoded = json_encode($recording, $isV3 ? 0 : JSON_PRETTY_PRINT);
 if ($encoded === false || file_put_contents($path, $encoded, LOCK_EX) === false) {
     fail('Unable to write gesture sample', 500);
 }
