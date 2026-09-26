@@ -29,8 +29,41 @@
     detectorMode: false, // true while a createVideoDetector() detector "owns" onResults
     pendingDetectResolve: null, // resolves the in-flight detect(canvas) promise
     pendingDetectReject: null, // rejects the in-flight detect(canvas) promise
+    detectorSendPending: false, // true from the moment detect() calls hands.send() until that
+    // specific call has been accounted for (onResults arrived, or its send() promise itself
+    // settled without one) - lets release() know a late onResults is still owed and must be
+    // discarded rather than routed to the live path (fix round 1, review items 3/4).
+    detectorFinishReleaseIfReady: null, // set by the active detector's release(); called once
+    // detectorSendPending clears, so a release requested mid-send can finish once it's safe.
     handSubscribers: [], // onHandResults() subscribers, called with (results) outside detector mode
   };
+
+  // letterboxRect(srcW, srcH, dstW, dstH) -> { x, y, w, h }: fits a srcW x srcH box centered
+  // inside a dstW x dstH box, preserving aspect ratio (the black-bar "letterbox/pillarbox"
+  // fit). ONE definition shared by runHandLoop (live camera -> 320x240) and
+  // js/video-landmarks.js's extractVideoLandmarks (recorded video -> caller-chosen size) so
+  // the two can never diverge (fix round 1, review item 5). Callers own their own fallback
+  // for a zero/unknown srcW/srcH (runHandLoop's `|| 320` / `|| 240`) - this function does not
+  // guess a default.
+  function letterboxRect(srcW, srcH, dstW, dstH) {
+    const srcRatio = srcW / srcH;
+    const dstRatio = dstW / dstH;
+
+    let w = dstW;
+    let h = dstH;
+    let x = 0;
+    let y = 0;
+
+    if (srcRatio > dstRatio) {
+      h = dstW / srcRatio;
+      y = (dstH - h) / 2;
+    } else {
+      w = dstH * srcRatio;
+      x = (dstW - w) / 2;
+    }
+
+    return { x, y, w, h };
+  }
 
   function notify(message) {
     if (typeof window.showToast === "function") {
@@ -259,10 +292,18 @@
       // latestLandmarks update, no skeleton drawing, no captureFrameIfRecording (owner brief,
       // Task 4).
       if (state.detectorMode) {
+        // This result settles the one outstanding hands.send() call detect() issued. If a
+        // detect() promise is still waiting for it, resolve it; otherwise it already
+        // timed out or release() already rejected it, so this result is late - it is
+        // discarded here, never routed to the live path below (fix round 1, review item 3).
+        state.detectorSendPending = false;
         const resolve = state.pendingDetectResolve;
         state.pendingDetectResolve = null;
         state.pendingDetectReject = null;
         if (resolve) resolve(results);
+        if (typeof state.detectorFinishReleaseIfReady === 'function') {
+          state.detectorFinishReleaseIfReady();
+        }
         return;
       }
 
@@ -404,26 +445,12 @@
         const vHeight = state.video.videoHeight || 240;
         const targetWidth = 320;
         const targetHeight = 240;
-        
-        const videoRatio = vWidth / vHeight;
-        const targetRatio = targetWidth / targetHeight;
-        
-        let dWidth = targetWidth;
-        let dHeight = targetHeight;
-        let dx = 0;
-        let dy = 0;
-        
-        if (videoRatio > targetRatio) {
-          dHeight = targetWidth / videoRatio;
-          dy = (targetHeight - dHeight) / 2;
-        } else {
-          dWidth = targetHeight * videoRatio;
-          dx = (targetWidth - dWidth) / 2;
-        }
-        
+
+        const contentRect = letterboxRect(vWidth, vHeight, targetWidth, targetHeight);
+
         offscreenCtx.fillStyle = '#000';
         offscreenCtx.fillRect(0, 0, targetWidth, targetHeight);
-        offscreenCtx.drawImage(state.video, dx, dy, dWidth, dHeight);
+        offscreenCtx.drawImage(state.video, contentRect.x, contentRect.y, contentRect.w, contentRect.h);
 
         // Send canvas (rather than raw video) to bypass Chromium mailbox crashes
         state.sendInFlight = true;
@@ -478,11 +505,12 @@
     return true;
   }
 
-  // Video-based gesture capture (owner brief, Task 4): lets js/video-landmarks.js's
-  // extractVideoLandmarks() reuse the page's ONE existing MediaPipe Hands instance instead of
-  // creating a second one. Pauses the live hand loop (if it was running), waits for any
-  // in-flight send() to finish, then switches onResults into "detector mode" so each
-  // detect(canvas) call gets routed the next onResults callback directly.
+  // Video-based gesture capture (owner brief, Task 4; fixed up per review, fix round 1): lets
+  // js/video-landmarks.js's extractVideoLandmarks() reuse the page's ONE existing MediaPipe
+  // Hands instance instead of creating a second one. Pauses the live hand loop (if it was
+  // running), waits for any in-flight send() to finish, then switches onResults into
+  // "detector mode" so each detect(canvas) call gets routed the next onResults callback
+  // directly.
   async function createVideoDetector() {
     if (!state.hands) {
       throw new Error(
@@ -493,19 +521,45 @@
     const wasLoopRunning = !state.loopPaused;
     pauseHandLoop();
 
-    // Short polling wait for any send() already in flight, with a timeout so a stuck send
-    // can't hang detector creation forever.
+    // Short polling wait for any live-loop send() already in flight, with a timeout so a
+    // stuck send can't hang detector creation forever. Review item 4: if it's still stuck
+    // after the timeout, restore the loop (we already paused it) and fail loudly instead of
+    // silently proceeding - letting a live send's result resolve the first detect() would
+    // shift every later frame by one.
     const pollStart = Date.now();
     while (state.sendInFlight && Date.now() - pollStart < 5000) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
+    if (state.sendInFlight) {
+      if (wasLoopRunning) resumeHandLoop();
+      throw new Error(
+        'createVideoDetector(): timed out waiting for an in-flight camera frame send to finish'
+      );
+    }
 
     state.detectorMode = true;
+    let releaseRequested = false;
     let released = false;
+
+    // Runs the part of release() that isn't safe to do until the last outstanding
+    // hands.send() this detector issued has been accounted for (review item 3): turning off
+    // detector mode and resuming the live loop earlier could let a still-in-flight send's
+    // late result take either path incorrectly. Called from release() itself (when nothing
+    // is pending) and from onResults / the send-promise settling (when release() was
+    // requested while a send was still in flight).
+    function finishReleaseIfReady() {
+      if (!releaseRequested || released || state.detectorSendPending) return;
+      released = true;
+      state.detectorMode = false;
+      if (state.detectorFinishReleaseIfReady === finishReleaseIfReady) {
+        state.detectorFinishReleaseIfReady = null;
+      }
+      if (wasLoopRunning) resumeHandLoop();
+    }
 
     function detect(canvas) {
       return new Promise((resolve, reject) => {
-        if (released) {
+        if (releaseRequested) {
           reject(new Error('detect() called after release()'));
           return;
         }
@@ -529,22 +583,46 @@
 
         state.pendingDetectResolve = wrappedResolve;
         state.pendingDetectReject = wrappedReject;
+        state.detectorSendPending = true;
+
+        // Settles detectorSendPending (and, if a release() is waiting on it, finishes that
+        // release) for this specific send - whether it was already handled by onResults, or
+        // needs handling here because no onResults ever came for it.
+        function settleSendIfStillPending(err) {
+          if (!state.detectorSendPending) return; // onResults already handled this one
+          state.detectorSendPending = false;
+          if (state.pendingDetectReject === wrappedReject) {
+            state.pendingDetectResolve = null;
+            state.pendingDetectReject = null;
+            if (err) {
+              wrappedReject(err);
+            } else {
+              // Review item "minor": the send settled but no onResults ever arrived for it -
+              // reject promptly instead of making the caller wait out the full 10s timeout.
+              wrappedReject(new Error('detect(): hands.send() settled without producing a result'));
+            }
+          }
+          finishReleaseIfReady();
+        }
 
         try {
           const maybePromise = state.hands.send({ image: canvas });
-          if (maybePromise && typeof maybePromise.catch === 'function') {
-            maybePromise.catch((err) => {
-              if (state.pendingDetectReject === wrappedReject) {
-                state.pendingDetectResolve = null;
-                state.pendingDetectReject = null;
-                wrappedReject(err);
-              }
-            });
+          if (maybePromise && typeof maybePromise.then === 'function') {
+            maybePromise.then(
+              () => settleSendIfStillPending(null),
+              (err) => settleSendIfStillPending(err)
+            );
+          } else {
+            // send() didn't return a thenable - nothing more to observe; treat it as already
+            // settled so a stuck release() isn't left waiting on it forever.
+            state.detectorSendPending = false;
           }
         } catch (err) {
+          state.detectorSendPending = false;
           state.pendingDetectResolve = null;
           state.pendingDetectReject = null;
           wrappedReject(err);
+          finishReleaseIfReady();
         }
       });
     }
@@ -554,12 +632,25 @@
     }
 
     function release() {
-      if (released) return;
-      released = true;
-      state.detectorMode = false;
-      state.pendingDetectResolve = null;
-      state.pendingDetectReject = null;
-      if (wasLoopRunning) resumeHandLoop();
+      if (releaseRequested) return;
+      releaseRequested = true;
+
+      // Reject any currently-pending detect() promise immediately - the caller shouldn't
+      // have to wait out a 10s timeout just because release() happened (review item 3).
+      if (state.pendingDetectReject) {
+        const reject = state.pendingDetectReject;
+        state.pendingDetectResolve = null;
+        state.pendingDetectReject = null;
+        reject(new Error('detect() rejected: release() was called before a result arrived'));
+      }
+
+      if (state.detectorSendPending) {
+        // A send is still in flight; defer turning off detector mode / resuming the loop
+        // until it settles (onResults or the send promise itself will call this).
+        state.detectorFinishReleaseIfReady = finishReleaseIfReady;
+      } else {
+        finishReleaseIfReady();
+      }
     }
 
     return { reset, detect, release };
@@ -916,6 +1007,7 @@
     resumeHandLoop,
     createVideoDetector,
     onHandResults,
+    letterboxRect,
     getLatestLandmarks,
     extractLandmarkFeatures,
     saveGestureSample,

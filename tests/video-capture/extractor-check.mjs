@@ -15,6 +15,10 @@
 //   - an aborted run rejects with AbortError
 //   - the live loop resumes after release() (hands.send is called again)
 //   - total processing ms for one run
+//   - (fix round 1) onProgress is called exactly frames.length times, and `done` never
+//     exceeds `total`
+//   - (fix round 1) the ffmpeg no-cues copy really exercises extractVideoLandmarks' Infinity-
+//     duration branch (probed independently via window.probeDuration())
 // and asserts 0 console errors (MediaPipe's own info/warning logs are not errors).
 //
 // Run: node tests/video-capture/extractor-check.mjs
@@ -75,14 +79,32 @@ async function main() {
     const outUrl = `http://localhost/SKR/tests/video-capture/${path.basename(tmpDir)}/out.webm`;
 
     const files = [
-      { name: 'in.webm (original MediaRecorder output)', load: `window.loadBlobFromUrl(${JSON.stringify(`http://localhost/SKR/tests/video-capture/${path.basename(tmpDir)}/in.webm`)})` },
-      { name: 'out.webm (ffmpeg -c copy, no cues/duration)', load: `window.loadBlobFromUrl(${JSON.stringify(outUrl)})` },
+      {
+        name: 'in.webm (original MediaRecorder output)',
+        load: `window.loadBlobFromUrl(${JSON.stringify(`http://localhost/SKR/tests/video-capture/${path.basename(tmpDir)}/in.webm`)})`,
+        expectInfiniteDuration: false,
+      },
+      {
+        name: 'out.webm (ffmpeg -c copy, no cues/duration)',
+        load: `window.loadBlobFromUrl(${JSON.stringify(outUrl)})`,
+        expectInfiniteDuration: true,
+      },
     ];
 
     for (const file of files) {
       console.log(`\n--- ${file.name} ---`);
       const bytes = await chrome.evaluate(file.load);
       console.log(`  loaded ${bytes} bytes into window.recBlob`);
+
+      const probe = await chrome.evaluate('window.probeDuration()');
+      console.log(`  probed raw duration: isInfinite=${probe.isInfinite} raw=${probe.durationRaw}`);
+      if (file.expectInfiniteDuration) {
+        check(
+          'this file really exercises the Infinity-duration branch',
+          probe.isInfinite === true,
+          `probe=${JSON.stringify(probe)}`
+        );
+      }
 
       const run1 = await chrome.evaluate('window.runExtract({})');
       check('run 1 succeeded', run1.ok === true, run1.ok ? '' : `${run1.errorName}: ${run1.errorMessage}`);
@@ -96,6 +118,19 @@ async function main() {
         'frames.length === Math.ceil(duration*15)',
         run1.result.frames.length === expectedFrames,
         `frames=${run1.result.frames.length} expected=${expectedFrames} durationMs=${durationMs}`
+      );
+
+      const maxDone = Math.max(...run1.progressCalls.map((p) => p[0]));
+      const progressTotal = run1.progressCalls.length ? run1.progressCalls[0][1] : -1;
+      check(
+        'onProgress called exactly frames.length times',
+        run1.progressCalls.length === run1.result.frames.length,
+        `progressCalls=${run1.progressCalls.length} frames=${run1.result.frames.length}`
+      );
+      check(
+        'onProgress `done` never exceeds `total`',
+        maxDone <= progressTotal,
+        `maxDone=${maxDone} total=${progressTotal}`
       );
 
       console.log(`  total processing ms (run 1, 320x240): ${run1.totalMs}`);

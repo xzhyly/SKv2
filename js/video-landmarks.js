@@ -1,57 +1,103 @@
 // Sining Kamay - video-based gesture capture: turns a recorded video Blob (and later, an
 // imported File) into per-frame raw MediaPipe Hands landmarks by seeking frame-by-frame.
 //
-// Plain script, attaches window.VideoLandmarks. DOM-only (no node build): a detached <video>,
-// an <canvas>, URL.createObjectURL. Knows nothing about reps, labels, categories or the save
-// endpoint - it only turns a Blob into { frames, videoWidth, videoHeight, fps, durationMs,
-// input } via a caller-supplied detector (see js/gesture-data.js's createVideoDetector()).
+// Plain script, attaches window.VideoLandmarks (and, for the pure seekTimes() helper only,
+// module.exports under node - see the bottom of this file). DOM-only otherwise (no node
+// build): a detached <video>, a <canvas>, URL.createObjectURL. Knows nothing about reps,
+// labels, categories or the save endpoint - it only turns a Blob into { frames, videoWidth,
+// videoHeight, fps, durationMs, input } via a caller-supplied detector (see
+// js/gesture-data.js's createVideoDetector()). The letterbox-fit math is NOT duplicated here
+// (fix round 1, review item 5): it calls window.GestureDataRecorder.letterboxRect(), the one
+// definition shared with runHandLoop's live-camera letterboxing.
 (function () {
   'use strict';
+
+  // How long a single video-element event wait (loadedmetadata, durationchange, seeked) is
+  // allowed to take before extractVideoLandmarks() gives up with a clear error instead of
+  // hanging forever (fix round 1, review item 2).
+  var VIDEO_EVENT_TIMEOUT_MS = 15000;
 
   function round(n, dp) {
     var m = Math.pow(10, dp);
     return Math.round(n * m) / m;
   }
 
-  // Same fit-within-box letterbox math as runHandLoop (js/gesture-data.js:374-398): fits the
-  // video's native aspect ratio inside inputWidth x inputHeight, centered, black-filled bars.
-  function computeContentRect(vWidth, vHeight, targetWidth, targetHeight) {
-    var videoRatio = vWidth / vHeight;
-    var targetRatio = targetWidth / targetHeight;
-
-    var dWidth = targetWidth;
-    var dHeight = targetHeight;
-    var dx = 0;
-    var dy = 0;
-
-    if (videoRatio > targetRatio) {
-      dHeight = targetWidth / videoRatio;
-      dy = (targetHeight - dHeight) / 2;
-    } else {
-      dWidth = targetHeight * videoRatio;
-      dx = (targetWidth - dWidth) / 2;
-    }
-
-    return { x: dx, y: dy, w: dWidth, h: dHeight };
-  }
-
-  function waitEvent(target, eventName, errorEventName) {
-    return new Promise(function (resolve, reject) {
-      function onEvent() {
-        if (errorEventName) target.removeEventListener(errorEventName, onError);
-        resolve();
-      }
-      function onError(e) {
-        target.removeEventListener(eventName, onEvent);
-        reject(e && e.error ? e.error : new Error('video error during load'));
-      }
-      target.addEventListener(eventName, onEvent, { once: true });
-      if (errorEventName) target.addEventListener(errorEventName, onError, { once: true });
-    });
-  }
-
   function abortError() {
     return new DOMException('Aborted', 'AbortError');
+  }
+
+  // seekTimes(duration, fps) -> [t0, t1, ...]: the pure seek-time grid extractVideoLandmarks
+  // walks. Pulled out as a pure, DOM-free helper (fix round 1) so it can be unit-tested under
+  // node directly, and so the extraction loop can't drift off this exact grid: iterating
+  // `for (t = 0; t < duration; t += 1/fps)` accumulates float error (e.g. duration=2, fps=15
+  // gives 31 steps instead of 30 - the reviewer's off-by-one). Deriving each t as `k / fps`
+  // for a fixed k in [0, total) is exact for any k.
+  function seekTimes(duration, fps) {
+    var total = Math.ceil(duration * fps);
+    var times = new Array(total);
+    for (var k = 0; k < total; k++) {
+      times[k] = k / fps;
+    }
+    return times;
+  }
+
+  // Waits for `eventName` on `target`, rejecting on `errorEventName` (if given), on a timeout,
+  // or on `signal` aborting - whichever comes first (fix round 1, review item 2: none of
+  // these waits may hang forever, and an abort must be able to break one immediately rather
+  // than only being noticed on the next loop iteration).
+  function waitEvent(target, eventName, errorEventName, opts) {
+    opts = opts || {};
+    var timeoutMs = opts.timeoutMs || VIDEO_EVENT_TIMEOUT_MS;
+    var signal = opts.signal || null;
+
+    return new Promise(function (resolve, reject) {
+      var settled = false;
+
+      function cleanup() {
+        target.removeEventListener(eventName, onEvent);
+        if (errorEventName) target.removeEventListener(errorEventName, onError);
+        if (signal) signal.removeEventListener('abort', onAbort);
+        clearTimeout(timeoutId);
+      }
+
+      function onEvent() {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      }
+
+      function onError(e) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(e && e.error ? e.error : new Error('video error while waiting for "' + eventName + '"'));
+      }
+
+      function onAbort() {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(abortError());
+      }
+
+      var timeoutId = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('timed out waiting for video event "' + eventName + '" (' + timeoutMs + 'ms)'));
+      }, timeoutMs);
+
+      target.addEventListener(eventName, onEvent, { once: true });
+      if (errorEventName) target.addEventListener(errorEventName, onError, { once: true });
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+    });
   }
 
   // extractVideoLandmarks(source, options) -> Promise<{ frames, videoWidth, videoHeight, fps,
@@ -61,6 +107,9 @@
     var detector = opts.detector;
     if (!detector || typeof detector.detect !== 'function' || typeof detector.reset !== 'function') {
       throw new Error('extractVideoLandmarks requires a { reset(), detect(canvas) } detector');
+    }
+    if (!window.GestureDataRecorder || typeof window.GestureDataRecorder.letterboxRect !== 'function') {
+      throw new Error('extractVideoLandmarks requires js/gesture-data.js (window.GestureDataRecorder.letterboxRect) to be loaded');
     }
     var fps = opts.fps || (window.GestureCaptureCore && window.GestureCaptureCore.CAPTURE.PROCESS_FPS) || 15;
     var inputWidth = opts.inputWidth || 320;
@@ -90,40 +139,54 @@
       objectUrl = URL.createObjectURL(source);
       video.src = objectUrl;
 
-      var loadedMetadata = waitEvent(video, 'loadedmetadata', 'error');
-      await loadedMetadata;
+      await waitEvent(video, 'loadedmetadata', 'error', { signal: signal });
 
       checkAborted();
 
       // Infinity-duration fix: MediaRecorder WebMs without cues report Infinity duration until
       // a seek beyond the (unknown) end forces the browser to resolve it via durationchange.
       if (!isFinite(video.duration)) {
-        var durationChange = waitEvent(video, 'durationchange', 'error');
+        var durationChangePromise = waitEvent(video, 'durationchange', 'error', { signal: signal });
         video.currentTime = 1e101;
-        await durationChange;
-        var seekBack = waitEvent(video, 'seeked', 'error');
+        await durationChangePromise;
+
+        var seekBackPromise = waitEvent(video, 'seeked', 'error', { signal: signal });
         video.currentTime = 0;
-        await seekBack;
+        await seekBackPromise;
       }
 
       checkAborted();
 
+      // Review item 2: the fix above isn't guaranteed to leave a usable duration (a
+      // corrupt/empty file, or a browser that never fires durationchange as expected) - fail
+      // clearly here rather than dividing by an unusable value further down.
       var duration = video.duration;
+      if (!isFinite(duration) || duration <= 0) {
+        throw new Error('extractVideoLandmarks: could not determine a finite, positive video duration (got ' + duration + ')');
+      }
+
       var videoWidth = video.videoWidth;
       var videoHeight = video.videoHeight;
-      var contentRect = computeContentRect(videoWidth, videoHeight, inputWidth, inputHeight);
-      var total = Math.ceil(duration * fps);
+      // Review item 5: a video with no video track (0x0) can't be letterboxed - fail clearly
+      // instead of producing NaN rects / a black-only extraction.
+      if (!videoWidth || !videoHeight) {
+        throw new Error('extractVideoLandmarks: video has no video track (0x0 dimensions)');
+      }
+      var contentRect = window.GestureDataRecorder.letterboxRect(videoWidth, videoHeight, inputWidth, inputHeight);
+
+      var times = seekTimes(duration, fps);
+      var total = times.length;
 
       detector.reset();
 
       var frames = [];
-      var k = 0;
-      for (var t = 0; t < duration; t += 1 / fps, k++) {
+      for (var k = 0; k < total; k++) {
         checkAborted();
 
-        var seeked = waitEvent(video, 'seeked', 'error');
+        var t = times[k];
+        var seekedPromise = waitEvent(video, 'seeked', 'error', { signal: signal });
         video.currentTime = t;
-        await seeked;
+        await seekedPromise;
 
         checkAborted();
 
@@ -162,12 +225,21 @@
         input: { width: inputWidth, height: inputHeight, contentRect: contentRect },
       };
     } finally {
-      video.src = '';
+      video.removeAttribute('src');
+      video.load();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     }
   }
 
-  window.VideoLandmarks = {
+  var api = {
     extractVideoLandmarks: extractVideoLandmarks,
+    seekTimes: seekTimes,
   };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
+  if (typeof window !== 'undefined') {
+    window.VideoLandmarks = api;
+  }
 })();

@@ -134,7 +134,9 @@ window.setupMp = async function (clipUrl) {
 };
 
 // Runs one extractVideoLandmarks() pass over window.recBlob using a fresh createVideoDetector().
-// opts: { inputWidth, inputHeight, abortAfterFrames }.
+// opts: { inputWidth, inputHeight, abortAfterFrames }. Returns the full progressCalls array
+// (not just its length) so the driver can assert both its count and that `done` never
+// exceeds `total`.
 window.runExtract = async function (opts) {
   opts = opts || {};
   const detector = await window.GestureDataRecorder.createVideoDetector();
@@ -158,7 +160,7 @@ window.runExtract = async function (opts) {
       },
     });
     const totalMs = Math.round(performance.now() - t0);
-    return { ok: true, result, totalMs, progressCalls: progressCalls.length };
+    return { ok: true, result, totalMs, progressCalls };
   } catch (err) {
     const totalMs = Math.round(performance.now() - t0);
     return {
@@ -166,11 +168,34 @@ window.runExtract = async function (opts) {
       errorName: err && err.name,
       errorMessage: err && err.message,
       totalMs,
-      progressCalls: progressCalls.length,
+      progressCalls,
     };
   } finally {
     detector.release();
   }
+};
+
+// Check-page-level probe (fix round 1): opens a throwaway <video> on window.recBlob and
+// reports whether its raw duration is Infinity, so the driver can assert the no-cues ffmpeg
+// copy really took extractVideoLandmarks' Infinity-duration branch. Independent of
+// extractVideoLandmarks' own (internal, unobservable from outside) video element; does not
+// change extractVideoLandmarks' public return shape.
+window.probeDuration = async function () {
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  const url = URL.createObjectURL(window.recBlob);
+  v.src = url;
+  await new Promise((resolve, reject) => {
+    v.addEventListener('loadedmetadata', resolve, { once: true });
+    v.addEventListener('error', reject, { once: true });
+  });
+  const isInfinite = !isFinite(v.duration);
+  const durationRaw = String(v.duration);
+  v.removeAttribute('src');
+  v.load();
+  URL.revokeObjectURL(url);
+  return { isInfinite, durationRaw };
 };
 
 // Feeds an extractVideoLandmarks() result through GestureCaptureCore.segmentFrames() exactly
