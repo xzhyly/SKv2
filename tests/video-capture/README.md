@@ -69,6 +69,22 @@ Run: `node --test --test-concurrency=1 tests/video-capture/*.test.mjs`
 
   Run: `node tests/video-capture/e2e.mjs`
 
+  Since the capture UI layout fix (2026-09-27) Step 1 has no camera: the recording mode starts
+  the camera itself ("Starting camera…", START disabled until the first live hand result) and
+  stops it on close. `e2e.mjs` follows that real flow (no Enable Camera click in Step 1) and uses
+  Step 3's own Enable Camera for Predict; `capture-ui-check.mjs` covers both the overlay-started
+  camera and a camera already running before the overlay opens.
+
+- `screenshots.mjs` (capture UI layout fix, 2026-09-27) - screenshots of Step 1 and every
+  recording-mode state (Starting camera, REST, SIGN 2 of 3, Review, Processing, Saving, a
+  save-failure error) at **1024x600 and 1280x720**, saved to `docs/reports/img/`, with per-state
+  checks: no scrollbar, every visible button >= 44x44 (overlay bottom bar >= 56 tall), no
+  top-bar overlap, the overlay-started camera stopped on close, 0 console errors. Saves are
+  delayed 1.5 s in-page so Saving can be captured; the error state is a forced failure of save 2.
+  Deletes its test label afterwards.
+
+  Run: `node tests/video-capture/screenshots.mjs`
+
 Full measured output from the verification run is in
 `docs/reports/` / `.git/sdd/vc-task-6-report.md` (see the phase's task list for the exact path).
 
@@ -79,4 +95,6 @@ Full measured output from the verification run is in
   messages/exceptions. `enableNetwork()`/`getNetworkRequests()`/`getRequestPostData()` are an
   opt-in addition (Task 6) for checking request bodies at the CDP level; they are no-ops for any
   caller that never invokes `enableNetwork()`.
+- `fake-camera.mjs` - `buildY4m(dir)`: the fake-camera `.y4m` (hello.webm x3 with black gaps)
+  shared by `e2e.mjs` and `screenshots.mjs`.
 - `load-gesture-data.mjs` - loads `js/gesture-data.js` under Node for the pure unit tests.

@@ -1059,34 +1059,48 @@ function nextStep(){if(currentStep<4)goToStep(currentStep+1);}
 function setStep(step){trGoToStep(step);}
 
 // Hook UI event listeners
+// One camera start, shared by the Enable Camera button (Steps 3/4) and Step 1's recording mode
+// (js/gesture-capture-ui.js). Resolves with the stream; rejects with the helper's (err, msg).
+function startPageCamera() {
+  return new Promise((resolve, reject) => {
+    initCameraWithFallback(
+      320,
+      240,
+      (s) => {
+        stream = s;
+        videoFeed.srcObject = stream;
+        videoFeed.style.display = 'block';
+        camPlaceholder.style.display = 'none';
+        enableCamBtn.style.display = 'none';
+        camBadge.classList.add('live');
+        camBadge.innerHTML = '<div class="live-dot pulsing"></div> Camera Ready';
+        if (window.GestureDataRecorder && typeof window.GestureDataRecorder.setupMediaPipe === 'function') {
+          window.GestureDataRecorder.setupMediaPipe(videoFeed);
+          // setupMediaPipe returns early for the same <video>; restart the loop if a closed
+          // recording mode paused it (no-op when it is already running).
+          if (typeof window.GestureDataRecorder.resumeHandLoop === 'function') window.GestureDataRecorder.resumeHandLoop();
+        }
+
+        // Ensure video is playing
+        videoFeed.play().catch(e => console.warn("[Camera] Play failed:", e));
+
+        // Auto-start predictions if camera is enabled while on Step 3 or Step 4
+        if (currentStep === 3) {
+          startLivePrediction(false);
+        } else if (currentStep === 4) {
+          startLivePrediction(true);
+        }
+        resolve(s);
+      },
+      (err, msg) => reject({ err, msg })
+    );
+  });
+}
+
 enableCamBtn.addEventListener('click', () => {
-  initCameraWithFallback(
-    320, 
-    240, 
-    (s) => {
-      stream = s;
-      videoFeed.srcObject = stream;
-      videoFeed.style.display = 'block';
-      camPlaceholder.style.display = 'none';
-      enableCamBtn.style.display = 'none';
-      camBadge.classList.add('live');
-      camBadge.innerHTML = '<div class="live-dot pulsing"></div> Camera Ready';
-      showToast('🟢 Camera successfully started!');
-      if (window.GestureDataRecorder && typeof window.GestureDataRecorder.setupMediaPipe === 'function') {
-        window.GestureDataRecorder.setupMediaPipe(videoFeed);
-      }
-      
-      // Ensure video is playing
-      videoFeed.play().catch(e => console.warn("[Camera] Play failed:", e));
-      
-      // Auto-start predictions if camera is enabled while on Step 3 or Step 4
-      if (currentStep === 3) {
-        startLivePrediction(false);
-      } else if (currentStep === 4) {
-        startLivePrediction(true);
-      }
-    },
-    (err, msg) => {
+  startPageCamera().then(
+    () => showToast('🟢 Camera successfully started!'),
+    ({ err, msg }) => {
       console.error("Enable Camera Fail:", err);
       if (err.name === 'NotFoundError') {
         camBadge.innerHTML = '<div class="live-dot"></div> No Camera Found';
@@ -1099,6 +1113,46 @@ enableCamBtn.addEventListener('click', () => {
     }
   );
 });
+
+// Step 1's recording mode starts the camera when it opens and stops it when it closes - but only
+// a camera it started itself; one already running for Steps 3/4 is left as it was.
+let cameraOwnedByCapture = false;
+
+function cameraErrorText(err) {
+  const name = err && err.name;
+  if (name === 'NotFoundError') return 'No camera found. Connect a camera and try again.';
+  if (name === 'NotReadableError' || name === 'TrackStartError') return 'The camera is busy. Close other apps using it and try again.';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') return 'Camera permission was denied.';
+  if (name === 'InsecureContext') return 'The camera needs localhost or HTTPS.';
+  return 'Could not start the camera' + (name ? ' (' + name + ')' : '') + '.';
+}
+
+function acquireCaptureCamera() {
+  if (window.GestureCaptureUI.streamIsLive(videoFeed.srcObject)) {
+    const g = window.GestureDataRecorder;
+    if (g && typeof g.resumeHandLoop === 'function') g.resumeHandLoop();
+    return Promise.resolve(videoFeed.srcObject);
+  }
+  return startPageCamera().then(
+    (s) => { cameraOwnedByCapture = true; return s; },
+    ({ err }) => { console.warn('[gesture-training-ui] capture camera failed:', err); throw new Error(cameraErrorText(err)); }
+  );
+}
+
+function releaseCaptureCamera() {
+  if (!cameraOwnedByCapture) return;
+  cameraOwnedByCapture = false;
+  const g = window.GestureDataRecorder;
+  if (g && typeof g.pauseHandLoop === 'function') g.pauseHandLoop();
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = null;
+  videoFeed.srcObject = null;
+  videoFeed.style.display = '';
+  camPlaceholder.style.display = '';
+  enableCamBtn.style.display = '';
+  camBadge.classList.remove('live');
+  camBadge.innerHTML = '<div class="live-dot"></div> Camera Off';
+}
 
 document.getElementById('downloadBtn').addEventListener('click',()=>{
   const blob=new Blob([JSON.stringify(trainData)],{type:'application/json'});
@@ -1237,10 +1291,6 @@ function openRecordingMode() {
     console.error('[gesture-training-ui] GestureCaptureUI is not loaded.');
     return;
   }
-  if (!window.GestureCaptureUI.streamIsLive(videoFeed ? videoFeed.srcObject : null)) {
-    showToast('⚠️ Please enable the camera first!');
-    return;
-  }
   if (typeof window.closeKeyboard === 'function') window.closeKeyboard();
   if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
   const catRadio = document.querySelector('input[name="gestureCategory"]:checked');
@@ -1248,7 +1298,8 @@ function openRecordingMode() {
     label,
     signSet: selectedSignSet(),
     category: catRadio ? catRadio.value : 'word',
-    stream: videoFeed.srcObject,
+    acquireCamera: acquireCaptureCamera,
+    releaseCamera: releaseCaptureCamera,
   });
 }
 

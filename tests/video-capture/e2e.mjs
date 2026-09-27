@@ -18,17 +18,16 @@
 // added for this task), independent of the in-page fetch wrapper used for readability elsewhere.
 //
 // Run (Apache + MariaDB up): node tests/video-capture/e2e.mjs
-import { execFileSync } from 'node:child_process';
+
 import { mkdtempSync, rmSync, statSync, readdirSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome } from './cdp.mjs';
+import { buildY4m } from './fake-camera.mjs';
 import { query } from '../categorization/db.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const FFMPEG = path.join(REPO_ROOT, 'ffmpeg.exe');
-const CLIP = path.join(REPO_ROOT, 'assets', 'signs', 'en', 'hello.webm');
 const PAGE_URL = 'http://localhost/SKR/gesture-training.html';
 const SAVE_URL = 'http://localhost/SKR/php/api/save_gesture.php';
 const LABEL = 'zz_video_capture_e2e';
@@ -42,31 +41,6 @@ function check(label, cond, detail) {
     failures++;
     console.log(`  FAIL  ${label}${detail ? ' - ' + detail : ''}`);
   }
-}
-
-// Task 6's exact recipe: 2s black, clip letterboxed, 1.5s black, clip, 1.5s black, clip, 3s black.
-function buildY4m(dir) {
-  const out = path.join(dir, 'fake-cam.y4m');
-  const lb =
-    'scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p';
-  const black = (d) => `color=c=black:s=320x240:r=30:d=${d},format=yuv420p,setsar=1`;
-  const filter = [
-    `${black(2)}[b0]`,
-    `[0:v]${lb},split=3[c1][c2][c3]`,
-    `${black(1.5)}[b1]`,
-    `${black(1.5)}[b2]`,
-    `${black(3)}[b3]`,
-    '[b0][c1][b1][c2][b2][c3][b3]concat=n=7:v=1:a=0[out]',
-  ].join(';');
-  execFileSync(FFMPEG, [
-    '-y', '-hide_banner', '-loglevel', 'error',
-    '-i', CLIP,
-    '-filter_complex', filter,
-    '-map', '[out]',
-    '-pix_fmt', 'yuv420p',
-    out,
-  ]);
-  return out;
 }
 
 function listSignsDir() {
@@ -189,7 +163,11 @@ async function main() {
     };
     const state = () => ev(`document.getElementById('gcMode').getAttribute('data-state')`);
     const toast = () => ev(`document.getElementById('sk-toast').textContent`);
-    const click = (id) => ev(`document.getElementById(${JSON.stringify(id)}).click(); true`);
+    // START is disabled until the overlay's camera + first hand result are ready: wait for Ready.
+    const click = async (id) => {
+      if (id === 'gcStart') await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
+      return ev(`document.getElementById(${JSON.stringify(id)}).click(); true`);
+    };
     const setLabel = (v) =>
       ev(
         `(() => { const i = document.getElementById('gestureLabelInput'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`
@@ -206,11 +184,8 @@ async function main() {
     await sleep(800);
     await ev(PAGE_HELPERS);
 
-    console.log('--- camera + label ---');
-    await click('enableCamBtn');
-    const camMs = await waitFor(`window.__e2e.handResults > 5`, 60000, 200);
-    check('camera enabled, live hand results flowing', camMs >= 0, `${camMs} ms`);
-    await sleep(3200); // let the "Camera started" toast expire before the G-key check
+    console.log('--- label (Step 1 has no camera; the recording mode starts it) ---');
+    check('Step 1: camera not started before the recording mode opens', await ev(`!document.getElementById('videoFeed').srcObject`));
 
     await setLabel(LABEL);
     await ev(
@@ -233,8 +208,8 @@ async function main() {
 
     console.log('=== RUN 1: full record -> save flow ===');
     await click('startGestureDataBtn');
-    await sleep(500);
-    check('Ready reached', (await state()) === 'ready');
+    const readyMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
+    check('Ready reached (camera + hand tracking started by the recording mode)', readyMs >= 0, `${readyMs} ms`);
     const chip = await ev(`document.getElementById('gcChip').textContent`);
     check('chip shows label/ESL/Word', chip === `${LABEL} · ESL · Word`, chip);
 
@@ -260,7 +235,7 @@ async function main() {
     console.log(`  recording auto-stopped after ${recordingDurationMs} ms`);
 
     const review = await ev(`window.__e2e.measure(56)`);
-    check('Review reached with "3 signs found"', review.state === 'review' && review.msg === '3 signs found', JSON.stringify(review.msg));
+    check('Review reached with "3 signs found"', review.state === 'review' && review.msg === 'REVIEW · 3 signs found', JSON.stringify(review.msg));
 
     // Save -> Processing -> 3 saves -> closed. Measure processing wall time from the
     // states log (covers extraction + segmentation, which run synchronously back to back).
@@ -358,7 +333,7 @@ async function main() {
     const rev2 = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'review'`, 60000, 100);
     check('run 2 reached Review', rev2 >= 0, `${rev2} ms`);
     await click('gcRedo');
-    await sleep(300);
+    await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
     const afterRedo = await ev(`({ state: document.getElementById('gcMode').getAttribute('data-state'), posts: window.__e2e.bodies.length })`);
     check('Redo -> back to Ready, no request sent', afterRedo.state === 'ready' && afterRedo.posts === postsBeforeRun2, JSON.stringify(afterRedo));
     await click('gcCancel');
@@ -369,7 +344,7 @@ async function main() {
     const labelDirBeforeRun3 = listLabelDir();
     const postsBeforeRun3 = await ev(`window.__e2e.bodies.length`);
     await click('startGestureDataBtn');
-    await sleep(400);
+    await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
     await click('gcCancel');
     await sleep(200);
     const afterCancelReady = await ev(`({ state: document.getElementById('gcMode').getAttribute('data-state'), posts: window.__e2e.bodies.length })`);
@@ -408,10 +383,12 @@ async function main() {
     check('Cancel during Processing: no save request sent', after4.posts === postsBeforeRun4, JSON.stringify(after4));
     const labelDirAfterRun4 = listLabelDir();
     check('label folder listing identical after Cancel-during-Processing', JSON.stringify(labelDirAfterRun4) === JSON.stringify(labelDirBeforeRun4));
+    // The recording mode started the camera itself (Step 1 has none), so closing it stops the
+    // camera and pauses the live loop: no more hand results.
     const hrBefore4 = await ev(`window.__e2e.handResults`);
     await sleep(1500);
-    const hrAfter4 = await ev(`window.__e2e.handResults`);
-    check('live loop resumed after Cancel during Processing', hrAfter4 > hrBefore4, `${hrBefore4} -> ${hrAfter4}`);
+    const cam4 = await ev(`({ hr: window.__e2e.handResults, src: !!document.getElementById('videoFeed').srcObject })`);
+    check('after Cancel during Processing: the overlay-started camera is stopped, live loop paused', !cam4.src && cam4.hr === hrBefore4, JSON.stringify({ hrBefore4, ...cam4 }));
 
     const signsAfterAllRuns = listSignsDir();
     check('assets/signs/ listing identical after Redo/Cancel runs', JSON.stringify(signsAfterAllRuns) === JSON.stringify(signsBefore));
@@ -434,6 +411,11 @@ async function main() {
     console.log('=== Predict (Step 3), fake camera, ~5s, no errors ===');
     await ev(`trGoToStep(3); showStepContent(3); true`);
     await sleep(600);
+    // Step 3 keeps its own Enable Camera button, as before this fix.
+    const hrPred0 = await ev(`window.__e2e.handResults`);
+    await click('enableCamBtn');
+    const camPredMs = await waitFor(`window.__e2e.handResults > ${hrPred0} + 5`, 60000, 200);
+    check('Step 3: Enable Camera works, live hand results flowing', camPredMs >= 0, `${camPredMs} ms`);
     const predBefore = await ev(`document.getElementById('predLabel') ? document.getElementById('predLabel').textContent : null`);
     await sleep(5000);
     const predAfter = await ev(`({ predLabel: document.getElementById('predLabel') ? document.getElementById('predLabel').textContent : null,

@@ -67,13 +67,21 @@ function findSampleFiles() {
   return files;
 }
 
-test('golden: every saved sample on disk produces byte-identical rows vs the phase-base commit', () => {
+test('golden: every saved v2 sample on disk produces byte-identical rows vs the phase-base commit', () => {
   const files = findSampleFiles();
   assert.ok(files.length > 0, 'expected to find at least one saved sample file');
 
+  // v3 (raw) samples recorded since this phase are skipped: the phase-base code predates the v3
+  // format, so their rows differ by design (v3 loading has its own tests below). The golden
+  // guarantee is about v2 samples only.
   let totalRows = 0;
+  let compared = 0;
+  let skippedV3 = 0;
   for (const file of files) {
     const sample = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const isRaw = Array.isArray(sample.frames) && sample.frames.some((f) => Array.isArray(f && f.hands));
+    if (isRaw) { skippedV3++; continue; }
+    compared++;
     const currentRows = current.recordingToFeatureRows(sample);
     const baseRows = base.recordingToFeatureRows(sample);
     assert.deepEqual(
@@ -84,8 +92,9 @@ test('golden: every saved sample on disk produces byte-identical rows vs the pha
     totalRows += currentRows.length;
   }
 
+  assert.ok(compared > 0, 'expected at least one v2 sample file to compare');
   // Reported in the task report: file count and total row count compared.
-  console.log(`golden test: compared ${files.length} sample files, ${totalRows} total rows`);
+  console.log(`golden test: compared ${compared} v2 sample files (${totalRows} total rows), skipped ${skippedV3} v3 files`);
 });
 
 test('v3 sample: a 0-hand frame gives no row', () => {

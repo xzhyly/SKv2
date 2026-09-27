@@ -949,84 +949,141 @@ body.keyboard-active #datasetModal.show .tr-modal-card {
 .tr-sample-line.done{color:var(--green)}
 
 /* ── Full-screen recording mode (#gcMode, js/gesture-capture-ui.js) ──
-   Sized for the 1024x600 kiosk: a 64px top bar, then the 4:3 camera/review stage at the
-   largest height that fits (600 - 64 - 16 = 520px tall -> 693px wide) and a side column for
-   the guidance, messages and action buttons. z-index sits above the dataset modal (11000)
-   and the raised on-screen keyboard (11001), below the PIN screen (12000). */
+   Landscape, full viewport, no outer margin: a 3-row grid - top bar (chip | state title | Cancel),
+   media (the live feed or the review loop, object-fit: contain so hands near the edges are never
+   cropped), bottom bar (the state's buttons sharing the width, or a status line). No fixed pixel
+   height for the video: the media row is 1fr, so it scales at 1024x600, 1280x720 and 1920x1080.
+   z-index sits above the dataset modal (11000) and the raised on-screen keyboard (11001), below
+   the PIN screen (12000). */
 .gc-mode{
-  position:fixed;inset:0;z-index:11500;background:var(--navy2);color:#fff;
-  display:flex;flex-direction:column;overflow:hidden;
+  position:fixed;top:0;left:0;width:100vw;height:100vh;margin:0;border-radius:0;
+  z-index:11500;background:var(--navy2);color:#fff;overflow:hidden;
+  display:grid;grid-template-rows:auto minmax(0,1fr) auto;
 }
 .gc-mode[hidden],.gc-mode [hidden]{display:none !important}
+
+/* Top bar */
 .gc-top{
-  height:64px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;
-  gap:12px;padding:0 16px;
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr) minmax(0,1fr);
+  align-items:center;gap:12px;padding:8px 16px;background:var(--navy);
+  min-height:calc(56px + 16px); /* same height whether or not Cancel is shown (Saving hides it) */
+  border-bottom:2px solid rgba(249,115,22,.55);
 }
 .gc-chip{
-  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  background:var(--navy-light);border:1.5px solid rgba(255,255,255,.18);border-radius:99px;
-  padding:8px 16px;font-size:15px;font-weight:800;letter-spacing:.2px;
+  justify-self:start;max-width:100%;overflow-wrap:anywhere;line-height:1.25;
+  background:var(--navy-light);border:1.5px solid rgba(255,255,255,.18);border-radius:14px;
+  padding:6px 14px;font-size:clamp(13px,2.4vh,20px);font-weight:800;letter-spacing:.2px;
+  /* wraps to 2 lines rather than hiding the sign set / type behind an ellipsis */
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
 }
+.gc-title{
+  min-width:0;display:flex;align-items:center;justify-content:center;gap:16px;
+  flex-wrap:wrap;text-align:center;
+}
+.gc-top-end{justify-self:end;display:flex}
+.gc-prompt{font-size:clamp(26px,5.6vh,60px);line-height:1.05;font-weight:900;letter-spacing:.5px;color:#fff;white-space:nowrap}
+.gc-prompt.rest{color:#93c5fd}
+.gc-prompt.sign{color:var(--orange)}
+.gc-dots{display:flex;gap:10px}
+.gc-dot{width:clamp(18px,3.4vh,34px);height:clamp(18px,3.4vh,34px);border-radius:50%;border:3px solid rgba(255,255,255,.55);background:transparent}
+.gc-dot.current{border-color:var(--orange);box-shadow:0 0 0 4px rgba(249,115,22,.3)}
+.gc-dot.done{border-color:var(--green);background:var(--green)}
+.gc-msg{font-size:clamp(20px,4.4vh,44px);line-height:1.15;font-weight:900;letter-spacing:.3px;color:#fff;overflow-wrap:anywhere}
+.gc-msg.error{font-size:clamp(16px,3vh,28px);font-weight:800;letter-spacing:0;color:#fecaca}
+
+/* Buttons */
 .gc-btn{
-  height:56px;min-width:56px;padding:0 20px;border-radius:10px;border:none;cursor:pointer;
-  font-size:17px;font-weight:800;display:flex;align-items:center;justify-content:center;
-  transition:background .18s,opacity .18s;flex-shrink:0;
+  min-height:56px;min-width:56px;padding:0 20px;border-radius:10px;border:none;cursor:pointer;
+  font-size:clamp(17px,3vh,26px);font-weight:800;display:flex;align-items:center;justify-content:center;
+  transition:background .18s,opacity .18s;touch-action:manipulation;
 }
-.gc-btn:disabled{opacity:.4;cursor:not-allowed}
+.gc-btn:disabled,.gc-primary:disabled{
+  background:var(--navy-light);color:#cbd5e1;border:1.5px dashed rgba(255,255,255,.3);cursor:not-allowed;
+}
+.gc-btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .gc-cancel{background:rgba(255,255,255,.12);color:#fff;border:1.5px solid rgba(255,255,255,.35)}
 .gc-cancel:hover{background:rgba(255,255,255,.2)}
 .gc-primary{background:var(--orange);color:#fff}
 .gc-primary:hover:not(:disabled){background:var(--orange-deep)}
 .gc-secondary{background:var(--white);color:var(--navy)}
-.gc-body{
-  flex:1;min-height:0;display:flex;gap:16px;padding:0 16px 16px 16px;
-}
-.gc-stage{
-  position:relative;flex-shrink:0;height:100%;aspect-ratio:4 / 3;
-  max-width:calc(100vw - 32px - 16px - 240px);
-  background:#000;border-radius:12px;overflow:hidden;
-}
+
+/* Media row: the video fills it, letterboxed (contain), mirrored for the signer
+   (the recording itself is not mirrored). */
+.gc-media{position:relative;min-height:0;min-width:0;background:#000;overflow:hidden}
 .gc-video{
   position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;
-  transform:scaleX(-1); /* mirrored for the signer; the recording itself is not mirrored */
+  transform:scaleX(-1);
 }
-.gc-start{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:180px;height:180px;border-radius:50%;border:6px solid rgba(255,255,255,.9);
-  background:var(--orange);color:#fff;font-size:34px;font-weight:900;letter-spacing:1px;
-  cursor:pointer;box-shadow:0 8px 32px rgba(0,0,0,.45);
-}
-.gc-start:hover{background:var(--orange-deep)}
 .gc-countdown{
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  background:rgba(15,23,42,.55);font-size:160px;font-weight:900;color:#fff;
+  background:rgba(15,23,42,.45);font-size:clamp(96px,30vh,320px);font-weight:900;color:#fff;
   text-shadow:0 4px 24px rgba(0,0,0,.6);
 }
-.gc-side{
-  flex:1;min-width:0;display:flex;flex-direction:column;gap:14px;padding-top:4px;
+.gc-hand{
+  position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;
+  padding:8px 14px;border-radius:99px;background:rgba(15,23,42,.72);
+  font-size:clamp(14px,2.6vh,22px);font-weight:800;color:#cbd5e1;
 }
-.gc-rec{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:800;color:#fecaca}
-.gc-rec-lbl{color:#fff}
-.gc-rec-dot{width:14px;height:14px;border-radius:50%;background:#ef4444;animation:gcBlink 1s infinite}
-@keyframes gcBlink{50%{opacity:.25}}
-.gc-prompt{font-size:44px;line-height:1.05;font-weight:900;letter-spacing:.5px;color:#fff}
-.gc-prompt.rest{color:#93c5fd}
-.gc-prompt.sign{color:var(--orange)}
-.gc-dots{display:flex;gap:12px}
-.gc-dot{width:26px;height:26px;border-radius:50%;border:3px solid rgba(255,255,255,.55);background:transparent}
-.gc-dot.current{border-color:var(--orange);box-shadow:0 0 0 4px rgba(249,115,22,.3)}
-.gc-dot.done{border-color:var(--green);background:var(--green)}
-.gc-hand{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;color:#cbd5e1}
 .gc-hand-dot{width:14px;height:14px;border-radius:50%;background:#64748b}
 .gc-hand.on{color:#fff}
 .gc-hand.on .gc-hand-dot{background:var(--green)}
 .gc-hint{
-  background:var(--gold);color:var(--navy2);border-radius:10px;padding:10px 12px;
-  font-size:15px;font-weight:800;line-height:1.3;
+  position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  width:max-content;max-width:calc(100% - 32px);text-align:center;
+  padding:12px 20px;border-radius:12px;background:rgba(245,158,11,.95);color:#111827;
+  font-size:clamp(16px,3vh,28px);font-weight:800;line-height:1.25;
+  box-shadow:0 6px 24px rgba(0,0,0,.4);
 }
-.gc-msg{font-size:20px;font-weight:800;line-height:1.3;color:#fff;overflow-wrap:anywhere}
-.gc-msg.error{color:#fecaca}
-.gc-progress{height:14px;border-radius:99px;background:rgba(255,255,255,.15);overflow:hidden}
+
+/* Bottom bar: always at least one 56px row tall, so the media row doesn't jump between states */
+.gc-bottom{
+  min-height:calc(56px + 20px);padding:10px 16px;background:var(--navy);
+  display:flex;align-items:center;gap:16px;
+}
+.gc-bottom > *{flex:1;min-width:0}
+.gc-status{
+  display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center;
+  font-size:clamp(16px,3vh,26px);font-weight:800;color:#e2e8f0;
+}
+.gc-rec-dot{width:16px;height:16px;border-radius:50%;background:#ef4444;animation:gcBlink 1s infinite}
+.gc-rec-lbl{color:#fecaca}
+.gc-rec-note{font-weight:700;color:#cbd5e1}
+@keyframes gcBlink{50%{opacity:.25}}
+@media (prefers-reduced-motion: reduce){.gc-rec-dot{animation:none}}
+.gc-progress{height:16px;border-radius:99px;background:rgba(255,255,255,.15);overflow:hidden}
 .gc-progress-fill{height:100%;width:0%;border-radius:99px;background:var(--orange);transition:width .2s}
-.gc-actions{margin-top:auto;display:flex;flex-direction:column;gap:10px}
-.gc-actions .gc-btn{width:100%}
+.gc-actions{display:flex;gap:12px}
+.gc-actions .gc-btn{flex:1 1 0;min-width:0}
+
+/* ── Step 1 (Add Data): no camera panel, two columns (capture UI layout fix, 2026-09-27) ──
+   The camera starts only inside the recording mode. The panel is moved off-screen (not
+   display:none) exactly like Step 2, because the live MediaPipe loop keeps reading #videoFeed
+   while the recording mode is open, and a display:none video freezes Chromium on the Pi. */
+#trContentWrap.step-1-active .tr-right-panel{
+  position:absolute !important;left:-9999px !important;top:-9999px !important;
+  opacity:0 !important;pointer-events:none !important;
+}
+#trContentWrap.step-1-active .tr-left-panel{
+  width:100% !important;height:100% !important;border-right:none !important;border-top:none !important;
+}
+#trContentWrap.step-1-active #leftStep1{padding:16px 24px 8px 24px;overflow:hidden}
+.tr-s1-grid{
+  flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;
+  grid-template-rows:minmax(0,1fr) auto;column-gap:32px;row-gap:4px;
+}
+.tr-s1-col{display:flex;flex-direction:column;gap:14px;min-height:0;min-width:0}
+.tr-s1-back{grid-column:1 / -1;min-height:44px}
+#leftStep1 .tr-flbl{font-size:14px}
+#leftStep1 .tr-input{height:48px;font-size:16px}
+#leftStep1 .tr-sign-opt{height:48px;font-size:15px}
+#leftStep1 .tr-record-btn{height:72px;font-size:22px;border-radius:12px;margin-top:0}
+#leftStep1 .tr-sample-line{font-size:14px}
+#leftStep1 .tr-dataset-btn{
+  width:100%;min-height:56px;flex-direction:row;justify-content:space-between;align-items:center;
+  text-align:left;cursor:pointer;padding:8px 14px;
+}
+.tr-dataset-btn-lbl{font-weight:800;color:var(--navy);font-size:15px}
+#leftStep1 .tr-dataset-btn .tr-lm-status{font-size:13px}
+#leftStep1 .tr-bottom-row{margin-top:0;padding-top:0;gap:12px}
+#leftStep1 .tr-ghost-btn{height:48px;font-size:14px}
+#leftStep1 .tr-train-btn{height:52px;font-size:16px;margin-top:0}

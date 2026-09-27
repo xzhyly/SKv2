@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Train Gestures ✿ Sining Kamay</title>
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.7">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.8">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
   <script src="js/lib/tf.min.js" defer></script>
   <script src="js/lib/mediapipe/hands.js" defer></script>
@@ -195,23 +195,22 @@
       <!-- Step 1 -->
       <div id="leftStep1" class="tr-left-content active">
         <!-- Capture Controls -->
-        <div id="step1CaptureControls" style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
-          <div class="tr-section-lbl">Gesture Sample Capture</div>
-          <div id="gestureDatasetCard">
+        <div id="step1CaptureControls" class="tr-s1-grid">
+          <div class="tr-s1-col" id="gestureDatasetCard">
+            <div class="tr-section-lbl">Gesture Sample Capture</div>
             <div class="tr-fgrp">
-              <label class="tr-flbl">Gesture Name</label>
-              <input id="gestureLabelInput" type="text" class="tr-input" placeholder="Gesture name, e.g. hello" autocomplete="off" aria-label="Gesture name">
+              <label class="tr-flbl" for="gestureLabelInput">Gesture Name</label>
+              <input id="gestureLabelInput" type="text" class="tr-input" placeholder="Gesture name, e.g. hello" autocomplete="off">
             </div>
-            <div id="sampleCountLine" class="tr-sample-line" role="status" aria-live="polite"></div>
-            <div class="tr-fgrp" style="margin-top:2px">
-              <label class="tr-flbl">Sign Set</label>
+            <div class="tr-fgrp">
+              <span class="tr-flbl">Sign Set</span>
               <div class="tr-sign-toggle">
                 <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="ESL" checked> ESL</label>
                 <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="FSL"> FSL</label>
               </div>
             </div>
-            <div class="tr-fgrp" style="margin-top:2px">
-              <label class="tr-flbl">Type</label>
+            <div class="tr-fgrp">
+              <span class="tr-flbl">Type</span>
               <div class="tr-sign-toggle tr-type-toggle">
                 <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="word" checked> Word</label>
                 <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="letter"> Letter</label>
@@ -219,30 +218,35 @@
                 <label class="tr-sign-opt"><input type="radio" name="gestureCategory" value="phrase"> Phrase</label>
               </div>
             </div>
+          </div>
+
+          <div class="tr-s1-col">
             <button id="startGestureDataBtn" class="tr-record-btn" type="button">Record 3 samples</button>
+            <div id="sampleCountLine" class="tr-sample-line" role="status" aria-live="polite"></div>
+
+            <!-- Hidden container kept for data syncing -->
+            <div id="gestureDatasetTableWrap" style="display:none">
+              <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center; padding:10px;">Loading dataset...</p>
+            </div>
+
+            <!-- Dataset Trigger Button -->
+            <button type="button" id="viewDatasetBtn" onclick="trOpenDatasetModal()" class="tr-lm-card tr-dataset-btn">
+              <span class="tr-dataset-btn-lbl">📁 View Active Gesture Dataset</span>
+              <span style="display:flex;align-items:center;gap:6px;">
+                <span class="tr-lm-status" id="datasetCount">0 gestures</span>
+                <span style="color:var(--orange);font-weight:900;font-size:16px;">›</span>
+              </span>
+            </button>
+
+            <div id="trainDataControls"></div>
+            <div class="tr-bottom-row">
+              <button type="button" class="tr-ghost-btn" id="downloadBtn">Export Data</button>
+              <button type="button" class="tr-ghost-btn" id="loadBtn">Load Saved</button>
+            </div>
+            <button type="button" class="tr-train-btn" onclick="trClickPill(2)">Next: Train AI →</button>
           </div>
 
-          <!-- Hidden container kept for data syncing -->
-          <div id="gestureDatasetTableWrap" style="display:none">
-            <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center; padding:10px;">Loading dataset...</p>
-          </div>
-
-          <!-- Dataset Trigger Button -->
-          <button type="button" id="viewDatasetBtn" onclick="trOpenDatasetModal()" class="tr-lm-card" style="margin-top:6px; cursor:pointer; width:100%; text-align:left; display:flex; justify-content:space-between; align-items:center; border:none; padding:8px 10px;">
-            <span style="font-weight:800; color:var(--navy); font-size:12px;">📁 View Active Gesture Dataset</span>
-            <span style="display:flex;align-items:center;gap:6px;">
-              <span class="tr-lm-status" id="datasetCount">0 gestures</span>
-              <span style="color:var(--orange);font-weight:900;font-size:14px;">›</span>
-            </span>
-          </button>
-
-          <div id="trainDataControls"></div>
-          <div class="tr-bottom-row">
-            <button type="button" class="tr-ghost-btn" id="downloadBtn">Export Data</button>
-            <button type="button" class="tr-ghost-btn" id="loadBtn">Load Saved</button>
-          </div>
-          <button type="button" class="tr-train-btn" style="margin-top: 6px;" onclick="trClickPill(2)">Next: Train AI →</button>
-          <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(1)">← Back to Instructions</button>
+          <button type="button" class="tr-back-to-instr tr-s1-back" onclick="showStepInstruction(1)">← Back to Instructions</button>
         </div>
       </div>
 
@@ -353,28 +357,32 @@
 <div id="gcMode" class="gc-mode" data-state="closed" role="dialog" aria-modal="true" aria-label="Record 3 samples" hidden>
   <div class="gc-top">
     <div class="gc-chip" id="gcChip"></div>
-    <button type="button" class="gc-btn gc-cancel" id="gcCancel">Cancel</button>
-  </div>
-  <div class="gc-body">
-    <div class="gc-stage" id="gcStage">
-      <video id="gcLive" class="gc-video" autoplay playsinline muted></video>
-      <video id="gcReview" class="gc-video" playsinline muted loop hidden></video>
-      <button type="button" class="gc-start" id="gcStart">START</button>
-      <div class="gc-countdown" id="gcCountdown" hidden></div>
-    </div>
-    <div class="gc-side">
-      <div class="gc-rec" id="gcRec" hidden><span class="gc-rec-dot"></span><span class="gc-rec-lbl">REC</span><span id="gcRecTime">0:00</span></div>
+    <div class="gc-title" id="gcTitle">
       <div class="gc-prompt" id="gcPrompt" hidden></div>
       <div class="gc-dots" id="gcDots" hidden><span class="gc-dot"></span><span class="gc-dot"></span><span class="gc-dot"></span></div>
-      <div class="gc-hand" id="gcHand" hidden><span class="gc-hand-dot"></span><span id="gcHandText">No hand</span></div>
-      <div class="gc-hint" id="gcHint" role="status" aria-live="polite" hidden></div>
       <div class="gc-msg" id="gcMsg" role="status" aria-live="polite" hidden></div>
-      <div class="gc-progress" id="gcProgress" hidden><div class="gc-progress-fill" id="gcProgressFill"></div></div>
-      <div class="gc-actions" id="gcActions" hidden>
-        <button type="button" class="gc-btn gc-primary" id="gcSave">Save</button>
-        <button type="button" class="gc-btn gc-primary" id="gcRetrySave">Retry save</button>
-        <button type="button" class="gc-btn gc-secondary" id="gcRedo">Redo</button>
-      </div>
+    </div>
+    <div class="gc-top-end">
+      <button type="button" class="gc-btn gc-cancel" id="gcCancel">Cancel</button>
+    </div>
+  </div>
+  <div class="gc-media" id="gcStage">
+    <video id="gcLive" class="gc-video" autoplay playsinline muted></video>
+    <video id="gcReview" class="gc-video" playsinline muted loop hidden></video>
+    <div class="gc-countdown" id="gcCountdown" hidden></div>
+    <div class="gc-hand" id="gcHand" hidden><span class="gc-hand-dot"></span><span id="gcHandText">No hand</span></div>
+    <div class="gc-hint" id="gcHint" role="status" aria-live="polite" hidden></div>
+  </div>
+  <div class="gc-bottom">
+    <div class="gc-status" id="gcRec" hidden><span class="gc-rec-dot"></span><span class="gc-rec-lbl">REC</span><span id="gcRecTime">0:00</span><span class="gc-rec-note">Sign on SIGN, lower your hands on REST</span></div>
+    <div class="gc-status" id="gcStatus" role="status" aria-live="polite" hidden></div>
+    <div class="gc-progress" id="gcProgress" hidden><div class="gc-progress-fill" id="gcProgressFill"></div></div>
+    <div class="gc-actions" id="gcActions" hidden>
+      <button type="button" class="gc-btn gc-primary" id="gcStart" disabled>Starting camera…</button>
+      <button type="button" class="gc-btn gc-primary" id="gcSave">Save</button>
+      <button type="button" class="gc-btn gc-primary" id="gcRetrySave">Retry save</button>
+      <button type="button" class="gc-btn gc-secondary" id="gcRedo">Redo</button>
+      <button type="button" class="gc-btn gc-secondary" id="gcCancelBottom">Cancel</button>
     </div>
   </div>
 </div>

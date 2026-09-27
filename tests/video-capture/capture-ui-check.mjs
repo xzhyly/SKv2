@@ -202,7 +202,12 @@ async function main() {
     };
     const state = () => ev(`document.getElementById('gcMode').getAttribute('data-state')`);
     const toast = () => ev(`document.getElementById('sk-toast').textContent`);
-    const click = (id) => ev(`document.getElementById(${JSON.stringify(id)}).click(); true`);
+    // START is disabled until the overlay's camera + first hand result are ready (capture UI
+    // layout fix): wait for Ready before pressing it.
+    const click = async (id) => {
+      if (id === 'gcStart') await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
+      return ev(`document.getElementById(${JSON.stringify(id)}).click(); true`);
+    };
     const setLabel = (v) => ev(`(() => { const i = document.getElementById('gestureLabelInput'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
 
     await chrome.navigate(PAGE_URL);
@@ -216,7 +221,7 @@ async function main() {
     console.log('--- form (Step 1) ---');
     const form = await ev(`(() => {
       const b = document.getElementById('startGestureDataBtn').getBoundingClientRect();
-      const card = document.getElementById('gestureDatasetCard').getBoundingClientRect();
+      const card = document.getElementById('startGestureDataBtn').parentElement.getBoundingClientRect(); // its Step 1 column
       return { text: document.getElementById('startGestureDataBtn').textContent, w: b.width, h: b.height, cardW: card.width,
         stop: !!document.getElementById('stopGestureDataBtn'), lm: !!document.getElementById('gestureDataStatus'),
         preview: !!document.getElementById('step1PreviewControls'), countdown: !!document.getElementById('countdownOverlay'),
@@ -224,7 +229,7 @@ async function main() {
         api: ['startRecording','stopRecording','confirmAndSave','discardCapture'].filter(k => k in GestureDataRecorder) };
     })()`);
     check('Record button text', form.text === 'Record 3 samples', JSON.stringify(form.text));
-    check('Record button full width and >= 44 px tall', form.h >= 44 && Math.abs(form.w - form.cardW) < 1, `${form.w}x${form.h} (card width ${form.cardW})`);
+    check('Record button spans its column and is >= 44 px tall', form.h >= 44 && Math.abs(form.w - form.cardW) < 1, `${form.w}x${form.h} (column width ${form.cardW})`);
     check('Finish Capture / Landmark frames / preview panel / countdown overlay removed', !form.stop && !form.lm && !form.preview && !form.countdown);
     check('old GestureDataRecorder capture exports removed', form.api.length === 0, JSON.stringify(form.api));
     check('form scrollWidth === 1024', form.scrollWidth === 1024, String(form.scrollWidth));
@@ -240,8 +245,16 @@ async function main() {
     await click('startGestureDataBtn');
     await sleep(150);
     const t2 = await ev(`window.__t5.toasts.join(' | ')`);
-    check('camera off -> toast', t2.split(' | ').includes('⚠️ Please enable the camera first!'), JSON.stringify(t2));
-    check('overlay not opened by precondition failures', (await state()) === 'closed');
+    // Camera off: the overlay opens in "Starting camera", starts the camera itself, and enables
+    // START once the first live hand result arrives; Cancel stops the camera it started.
+    const st0 = await ev(`({ s: document.getElementById('gcMode').getAttribute('data-state'), d: document.getElementById('gcStart').disabled, t: document.getElementById('gcStart').textContent })`);
+    check('camera off -> overlay opens in Starting camera, START disabled', st0.s === 'starting' && st0.d && st0.t === 'Starting camera…' && !t2.includes('enable the camera'), JSON.stringify({ st0, t2 }));
+    const rdy0 = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready' && !document.getElementById('gcStart').disabled && document.getElementById('gcStart').textContent === 'START'`, 60000, 100);
+    check('camera started by the overlay -> Ready, START enabled', rdy0 >= 0, `${rdy0} ms`);
+    await click('gcCancel');
+    await sleep(300);
+    const off0 = await ev(`({ s: document.getElementById('gcMode').getAttribute('data-state'), src: !!document.getElementById('videoFeed').srcObject, badge: document.getElementById('camBadge').textContent.trim() })`);
+    check('Cancel -> closed and the overlay-started camera is stopped', off0.s === 'closed' && !off0.src && /Camera Off/.test(off0.badge), JSON.stringify(off0));
 
     console.log('--- camera ---');
     await click('enableCamBtn');
@@ -267,13 +280,13 @@ async function main() {
     await setLabel(LABEL);
     await ev(`document.querySelector('input[name="gestureCategory"][value="word"]').checked = true; true`);
     await click('startGestureDataBtn');
-    await sleep(600);
+    await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
     const ready = await ev(`window.__t5.measure(44)`);
     console.log('  Ready:', JSON.stringify(ready));
     check('Ready: state', ready.state === 'ready');
     check('Ready: chip text', ready.chip === `${LABEL} · ESL · Word`, ready.chip);
     check('Ready: overlay covers 1024x600', ready.mode.w === 1024 && ready.mode.h === 600, JSON.stringify(ready.mode));
-    check('Ready: stage 4:3 ~693x520', Math.abs(ready.stage.w - 693.3) < 1.5 && ready.stage.h === 520, JSON.stringify(ready.stage));
+    check('Ready: media row spans the full width, below the top bar', ready.stage.w === 1024 && ready.stage.h > 300 && ready.stage.y > 0, JSON.stringify(ready.stage));
     check('Ready: scrollWidth 1024', ready.scrollWidth === 1024, String(ready.scrollWidth));
     check('Ready: buttons >= 44x44', ready.small.length === 0, JSON.stringify(ready.buttons));
     check('Ready: no overlaps', ready.overlaps.length === 0, JSON.stringify(ready.overlaps));
@@ -308,7 +321,7 @@ async function main() {
     const review = await ev(`window.__t5.measure(56)`);
     console.log('  Review:', JSON.stringify(review));
     check('Review reached', review.state === 'review', `${Date.now() - tRev} ms of guidance`);
-    check('Review: "3 signs found", Save enabled', review.msg === '3 signs found' && review.buttons.some((b) => b.id === 'gcSave' && !b.disabled), review.msg);
+    check('Review: "3 signs found", Save enabled', review.msg === 'REVIEW · 3 signs found' && review.buttons.some((b) => b.id === 'gcSave' && !b.disabled), review.msg);
     check('Review: scrollWidth 1024', review.scrollWidth === 1024, String(review.scrollWidth));
     check('Review: buttons >= 56 tall and >= 44 wide', review.small.length === 0, JSON.stringify(review.buttons));
     check('Review: Save / Redo / Cancel visible', ['gcSave', 'gcRedo', 'gcCancel'].every((id) => review.buttons.some((b) => b.id === id)));
@@ -319,10 +332,10 @@ async function main() {
     // Force the 2nd save call to fail once (first attempt of rep 2).
     await ev(`window.__t5.shouldFail = (rep, n) => n === 2; localStorage.setItem('sining_kamay_labels_ESL', 'x'); true`);
     await click('gcSave');
-    const procMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'processing' && /Processing… [1-9]/.test(document.getElementById('gcMsg').textContent)`, 20000, 50);
+    const procMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'processing' && /PROCESSING [1-9]/.test(document.getElementById('gcMsg').textContent)`, 20000, 50);
     const processing = await ev(`window.__t5.measure(56)`);
     console.log('  Processing:', JSON.stringify(processing));
-    check('Processing: progress text', procMs >= 0 && /^Processing… \d+%$/.test(processing.msg || ''), processing.msg);
+    check('Processing: progress text', procMs >= 0 && /^PROCESSING \d+%$/.test(processing.msg || ''), processing.msg);
     check('Processing: scrollWidth 1024', processing.scrollWidth === 1024, String(processing.scrollWidth));
     check('Processing: Cancel visible, buttons >= 56 tall', processing.buttons.some((b) => b.id === 'gcCancel') && processing.small.length === 0, JSON.stringify(processing.buttons));
     check('Processing: no overlaps', processing.overlaps.length === 0, JSON.stringify(processing.overlaps));
@@ -378,8 +391,7 @@ async function main() {
       camErr.buttons.some((b) => b.id === 'gcRedo') && camErr.buttons.some((b) => b.id === 'gcCancel') && camErr.small.length === 0 && camErr.scrollWidth === 1024 && camErr.overlaps.length === 0,
       JSON.stringify(camErr.buttons));
     await click('gcRedo');
-    await sleep(200);
-    check('Redo -> Ready', (await state()) === 'ready');
+    check('Redo -> Ready', (await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50)) >= 0);
     await click('gcCancel');
     await sleep(200);
     check('Cancel -> closed', (await state()) === 'closed');
@@ -403,16 +415,14 @@ async function main() {
         wd.buttons.some((b) => b.id === 'gcRedo') && wd.buttons.some((b) => b.id === 'gcCancel') && wd.small.length === 0 && wd.scrollWidth === 1024 && wd.overlaps.length === 0,
         JSON.stringify(wd.buttons));
       check('watchdog: no request sent', (await ev(`window.__t5.bodies.length`)) === posts0);
+      // Redo goes back through "Starting camera", which resumes the live loop the test paused, so
+      // hand results flow again and Ready is reached without the test resuming anything.
       await click('gcRedo');
-      await sleep(200);
-      check('watchdog: Redo -> Ready', (await state()) === 'ready');
-      // The app never pauses the live loop itself, so its Redo path does not resume it; the test
-      // paused it deliberately and resumes it here.
-      await ev(`GestureDataRecorder.resumeHandLoop(); true`);
+      check('watchdog: Redo -> Ready (the app resumed the live loop)', (await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50)) >= 0);
       const hr0 = await ev(`window.__t5.handResults`);
       await sleep(1500);
       const hr1 = await ev(`window.__t5.handResults`);
-      check('watchdog: live loop resumed (by the test) and results flow again', hr1 > hr0, `${hr0} -> ${hr1}`);
+      check('watchdog: live loop resumed and results flow again', hr1 > hr0, `${hr0} -> ${hr1}`);
       await click('gcCancel');
       await sleep(200);
       check('watchdog: Cancel -> closed', (await state()) === 'closed');
@@ -426,7 +436,7 @@ async function main() {
     const rev3 = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'review'`, 120000, 150);
     check('run 3 reached Review', rev3 >= 0, `${rev3} ms`);
     await click('gcSave');
-    await waitFor(`/Processing… [1-9]/.test(document.getElementById('gcMsg').textContent)`, 20000, 50);
+    await waitFor(`/PROCESSING [1-9]/.test(document.getElementById('gcMsg').textContent)`, 20000, 50);
     await click('gcCancel');
     await sleep(300);
     const hrBefore = await ev(`window.__t5.handResults`);
@@ -476,8 +486,12 @@ async function main() {
     check('real track stop -> camera-stopped error, never Review', err5.state === 'error' && err5.msg === 'The camera stopped. Please try again.', `${err5.state} / ${err5.msg} (${err5ms} ms)`);
     await click('gcCancel');
     await sleep(200);
-    check('Record with a stopped camera -> camera toast',
-      await ev(`document.getElementById('startGestureDataBtn').click(), document.getElementById('gcMode').getAttribute('data-state') === 'closed' && document.getElementById('sk-toast').textContent === '⚠️ Please enable the camera first!'`));
+    await click('startGestureDataBtn');
+    const restartMs = await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 100);
+    check('Record with a stopped camera -> the overlay starts the camera again and reaches Ready', restartMs >= 0, `${restartMs} ms`);
+    await click('gcCancel');
+    await sleep(300);
+    check('Cancel -> the restarted (overlay-owned) camera is stopped', await ev(`!document.getElementById('videoFeed').srcObject`));
   } finally {
     try {
       console.log('--- cleanup ---');

@@ -2,7 +2,8 @@
 // (video-based gesture capture, Task 5). One responsibility: this mode's state machine and
 // its DOM (#gcMode in gesture-training.html).
 //
-// Flow: Ready -> Countdown (3, 2, 1) -> Recording (live guidance from the shared
+// Flow: Starting camera (the camera + MediaPipe start when the mode opens; START is enabled once
+// the first live hand-tracking result arrives) -> Ready -> Countdown (3, 2, 1) -> Recording (live guidance from the shared
 // GestureCaptureCore segmenter fed by GestureDataRecorder.onHandResults) -> Review (the
 // recording plays back) -> Processing (VideoLandmarks.extractVideoLandmarks on the ONE shared
 // MediaPipe instance via GestureDataRecorder.createVideoDetector) -> Saving (3 sequential
@@ -12,7 +13,13 @@
 // unsubscribes from onHandResults, drops the Blob, revokes its object URL, clears the review
 // video and releases a held detector. The video never leaves the browser.
 //
-// Public API: window.GestureCaptureUI = { open({ label, signSet, category, stream }), close() }.
+// Layout (capture UI layout fix, 2026-09-27): full viewport, top bar (chip | state title |
+// Cancel), media (live feed or review loop), bottom bar (the state's buttons or a status line).
+//
+// Public API: window.GestureCaptureUI = { open({ label, signSet, category, acquireCamera,
+// releaseCamera }), close(), streamIsLive }. acquireCamera() -> Promise<MediaStream> starts (or
+// reuses) the page camera; releaseCamera() is called once on close (the page decides whether the
+// camera was started for this mode and should stop).
 // On success it calls window.onCaptureSamplesSaved({ label, signLanguage, labelSampleCount,
 // frameCount }) (set by js/gesture-training-ui.js) once, then closes and shows a toast.
 (function () {
@@ -27,9 +34,13 @@
     noRest: 'No rest was found at the start. Please redo.',
   };
   var START_TIMEOUT_MS = 3000; // recorder 'start' must fire within this, else camera-stopped
+  // Opening the mode may have to start the camera and load MediaPipe (first use); on the Pi that
+  // takes longer than the in-recording RESULTS_WATCHDOG_MS, so the wait for the first live result
+  // before START is enabled has its own, longer bound.
+  var READY_TIMEOUT_MS = 30000;
 
   var el = null; // DOM refs, resolved once by bindDom()
-  var mode = 'closed'; // closed | ready | countdown | recording | review | processing | saving | finishing | error
+  var mode = 'closed'; // closed | starting | ready | countdown | recording | review | processing | saving | finishing | error
   var gen = 0; // bumped on every exit/reset; async continuations started earlier compare against it
   var session = null; // { label, signSet, category, stream } captured at open() time
   var countdownTimer = null;
@@ -40,6 +51,7 @@
   var detector = null; // a held createVideoDetector() detector (released on every exit)
   var abortCtrl = null; // aborts extraction on Cancel
   var pending = null; // the extracted reps waiting to be saved (kept in memory for "Retry save")
+  var readyWait = null; // { unsub, timer } while waiting for the first live result (starting)
 
   function core() { return window.GestureCaptureCore; }
   function C() { return window.GestureCaptureCore.CAPTURE; }
@@ -68,15 +80,18 @@
       handText: byId('gcHandText'),
       hint: byId('gcHint'),
       msg: byId('gcMsg'),
+      status: byId('gcStatus'),
       progress: byId('gcProgress'),
       progressFill: byId('gcProgressFill'),
       actions: byId('gcActions'),
       save: byId('gcSave'),
       retrySave: byId('gcRetrySave'),
       redo: byId('gcRedo'),
+      cancelBottom: byId('gcCancelBottom'),
     };
     if (!el.root) { el = null; return null; }
     el.cancel.addEventListener('click', onCancel);
+    el.cancelBottom.addEventListener('click', onCancel);
     el.start.addEventListener('click', startCountdown);
     el.save.addEventListener('click', saveRecording);
     el.redo.addEventListener('click', toReady);
@@ -87,13 +102,16 @@
   }
 
   // ── View ──
-  // One place that decides what is visible. spec: { live, review, start, countdown, rec, prompt,
-  // dots, hand, msg (string|null), msgError, progress (0..1|null), actions ([ids]), cancel }.
+  // One place that decides what is visible. spec:
+  //   top bar title: prompt (bool, REST / SIGN n of 3), dots (bool), msg (string|null), msgError;
+  //   media: live, review, countdown, hand;
+  //   bottom bar: rec (bool), status (string|null), progress (0..1|null), actions (ids from
+  //   start | save | retrySave | redo | cancel), startReady (START enabled);
+  //   cancel (top-bar Cancel; false hides it).
   function view(spec) {
     el.root.setAttribute('data-state', mode);
     el.live.hidden = !spec.live;
     el.review.hidden = !spec.review;
-    el.start.hidden = !spec.start;
     el.countdown.hidden = !spec.countdown;
     el.rec.hidden = !spec.rec;
     el.prompt.hidden = !spec.prompt;
@@ -101,13 +119,23 @@
     el.hand.hidden = !spec.hand;
     setHint(null);
     setMsg(spec.msg || null, !!spec.msgError);
+    setStatus(spec.status || null);
     setProgress(spec.progress === undefined ? null : spec.progress);
     var actions = spec.actions || [];
     el.actions.hidden = actions.length === 0;
+    el.start.hidden = actions.indexOf('start') === -1;
     el.save.hidden = actions.indexOf('save') === -1;
     el.retrySave.hidden = actions.indexOf('retrySave') === -1;
     el.redo.hidden = actions.indexOf('redo') === -1;
+    el.cancelBottom.hidden = actions.indexOf('cancel') === -1;
+    el.start.disabled = !spec.startReady;
+    el.start.textContent = spec.startReady ? 'START' : 'Starting camera…';
     el.cancel.hidden = spec.cancel === false;
+  }
+
+  function setStatus(text) {
+    el.status.hidden = !text;
+    el.status.textContent = text || '';
   }
 
   function setMsg(text, isError) {
@@ -165,33 +193,37 @@
       label: opts.label,
       signSet: opts.signSet === 'FSL' ? 'FSL' : 'ESL',
       category: opts.category || 'word',
-      stream: opts.stream,
+      stream: null,
+      acquireCamera: opts.acquireCamera,
+      releaseCamera: opts.releaseCamera,
     };
     el.chip.textContent = session.label + ' · ' + session.signSet + ' · ' +
       (CATEGORY_NAMES[session.category] || session.category);
-    el.live.srcObject = session.stream;
-    var p = el.live.play();
-    if (p && typeof p.catch === 'function') p.catch(function (e) { console.warn('[gesture-capture-ui] live preview play failed:', e); });
     el.root.hidden = false;
-    showReady();
+    showStarting();
   }
 
-  // Leaves the mode from any state, applying the discard rule. The page's own camera stream is
-  // NOT stopped (it belongs to the page); only this overlay's second <video> lets go of it.
+  // Leaves the mode from any state, applying the discard rule, then hands the camera back to the
+  // page (releaseCamera stops it only if it was started for this mode).
   function close() {
     if (!el || mode === 'closed') return;
     gen++;
     resetWork();
     el.live.pause();
     el.live.srcObject = null;
+    var release = session && session.releaseCamera;
     session = null;
     mode = 'closed';
     el.root.setAttribute('data-state', mode);
     el.root.hidden = true;
+    if (typeof release === 'function') {
+      try { release(); } catch (e) { console.warn('[gesture-capture-ui] releaseCamera failed:', e); }
+    }
   }
 
   // Everything a Redo or an exit must throw away (the discard rule).
   function resetWork() {
+    stopReadyWait();
     if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
     discardRecording();
     if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
@@ -214,29 +246,74 @@
     }
   }
 
-  // ── Ready / countdown ──
-  function showReady() {
-    mode = 'ready';
-    view({ live: true, start: true });
+  // ── Starting camera / ready / countdown ──
+  // START stays disabled until the camera stream is live and MediaPipe has produced its first live
+  // result (the "detector" the guidance needs). Camera errors show here, with Redo (try again).
+  function showStarting() {
+    mode = 'starting';
+    view({ live: true, msg: 'Starting camera…', actions: ['start'], startReady: false });
+    var myGen = gen;
+    var acquire = session.acquireCamera;
+    var got = typeof acquire === 'function'
+      ? Promise.resolve().then(function () { return acquire(); })
+      : Promise.reject(new Error(MSG.cameraStopped));
+    got.then(function (stream) {
+      if (myGen !== gen) return;
+      if (!streamIsLive(stream)) { showError(MSG.cameraStopped); return; }
+      session.stream = stream;
+      if (el.live.srcObject !== stream) el.live.srcObject = stream;
+      var p = el.live.play();
+      if (p && typeof p.catch === 'function') p.catch(function (e) { console.warn('[gesture-capture-ui] live preview play failed:', e); });
+      readyWait = {
+        unsub: recorderApi().onHandResults(function () {
+          if (myGen !== gen || mode !== 'starting') return;
+          stopReadyWait();
+          showReady();
+        }),
+        timer: setTimeout(function () {
+          if (myGen !== gen || mode !== 'starting') return;
+          stopReadyWait();
+          showError(MSG.notReady);
+        }, READY_TIMEOUT_MS),
+      };
+    }, function (err) {
+      if (myGen !== gen) return;
+      showError((err && err.message) || MSG.cameraStopped);
+    });
   }
 
+  function stopReadyWait() {
+    if (!readyWait) return;
+    if (readyWait.unsub) readyWait.unsub();
+    if (readyWait.timer) clearTimeout(readyWait.timer);
+    readyWait = null;
+  }
+
+  function showReady() {
+    mode = 'ready';
+    view({ live: true, msg: 'READY', actions: ['start'], startReady: true });
+  }
+
+  // Redo (from Review or an error): throw the take away and start over. Goes back through
+  // "Starting camera" so a camera that stopped is started again.
   function toReady() {
     if (mode !== 'review' && mode !== 'error') return;
     gen++;
     resetWork();
-    showReady();
+    showStarting();
   }
 
   function startCountdown() {
     if (mode !== 'ready') return;
     mode = 'countdown';
     var n = 3;
-    view({ live: true, countdown: true });
+    view({ live: true, countdown: true, msg: 'GET READY', status: 'Recording starts in ' + n + '…' });
     el.countdown.textContent = String(n);
     countdownTimer = setInterval(function () {
       n--;
       if (n > 0) {
         el.countdown.textContent = String(n);
+        setStatus('Recording starts in ' + n + '…');
         return;
       }
       clearInterval(countdownTimer);
@@ -449,7 +526,7 @@
     var n = reviewCount;
     view({
       review: true,
-      msg: n + (n === 1 ? ' sign found' : ' signs found'),
+      msg: 'REVIEW · ' + n + (n === 1 ? ' sign found' : ' signs found'),
       actions: ['save', 'redo'],
     });
     el.save.disabled = n !== C().REQUIRED_REPS;
@@ -466,7 +543,7 @@
     abortCtrl = ctrl;
     mode = 'processing';
     el.review.pause();
-    view({ review: true, msg: 'Processing… 0%', progress: 0 });
+    view({ review: true, msg: 'PROCESSING 0%', progress: 0 });
 
     var det = null;
     var result = null;
@@ -482,7 +559,7 @@
         onProgress: function (done, total) {
           if (myGen !== gen || !total) return;
           var f = done / total;
-          setMsg('Processing… ' + Math.round(f * 100) + '%', false);
+          setMsg('PROCESSING ' + Math.round(f * 100) + '%', false);
           setProgress(f);
         },
       });
@@ -554,12 +631,12 @@
     var myGen = gen;
     var total = p.reps.length;
     mode = 'saving';
-    view({ live: true, msg: 'Saving 1 of ' + total + '…', cancel: false });
+    view({ live: true, msg: 'SAVING 1 of ' + total, status: 'Please wait — saving your samples.', cancel: false });
 
     for (var i = 0; i < p.reps.length; i++) {
       var r = p.reps[i];
       if (r.saved) continue;
-      setMsg('Saving ' + r.repIndex + ' of ' + total + '…', false);
+      setMsg('SAVING ' + r.repIndex + ' of ' + total, false);
       try {
         var res = await recorderApi().saveGestureSample(
           p.label, r.frames, p.signSet, null, null, p.category,
@@ -586,7 +663,7 @@
           msg: 'Saved ' + savedN + ' of ' + total + '. Sign ' + r.repIndex + ' was not saved: ' +
             withStop(e && e.message ? e.message : String(e)),
           msgError: true,
-          actions: ['retrySave'],
+          actions: ['retrySave', 'cancel'],
         });
         return;
       }
@@ -621,7 +698,7 @@
     var total = p.reps.length;
     var n = savedCount(p);
     mode = 'finishing';
-    view({ live: true, msg: el.msg.textContent, msgError: el.msg.classList.contains('error'), cancel: false });
+    view({ live: true, msg: el.msg.textContent, msgError: el.msg.classList.contains('error'), status: 'Updating the dataset…', cancel: false });
     await invalidateCaches(p.signSet);
     if (typeof window.reloadDataset === 'function') {
       try { await window.reloadDataset(); } catch (e) { console.warn('[gesture-capture-ui] reloadDataset failed:', e); }
@@ -654,7 +731,7 @@
   // ── Errors ──
   function showError(message) {
     mode = 'error';
-    view({ live: true, msg: message, msgError: true, actions: ['redo'] });
+    view({ live: true, msg: message, msgError: true, actions: ['redo', 'cancel'] });
   }
 
   window.addEventListener('pagehide', onPageHide);
