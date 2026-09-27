@@ -1223,7 +1223,7 @@ folded into the tasks below.
 Replaces `gesture-training.html` Step 1's old live-capture path (countdown,
 frame sampling, "Start Capture"/"Record another sample" preview flow, the "G"
 hotkey) with a record-first/extract-later flow: a full-screen mode
-(`js/gesture-capture-ui.js`, `#gcMode` in `gesture-training.html:353`) records
+(`js/gesture-capture-ui.js`, `#gcMode` in `gesture-training.html:357`) records
 one MediaRecorder video of hand-driven REST → SIGN 1/2/3 reps, then extracts
 per-frame MediaPipe landmarks offline by seeking through the recording
 (`js/video-landmarks.js`), segments it into exactly 3 reps
@@ -1237,17 +1237,17 @@ has two fix rounds appended).
 
 - **Record first, extract later; full-screen mode opened from the Add Data
   form; hand-driven REST / SIGN n of 3, no fixed per-rep timers.** The "Record
-  3 samples" button (`gesture-training.html:222`) calls `openRecordingMode()`
-  (`js/gesture-training-ui.js:1233-1253`), which opens
-  `window.GestureCaptureUI` (`js/gesture-capture-ui.js:157-177`). Thresholds
+  3 samples" button (`gesture-training.html:224`) calls `openRecordingMode()`
+  (`js/gesture-training-ui.js:1287-1304`), which opens
+  `window.GestureCaptureUI` (`js/gesture-capture-ui.js:185-204`). Thresholds
   live in `js/capture-core.js:10-21`: `REST_MS 1000`, `MIN_REP_MS 300`,
   `MAX_REP_MS 20000`, `NO_HAND_HINT_MS 10000`, `REQUIRED_REPS 3`.
 - **Q1 — Review shows the live count; the offline re-segmentation on Save is
   the real gate.** The Review screen's "N signs found" is `reviewCount`, the
   live segmenter's `repsDone` at recording-stop time
-  (`js/gesture-capture-ui.js:420`, `:449-455`). Tapping Save re-segments the
+  (`js/gesture-capture-ui.js:497`, `:526-532`). Tapping Save re-segments the
   *offline*, seek-extracted frames from scratch (`segmentFrames`,
-  `js/capture-core.js:165-232`, called at `js/gesture-capture-ui.js:507-510`)
+  `js/capture-core.js:165-232`, called at `js/gesture-capture-ui.js:584-587`)
   — that second pass, not the live count, decides whether the recording is
   accepted.
 - **Q2 — no extra `REST_MS` after a rep; the gap that ends a rep is the
@@ -1257,7 +1257,7 @@ has two fix rounds appended).
 - **Q3 — `STOP_TAIL_MS` 500.** (`js/capture-core.js:17`). Recording keeps
   rolling for 500ms after the 3rd rep closes before stopping for review
   (`setTimeout(function () { stopForReview(r); }, C().STOP_TAIL_MS)`,
-  `js/gesture-capture-ui.js:348`), so the tail of the 3rd sign isn't clipped.
+  `js/gesture-capture-ui.js:425`), so the tail of the 3rd sign isn't clipped.
 - **Q4 — coordinates rounded to 4 decimals, score to 3.**
   (`js/video-landmarks.js:207-211`: `round(p.x/y/z, 4)`,
   `round(handedness.score, 3)`).
@@ -1267,17 +1267,17 @@ has two fix rounds appended).
   sample's `input`/`videoWidth`/`videoHeight` fields
   (`php/api/save_gesture.php:459-471`).
 - **Q6 — hint "Lower your hands first." when hands stay up during REST for
-  `NO_HAND_HINT_MS`.** (`js/gesture-capture-ui.js:378-382`).
+  `NO_HAND_HINT_MS`.** (`js/gesture-capture-ui.js:455-459`).
 - **Q7 — Cancel may abort during extraction; hidden from the moment the 3
   saves start until they finish; the failed-save Cancel escape hatch is
   kept.** Extraction is abortable via an `AbortController`
-  (`js/gesture-capture-ui.js:461-467`, `:475-488`). Once `runSaves()` begins
+  (`js/gesture-capture-ui.js:538-544`, `:552-565`). Once `runSaves()` begins
   its sequential saves, the Cancel button is hidden (`view({..., cancel:
-  false})`, `:557`) — a normal 3-for-3 save can no longer be interrupted —
+  false})`, `:634`) — a normal 3-for-3 save can no longer be interrupted —
   but if a save fails partway, the resulting error state re-shows a Retry
-  save action and, per `onCancel()` (`:643-646`), Cancel there still works
+  save action and, per `onCancel()` (`:720-723`), Cancel there still works
   and keeps whatever was already saved (routes into `finishSaved()`,
-  `:620-641`, same as a clean finish).
+  `:697-718`, same as a clean finish).
 - **Q8 — old live-capture code removed.** The pre-phase countdown/preview
   flow (formerly `gesture-training-ui.js`'s countdown and
   `#step1PreviewControls`/`#countdownOverlay` markup) and
@@ -1285,7 +1285,7 @@ has two fix rounds appended).
   "G" hotkey/`prompt()` label-entry path are all gone — grep-confirmed absent
   from `js/gesture-data.js` (only a comment at `:2` refers to the removed
   `FRAME_TARGET` for context). The new countdown lives entirely in
-  `js/gesture-capture-ui.js:230-246`.
+  `js/gesture-capture-ui.js:306-323`.
 - **Addition A — v3 rows evenly subsampled to at most 30 per sample.**
   `recordingToFeatureRows()`'s raw-format branch
   (`js/gesture-data.js:677-695`, `MAX_ROWS_PER_RAW_SAMPLE = 30` at `:4`)
@@ -1298,8 +1298,8 @@ has two fix rounds appended).
   reads `opts.inputWidth`/`opts.inputHeight`, defaulting to 320/240
   (`js/video-landmarks.js:115-116`).
 - **Addition C — all recording-mode text is English.** Every prompt/hint/
-  message string in `js/gesture-capture-ui.js` (`MSG` at `:22-28`; "REST"/
-  "SIGN N of 3" at `:368-372`; hints at `:379-381`) is English, matching the
+  message string in `js/gesture-capture-ui.js` (`MSG` at `:29-35`; "REST"/
+  "SIGN N of 3" at `:445-449`; hints at `:456-458`) is English, matching the
   rest of the kiosk's admin-only training screen.
 
 ### Decisions made during execution (controller/implementation)
@@ -1338,38 +1338,38 @@ has two fix rounds appended).
   `:402-404`).
 - **Hard save failure: "Retry save" re-sends only unsaved reps; Cancel is the
   only other exit there and keeps what was saved.** `runSaves()`
-  (`js/gesture-capture-ui.js:551-595`) skips any rep already marked `saved`,
+  (`js/gesture-capture-ui.js:628-672`) skips any rep already marked `saved`,
   so a retry after a partial failure only re-POSTs the reps that didn't make
-  it. `onCancel()` (`:643-646`) in the error state routes into `finishSaved()`
-  (`:620-641`), which runs the same Done post-save steps (cache invalidation,
+  it. `onCancel()` (`:720-723`) in the error state routes into `finishSaved()`
+  (`:697-718`), which runs the same Done post-save steps (cache invalidation,
   `reloadDataset()`, sample-line refresh) and toasts "N of 3 samples saved
-  for "label"." (`:640`) — an escape hatch for a server that keeps failing.
+  for "label"." (`:717`) — an escape hatch for a server that keeps failing.
   A user Cancel during *normal* (non-error) saving is impossible: the Cancel
   button is hidden for the whole `runSaves()` duration (`view({..., cancel:
-  false})`, `:557`).
+  false})`, `:634`).
 - **Sample-line frames after a recording come from `reloadDataset()`'s
   recount, not an added `frameCount`.** `window.onCaptureSamplesSaved`
-  (`js/gesture-training-ui.js:1259-1262`) is called with `{label,
+  (`js/gesture-training-ui.js:1310-1313`) is called with `{label,
   signLanguage, labelSampleCount}` — no `frameCount` — so `noteSampleSaved()`
   (`:306-311`)'s `e.frames += res.frameCount || 0` adds 0; the real per-label
   frame tally comes from `rebuildSampleInfo()` (`:298-304`), run against the
-  fresh dataset `js/gesture-capture-ui.js:626-628`'s `window.reloadDataset()`
+  fresh dataset `js/gesture-capture-ui.js:703-705`'s `window.reloadDataset()`
   fetches immediately before the callback fires.
 - **`RESULTS_WATCHDOG_MS` 5000 (whole-phase review addition): no
   hand-tracking results for 5s during recording → "Hand tracking is not
   ready. Please try again." with Redo/Cancel.** (`js/capture-core.js:19`;
-  `armWatchdog()`/`MSG.notReady` at `js/gesture-capture-ui.js:352-361`,
-  `:24`). Re-armed at the recording's time origin and on every live result,
+  `armWatchdog()`/`MSG.notReady` at `js/gesture-capture-ui.js:429-438`,
+  `:31`). Re-armed at the recording's time origin and on every live result,
   so it only fires on a genuine stall, not at the very start.
 - **Deviations — acknowledged by the owner 2026-09-27, kept as is:**
   - The too-many-reps message shows N=4 when `repsFound <= 3`
-    (`segmentFailureMessage()`, `js/gesture-capture-ui.js:539-548`) — an open
+    (`segmentFailureMessage()`, `js/gesture-capture-ui.js:616-625`) — an open
     4th sign leaves `repsFound` at 3 (the 4th rep is still open, never
     closed), so the message bumps `n` to `total + 1` rather than reporting
     the technically-true 3.
   - "1 sign found" is grammatically singular but paired with a disabled Save
     button regardless, since Save requires exactly `REQUIRED_REPS`
-    (`js/gesture-capture-ui.js:452`, `:455`).
+    (`js/gesture-capture-ui.js:529`, `:532`).
   - `docs/system/UI.md` Part 2 §3's Step 1 instruction bullet 3 was rewritten
     to describe the new record-first flow instead of the removed zoom/pan
     preview it used to describe.
@@ -1407,8 +1407,8 @@ Source: the owner's reply to `docs/reports/2026-09-26-video-capture-final.md`
 - **`MAX_RECORDING_MS` = 90000 caps the whole take.** (`js/capture-core.js:20`,
   enforced in the segmenter at `:80-84`.) Reaching it before the take is
   `done` stops and discards the recording with "Recording too long. Try
-  again." and Redo / Cancel (`js/gesture-capture-ui.js:26`, `:341-344`;
-  offline via `segmentFailureMessage()`, `:542`). It lives in the segmenter,
+  again." and Redo / Cancel (`js/gesture-capture-ui.js:33`, `:418-421`;
+  offline via `segmentFailureMessage()`, `:619`). It lives in the segmenter,
   not in a UI timer, so live and offline apply the same rule. The owner's
   "no fixed timers per repetition" still holds: this bounds the take, not a
   rep. Closes `docs/system/DEBT.md` item 89.
@@ -1418,3 +1418,38 @@ Source: the owner's reply to `docs/reports/2026-09-26-video-capture-final.md`
   open.
 - **Wording deviations (N=4 too-many message, "1 sign found", Step 1
   instruction bullet 3): acknowledged, kept.**
+
+## Decisions made during the capture UI layout fix (2026-09-27)
+
+Report: `docs/reports/2026-09-27-capture-ui-final.md`. Owner decisions (settled in the phase
+prompt): the full-viewport 3-row overlay and Step 1 without a camera feed. Decisions made
+while implementing them:
+
+- **Step 1's camera panel is moved off-screen, not `display:none`.** Reason: the live
+  MediaPipe loop keeps drawing from `#videoFeed` while the recording mode is open, and the
+  page already hides it this way for Step 2 "to prevent Chromium freezes on Pi"
+  (`css/gesture-training.css`). One `#videoFeed` stays shared with Steps 3/4.
+- **The recording mode stops only a camera it started itself.** (`cameraOwnedByCapture`,
+  `js/gesture-training-ui.js:1117-1155`.) Reason: the owner said the camera starts when the
+  mode opens and stops when it closes. The owner also said Steps 2-4 keep their camera
+  behaviour, so a camera the user already enabled in Step 3/4 is left running. Enable
+  Camera and the recording mode share one `startPageCamera()`, so Steps 3/4 behave as
+  before. After a closed recording mode, Step 3/4 show "Camera Off" and the Enable
+  Camera button, as on first visit.
+- **"Detector ready" means the first live hand-tracking result.** Reason: that is the moment
+  the guidance can work. Its own bound, `READY_TIMEOUT_MS` 30000
+  (`js/gesture-capture-ui.js:40`), is kept separate from `RESULTS_WATCHDOG_MS` 5000
+  (`js/capture-core.js`, untouched), because a first MediaPipe load is slower. The load
+  measured about 11 s in headless Chrome on this laptop; the Pi is not measured.
+- **START moved from the centre of the video into the bottom bar.** Reason: the owner's rule
+  is that each state's buttons sit in the bottom bar and share its width. The video stays
+  unobstructed in Ready.
+- **Redo goes back through "Starting camera".** Reason: it restarts a camera that stopped, and
+  it resumes a paused live loop through `acquireCaptureCamera()`, which partly addresses
+  `docs/system/DEBT.md` item 91.
+- **Cancel appears in both the top bar and the bottom bar in error states.** Reason: the
+  owner's layout lists Cancel at the top right (hidden only while saving) and "error states:
+  Redo | Cancel" in the bottom bar. Both are kept as specified.
+- **The chip wraps to two lines instead of truncating.** Reason: at 1024 px the chip column
+  is about 230 px wide. A single line hid the sign set and type behind an ellipsis
+  ("zz_capture_ui_shots · E…", seen in the first screenshot run).

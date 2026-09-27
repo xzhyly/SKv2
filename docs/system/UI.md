@@ -460,7 +460,7 @@ below. None of that ran.
   0.45** (gesture-training-ui.js:679, :687) and a **700ms** hold
   (`GESTURE_HOLD_MS`, gesture-training-ui.js:10, used at :689).
 - "Training" epoch UI displays **"0 / 50 epochs"** and constant `EPOCHS = 50`
-  (gesture-training-ui.js:17, HTML gesture-training.html:295) — but the actual
+  (gesture-training-ui.js:17, HTML gesture-training.html:261) — but the actual
   `trainModel()` function does not run 50 real epochs; it is a KNN cache compile
   with a cosmetic progress-bar animation of **20 steps × 18ms**
   (gesture-training-ui.js:531-537) or **10 steps × 12ms**
@@ -473,13 +473,13 @@ below. None of that ran.
   for anyone reading an older report or diff against it.
   - **Current flow: record first, extract offline, save 3 reps.** The Add
     Data form's one button (`#startGestureDataBtn`, "Record 3 samples",
-    `gesture-training.html:222`) calls `openRecordingMode()`
-    (`js/gesture-training-ui.js:1233-1253`), which reads the Gesture Name,
+    `gesture-training.html:224`) calls `openRecordingMode()`
+    (`js/gesture-training-ui.js:1287-1304`), which reads the Gesture Name,
     Sign Set and Type from the form and opens a full-screen mode
-    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:157-177`;
-    markup `#gcMode`, `gesture-training.html:353`) that owns the rest of the
+    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:185-204`;
+    markup `#gcMode`, `gesture-training.html:357`) that owns the rest of the
     flow end to end: **Ready** → **Countdown** (3-2-1 at 1000ms/tick,
-    `js/gesture-capture-ui.js:230-246`) → **Recording** (a `MediaRecorder`
+    `js/gesture-capture-ui.js:306-323`) → **Recording** (a `MediaRecorder`
     capture of the live camera stream, guided live by the shared
     `GestureCaptureCore` segmenter reading `js/gesture-data.js`'s hand
     results — REST → SIGN 1 of 3 → SIGN 2 of 3 → SIGN 3 of 3, hand-driven
@@ -487,7 +487,7 @@ below. None of that ran.
     capped at `MAX_RECORDING_MS` 90000, `js/capture-core.js:20`, checked
     in the segmenter at `:80-84` — reaching it before the 3rd sign's rest
     stops and discards the recording with "Recording too long. Try again."
-    and Redo / Cancel, `js/gesture-capture-ui.js:26`, `:341-344`, `:542`;
+    and Redo / Cancel, `js/gesture-capture-ui.js:33`, `:418-421`, `:619`;
     added 2026-09-27, owner decision) → **Review** (the
     recorded clip plays back with the live rep count, Save disabled unless
     exactly 3 reps were found) → **Processing** (`js/video-landmarks.js`'s
@@ -503,26 +503,79 @@ below. None of that ran.
     `docs/system/DECISIONS.md` ("video-based gesture capture phase") for
     every threshold, the offline-vs-live gate, and the measured Task 6 e2e
     numbers.
+  - **Layout (capture UI layout fix, 2026-09-27; report
+    `docs/reports/2026-09-27-capture-ui-final.md`).**
+    - **Step 1 has no camera.** In Step 1 the camera panel (`.tr-right-panel`:
+      `#cameraFrame`, `#videoFeed`, Camera Ready / Searching badges, Enable
+      Camera) is moved off-screen, exactly as Step 2 already did, not
+      `display:none`: the live MediaPipe loop keeps reading `#videoFeed` while
+      the recording mode is open, and a `display:none` video freezes Chromium
+      on the Pi (`css/gesture-training.css:1058-1068`).
+    - **Two-column form.** The form uses the full width in two columns
+      (`.tr-s1-grid`, `gesture-training.html:198-250`,
+      `css/gesture-training.css:1069-1089`). Left: Gesture Name, Sign Set,
+      Type. Right: Record 3 samples (72 px tall), the sample-count line, View
+      Active Gesture Dataset, Export Data / Load Saved, Next: Train AI.
+      Back to Instructions spans the bottom. Inputs and toggles are 48 px tall.
+    - **The recording mode starts the camera.** Its first state is
+      **Starting camera**: `showStarting()`
+      (`js/gesture-capture-ui.js:252-283`) calls the page's
+      `acquireCaptureCamera()` (`js/gesture-training-ui.js:1130-1140`), which
+      reuses a live stream or runs the shared `startPageCamera()` (`:1064-1098`,
+      also behind Steps 3/4's Enable Camera). START stays disabled, labelled
+      "Starting camera…", until the first live hand-tracking result arrives
+      (`READY_TIMEOUT_MS` 30000, `js/gesture-capture-ui.js:40`, then "Hand
+      tracking is not ready. Please try again.").
+    - **Camera errors show inside the mode**, in English
+      (`cameraErrorText()`, `js/gesture-training-ui.js:1121-1128`), with
+      Redo / Cancel.
+    - **Closing releases the camera.** `close()` calls `releaseCaptureCamera()`
+      (`:1142-1155`). That stops the tracks and pauses the live loop only if
+      the recording mode started the camera. A camera already running for
+      Steps 3/4 is left as it was.
+    - **The mode is full-viewport and landscape** (`.gc-mode`,
+      `css/gesture-training.css:958-962`): `position:fixed`, 100vw × 100vh,
+      no margin or radius, a 3-row grid of top bar (`auto`) / media (`1fr`) /
+      bottom bar (`auto`). No pixel height is set for the video.
+    - **Top bar:** the label chip (wraps to 2 lines rather than truncating),
+      the state title (Starting camera… / READY / GET READY / REST / SIGN n of
+      3 + dots / REVIEW · N signs found / PROCESSING NN% / SAVING n of 3 / the
+      error text) and Cancel (hidden while saving; the bar keeps a 72 px
+      minimum so the media row does not jump).
+    - **Media:** the live feed or the review loop fills the row,
+      `object-fit: contain`, mirrored for display. The "Hand visible / No
+      hand" pill sits in the top-left corner and hints are a banner over the
+      bottom of the video.
+    - **Bottom bar:** the state's buttons in one row, `flex: 1` each, at
+      least 56 px tall (START; Save | Redo; Redo | Cancel; Retry save |
+      Cancel), or a status line (countdown, "REC m:ss …" while recording,
+      saving), or the progress bar (processing).
+    - **Measured (headless Chrome 153, fake camera,
+      `tests/video-capture/screenshots.mjs`):** no scrollbar in any state at
+      1024×600 or 1280×720, every overlay button ≥ 44×44 (bottom bar
+      ≥ 56 tall), and no top-bar overlap. The media row is 1024×450 at
+      1024×600 and 1280×570 at 1280×720. START became enabled 11,055 ms /
+      10,963 ms after the mode opened (first camera start + MediaPipe load).
   - **The per-word sample-count line survives from the older flow,
-    unchanged in behavior.** `#sampleCountLine` (`gesture-training.html:205`)
+    unchanged in behavior.** `#sampleCountLine` (`gesture-training.html:225`)
     is still driven by `refreshSampleCountLine()`
     (`gesture-training-ui.js:313-327`); the count still comes from a
     per-(sign set, label) tally kept in `savedSampleInfo`, rebuilt from the
     dataset on every load/reload (`rebuildSampleInfo()`, `:298-304`) and
     updated after each save via `window.onCaptureSamplesSaved`
-    (`js/gesture-training-ui.js:1259-1262`, called by
-    `js/gesture-capture-ui.js:631-637` once `reloadDataset()` has already
+    (`js/gesture-training-ui.js:1310-1313`, called by
+    `js/gesture-capture-ui.js:708-714` once `reloadDataset()` has already
     recounted the new samples — no `frameCount` is passed here, so the line's
     "(N frames)" figure comes entirely from that recount, not from the save
     response). `SAMPLE_TARGET = 5` (`gesture-training-ui.js:267`), and the
     line still moves through three states as the count grows: "is a new
     word — no samples yet," "N sample(s) saved … aim for 5," and "✓ Target
     reached; more are optional" (`:320-326`). Styling unchanged:
-    `.tr-sample-line` (`css/gesture-training.css:1012-1014`).
+    `.tr-sample-line` (`css/gesture-training.css:947-949`).
   - **What the button itself does is different from the older flow's
     "Record another sample" relabeling.** The button's text is now the
     static "Record 3 samples" set once in markup
-    (`gesture-training.html:222`) and reasserted by
+    (`gesture-training.html:224`) and reasserted by
     `refreshSampleCountLine()` on every call (`startBtn.textContent =
     'Record 3 samples'`, `gesture-training-ui.js:319`) — it no longer
     relabels itself based on the word's existing sample count, since the new
@@ -544,7 +597,7 @@ below. None of that ran.
 - **Step 1 gained a Type selector, and the dataset table/modal is now
   grouped by it (gesture-categorization phase, 2026-09-23):** a 4-way
   segmented control — Word / Letter / Number / Phrase
-  (`name="gestureCategory"`, gesture-training.html:217-224, `.tr-type-toggle`
+  (`name="gestureCategory"`, gesture-training.html:215-218, `.tr-type-toggle`
   four-column variant of `.tr-sign-toggle`, css/gesture-training.css:160) —
   sits under Sign Set. `autoSelectCategory()` (gesture-training-ui.js:223-234)
   checks the radio matching the current label+sign set's stored category
@@ -552,8 +605,8 @@ below. None of that ran.
   if one exists, else `GestureCategory.guess(label)` (js/gesture-category.js,
   a pure heuristic mirrored from `php/api/gesture_category.php`'s
   `gesture_category()`, parity-tested); it re-runs on the Gesture Name
-  `input` event and the Sign Set `change` event (gesture-training-ui.js:1127,
-  1129) and after every `renderSavedDataset()` (gesture-training-ui.js:328),
+  `input` event and the Sign Set `change` event (gesture-training-ui.js:1206,
+  1208) and after every `renderSavedDataset()` (gesture-training-ui.js:328),
   but a manual tap on a Type option is not overridden by those triggers
   until the name or sign set actually changes. Saving a sample with a
   different Type than the label currently has re-tags that label
@@ -567,7 +620,7 @@ below. None of that ran.
   (`trOpenDatasetModal()`, :92). The tabs use `.tr-ds-tab`
   (css/gesture-training.css:693-721), which has the same navy selected state
   as the Sign Set and Type toggles.
-  - **Search box** (`#datasetSearch`, gesture-training.html:383). It filters
+  - **Search box** (`#datasetSearch`, gesture-training.html:349). It filters
     only the active tab's rows, by label substring, case-insensitive, as you
     type. The query is kept when you switch tabs and cleared when the modal is
     opened again. A search with no results shows a single "No matches" row
@@ -591,7 +644,7 @@ below. None of that ran.
     fits above the 280px keyboard (css/gesture-training.css:725-733). Measured
     at 1024×600: the card spans y=8–312 with the keyboard open, and y=48–552
     with it closed.
-  - The dataset counter (`#datasetCount`, gesture-training.html:250) changed
+  - The dataset counter (`#datasetCount`, gesture-training.html:236) changed
     from "N categories" to "N gestures" (gesture-training-ui.js:342).
     "Categories" now means word/letter/number/phrase, so the old wording
     would have been ambiguous.
@@ -775,7 +828,7 @@ below. None of that ran.
   `js/gesture-capture-ui.js` requires all three of `window.GestureCaptureCore`,
   `window.VideoLandmarks` and `window.GestureDataRecorder` to be loaded before
   `openRecordingMode()` can call `GestureCaptureUI.open()`
-  (`js/gesture-capture-ui.js:160-163` logs and no-ops otherwise); this list is
+  (`js/gesture-capture-ui.js:188-191` logs and no-ops otherwise); this list is
   additive only — no existing script in the load order was removed or reordered
   relative to what it already depended on.
 - **gesture-training-ui.js → php/api/save_gesture.php** (delete) — uses a
@@ -856,7 +909,7 @@ below. None of that ran.
   `/Sining_kamay/` and branches on port number instead of the `/SKR` path check.
   Three different fallback strategies for the same problem.
 - gesture-training-ui.js:17 defines `const EPOCHS = 50` and the HTML
-  (gesture-training.html:295) shows "0 / 50 epochs", but `trainModel()`
+  (gesture-training.html:261) shows "0 / 50 epochs", but `trainModel()`
   (gesture-training-ui.js:422-562) never runs 50 iterative epochs — it's a KNN
   cache-merge with a cosmetic 10- or 20-step progress animation. The `EPOCHS`
   constant appears unused by the actual training path (no other reference to
