@@ -177,3 +177,65 @@ mode opens.
 
 All three were only code-reviewed. They are good candidates to try while
 doing the manual check.
+
+## Owner follow-up (2026-09-27)
+
+Owner decisions on "Open for the owner" (items 1-7) were applied:
+- **1. Compact JSON: approved.** A pre-deploy check is in
+  `docs/system/MANUAL-CHECKS.md`: on the Pi, `SHOW VARIABLES LIKE
+  'max_allowed_packet';` must be >= 1M. DEBT 87 stays open.
+- **2. `MAX_RECORDING_MS` = 90000 added** (`js/capture-core.js:20`, commit
+  `f1b3d20`).
+  - The segmenter fails with `'recording-too-long'` once a push comes 90 s or
+    more after the first push and the take hasn't reached `done`
+    (`js/capture-core.js:80-84`). `segmentFrames()` reports the same reason.
+  - The recording mode then stops, discards the take and shows "Recording too
+    long. Try again." with Redo / Cancel (`js/gesture-capture-ui.js:341-344`,
+    offline `:542`).
+  - There are 4 new segmenter unit tests: hands never lowered, nobody signs
+    after REST, 2 reps then a long wait, and a take that is already `done` not
+    being failed by later frames. DEBT 89 is closed.
+- **3. Rep edges: accepted until the keyframes phase** (DEBT 88 stays open).
+- **4. Retry save not idempotent: accepted** (DEBT 90 stays open).
+- **5–7. Wording changes: acknowledged, kept.**
+
+Docs updated:
+- `DECISIONS.md` has a new section for these owner decisions, and the
+  deviations are marked acknowledged.
+- `DEBT.md`: 89 resolved; 87, 88 and 90 carry owner notes.
+- `UI.md` describes the new cap.
+- 46 `file:line` citations into `js/capture-core.js` and
+  `js/gesture-capture-ui.js` were re-mapped to the shifted lines: 45 by a
+  script that builds the mapping from the diff, and 1 by hand, where the
+  script had attributed a `:450` to the wrong file. The moved targets were
+  spot-checked.
+
+**Tests, run after the change on 2026-09-27:**
+
+| Check | Result |
+|---|---|
+| `node --test --test-concurrency=1 tests/video-capture/*.test.mjs` | **49/49** (was 45; the 4 new tests) |
+| `capture-ui-check.mjs` | **ALL CHECKS PASSED** |
+| `e2e.mjs`, first run | 1 check failed ("run 4 reached Review", its 60 s wait) |
+| `e2e.mjs`, re-run | **ALL CHECKS PASSED** |
+| `extractor-check.mjs` | **2 checks fail**, in three runs out of three: "segmentFrames(result) is ok with 3 reps" gives `too-few-reps` for both files. Every other check passes. |
+
+The `extractor-check` failure is not caused by this change:
+- I captured one failing run's extracted frames and fed the same frames to the
+  pre-change segmenter (`HEAD` before `f1b3d20`) and to the new one in node.
+  Both return `too-few-reps` with 2 reps. The new cap cannot fire on a
+  recording of about 20 s.
+- The cause is the check's in-page synthetic recording. It plays `hello.webm`
+  3 times into a canvas, `MediaRecorder` captures that canvas, and the
+  recording's timing depends on machine load. Recordings measured
+  16.67–16.95 s in earlier runs and 19.6–20.5 s today.
+- In today's recordings the first sign produced only 3 hand frames (about
+  200 ms), which is under the 300 ms blip filter, so only 2 reps counted.
+- One run with the pre-change `capture-core.js` passed. That was a different
+  recording (19.6 s), so it reflects the flaky fixture, not the code.
+
+Suggested follow-up, not done here: build the extractor check's fixture from a
+fixed `.webm` made with `ffmpeg.exe`, like the e2e fake camera, instead of
+recording it in the page.
+
+Commits: code `f1b3d20`; docs in the commit after it. Nothing pushed or merged.

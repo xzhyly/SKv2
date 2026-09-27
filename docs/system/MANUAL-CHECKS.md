@@ -417,3 +417,11 @@ real person signing in front of a real camera.
       Note how long Processing took and the recording length, for comparison
       with the laptop's measured 6,113 ms for an 11.9 s recording.
       Afterwards, delete `zz_owner_check` from View Active Gesture Dataset.
+- [ ] **Pre-deploy, on the Pi: MariaDB packet size.** Before relying on new
+      recordings on the Pi, run `SHOW VARIABLES LIKE 'max_allowed_packet';`
+      in the Pi's MariaDB. Expected: the value is >= 1M (1048576). New v3
+      samples are stored as compact JSON to stay under 1M on this machine
+      (`C:\xampp\mysql\bin\my.ini:37`); a smaller value on the Pi would make
+      saves fail at the `gesture_recordings` insert. Owner decision
+      2026-09-27; `docs/system/DEBT.md` item 87 stays open until the Pi
+      timings are measured.

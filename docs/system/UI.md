@@ -476,14 +476,19 @@ below. None of that ran.
     `gesture-training.html:222`) calls `openRecordingMode()`
     (`js/gesture-training-ui.js:1233-1253`), which reads the Gesture Name,
     Sign Set and Type from the form and opens a full-screen mode
-    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:156-176`;
+    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:157-177`;
     markup `#gcMode`, `gesture-training.html:353`) that owns the rest of the
     flow end to end: **Ready** → **Countdown** (3-2-1 at 1000ms/tick,
-    `js/gesture-capture-ui.js:229-245`) → **Recording** (a `MediaRecorder`
+    `js/gesture-capture-ui.js:230-246`) → **Recording** (a `MediaRecorder`
     capture of the live camera stream, guided live by the shared
     `GestureCaptureCore` segmenter reading `js/gesture-data.js`'s hand
     results — REST → SIGN 1 of 3 → SIGN 2 of 3 → SIGN 3 of 3, hand-driven
-    with no fixed per-rep timer, `js/capture-core.js`) → **Review** (the
+    with no fixed per-rep timer, `js/capture-core.js`; the whole take is
+    capped at `MAX_RECORDING_MS` 90000, `js/capture-core.js:20`, checked
+    in the segmenter at `:80-84` — reaching it before the 3rd sign's rest
+    stops and discards the recording with "Recording too long. Try again."
+    and Redo / Cancel, `js/gesture-capture-ui.js:26`, `:341-344`, `:542`;
+    added 2026-09-27, owner decision) → **Review** (the
     recorded clip plays back with the live rep count, Save disabled unless
     exactly 3 reps were found) → **Processing** (`js/video-landmarks.js`'s
     `extractVideoLandmarks()` seeks the recording frame-by-frame at
@@ -506,7 +511,7 @@ below. None of that ran.
     dataset on every load/reload (`rebuildSampleInfo()`, `:298-304`) and
     updated after each save via `window.onCaptureSamplesSaved`
     (`js/gesture-training-ui.js:1259-1262`, called by
-    `js/gesture-capture-ui.js:625-631` once `reloadDataset()` has already
+    `js/gesture-capture-ui.js:631-637` once `reloadDataset()` has already
     recounted the new samples — no `frameCount` is passed here, so the line's
     "(N frames)" figure comes entirely from that recount, not from the save
     response). `SAMPLE_TARGET = 5` (`gesture-training-ui.js:267`), and the
@@ -770,7 +775,7 @@ below. None of that ran.
   `js/gesture-capture-ui.js` requires all three of `window.GestureCaptureCore`,
   `window.VideoLandmarks` and `window.GestureDataRecorder` to be loaded before
   `openRecordingMode()` can call `GestureCaptureUI.open()`
-  (`js/gesture-capture-ui.js:159-162` logs and no-ops otherwise); this list is
+  (`js/gesture-capture-ui.js:160-163` logs and no-ops otherwise); this list is
   additive only — no existing script in the load order was removed or reordered
   relative to what it already depended on.
 - **gesture-training-ui.js → php/api/save_gesture.php** (delete) — uses a

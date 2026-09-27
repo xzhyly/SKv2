@@ -689,7 +689,7 @@ so a later session does not re-litigate them:
     that flow (Q8, `docs/system/DECISIONS.md`; grep-confirmed absent from the
     whole repo). The guarded `tf.io.removeModel` call this item describes now
     lives in `js/gesture-capture-ui.js`'s `invalidateCaches()`
-    (`:601-608`), which every recording save calls the same way
+    (`:607-614`), which every recording save calls the same way
     `confirmAndSave` used to (cache invalidation for the sign-set's k-NN
     model/labels) — this item's underlying finding (`tf.min.js` still looks
     otherwise unused on the live path) is unchanged, only the call site moved.
@@ -944,7 +944,7 @@ so a later session does not re-litigate them:
     `currentLabelClean()`, `selectedSignSet()` and the checked
     `gestureCategory` radio into the `opts` passed to
     `GestureCaptureUI.open()`, which stores them as `session`
-    (`js/gesture-capture-ui.js:163-168`) before the countdown/recording/
+    (`js/gesture-capture-ui.js:164-169`) before the countdown/recording/
     review/save flow runs. The full-screen mode has no path back to the
     form's fields until it closes, so there is nothing left to edit
     mid-flow that could disagree with what gets saved.
@@ -1189,14 +1189,14 @@ so a later session does not re-litigate them:
     flow.** The video-transcode branch (`php/api/save_gesture.php:494-564`,
     triggered by a non-empty `video_base64`) is now dead weight for every
     *new* label: `js/gesture-capture-ui.js`'s save calls
-    (`saveGestureSample(...)`, `:558-569`) never send `video_base64`/
+    (`saveGestureSample(...)`, `:564-575`) never send `video_base64`/
     `video_path` — measured directly (Task 6 e2e): 0 of 31 save requests
     carried either field, and the `assets/signs/` directory listing was
     identical before and after a full recording. A label recorded for the
     first time through Step 1 therefore gets no display clip: Reports' View
     Asset stays empty and `asset_path` stays NULL for it. The branch still
     matters for old v2-era labels that already have a clip on disk
-    (`find_label_video()`'s skip-if-exists rule, `:511-517`, still runs on
+    (`find_label_video()`'s skip-if-exists rule, `:516-522`, still runs on
     every save, it just never finds new base64 video to act on). Will be
     removed when the planned caricature/avatar feature replaces display
     clips outright.
@@ -1214,11 +1214,16 @@ so a later session does not re-litigate them:
     `RESULTS_WATCHDOG_MS` 5000 (`js/capture-core.js:19`) is long enough on a
     Pi under load. Possible mitigation, not applied: `MediaRecorder`'s
     `videoKeyFrameIntervalDuration` option (not set anywhere in
-    `js/gesture-capture-ui.js`'s `new MediaRecorder(...)` call, `:253-264`),
+    `js/gesture-capture-ui.js`'s `new MediaRecorder(...)` call, `:254-265`),
     which would make seeking more evenly spaced. The Pi's MariaDB
     `max_allowed_packet` is also unknown; a compact 301-frame two-hand v3
     sample is estimated at ~0.5 MB by the whole-phase reviewer — an
     **estimate, not measured**.
+
+    **Update 2026-09-27 (owner):** compact JSON for v3 approved. A pre-deploy
+    check was added to `docs/system/MANUAL-CHECKS.md`: on the Pi, `SHOW
+    VARIABLES LIKE 'max_allowed_packet';` must be >= 1M. This item stays
+    open until the Pi timings are measured.
 
 88. **Low severity, open (video-based gesture capture, 2026-09-26): v3 reps
     include the hand's entering/leaving frames.** A rep's boundary is the
@@ -1234,20 +1239,36 @@ so a later session does not re-litigate them:
     310`). Owner decision pending: trim the edges vs. accept this until the
     keyframes phase replaces the even-subsampling scheme.
 
+    **Update 2026-09-27 (owner):** accepted as is until the keyframes phase.
+    Stays open.
+
 89. **Low severity, open (video-based gesture capture, 2026-09-26): no
     overall recording-length cap.** `js/capture-core.js`'s `CAPTURE`
-    constants (`:10-20`) bound a single rep (`MAX_REP_MS` 20000) and
+    constants (`:10-21`) bound a single rep (`MAX_REP_MS` 20000) and
     hand-tracking staleness (`RESULTS_WATCHDOG_MS` 5000), but nothing bounds
     the whole REST → SIGN 1 → SIGN 2 → SIGN 3 recording's total wall-clock
     length if the signer takes their time resting between reps. Owner
     decision pending.
+
+    **RESOLVED 2026-09-27 (owner decision on the video-capture final
+    report).** `CAPTURE.MAX_RECORDING_MS` = 90000 (`js/capture-core.js:20`)
+    now caps the whole take: the segmenter fails with `'recording-too-long'`
+    once a push is >= 90000 ms after the first push and the take hasn't
+    reached `done` (`:80-84`; a take that already reached `done` is never
+    failed by it). Live, the recording is stopped and discarded with
+    "Recording too long. Try again." and Redo / Cancel
+    (`js/gesture-capture-ui.js:341-344`); offline, `segmentFrames()` returns
+    that reason and the same message is shown
+    (`js/gesture-capture-ui.js:542`). Covered by 4 unit tests in
+    `tests/video-capture/segmenter.test.mjs` (23/23 pass, measured
+    2026-09-27).
 
 90. **Low severity, open (video-based gesture capture, 2026-09-26): "Retry
     save" is not idempotent.** `php/api/save_gesture.php` writes the sample
     JSON file to disk (`file_put_contents`, `:490`) before the DB insert
     (`save_gesture_word_to_db()`/`save_gesture_recording_to_db()`, `:567`,
     `:580`). A DB failure, or a lost HTTP response, followed by
-    `js/gesture-capture-ui.js`'s "Retry save" (`:82-84`, re-running
+    `js/gesture-capture-ui.js`'s "Retry save" (`:83-85`, re-running
     `runSaves()`, which re-POSTs any rep whose `saved` flag is still false)
     can leave a duplicate rep file on disk if the first attempt's file write
     actually succeeded but the response was never seen — the next disk→DB
@@ -1256,10 +1277,12 @@ so a later session does not re-litigate them:
     this phase); newly reachable now that a failed save can be retried by
     the user from the UI.
 
+    **Update 2026-09-27 (owner):** accepted. Stays open.
+
 91. **Low severity, open (video-based gesture capture, 2026-09-26): if a
     wedged detector send left the live hand loop paused, the watchdog
     reports it but Redo does not resume the loop.** `toReady()`/`resetWork()`
-    (`js/gesture-capture-ui.js:222-227`, `:193-204`) releases the held
+    (`js/gesture-capture-ui.js:223-228`, `:194-205`) releases the held
     detector via `detector.release()`
     (`js/gesture-data.js:579-599`), but `release()` only resumes the live
     loop once `detectorSendPending` clears (`finishReleaseIfReady()`,
@@ -1283,11 +1306,11 @@ so a later session does not re-litigate them:
     count for the rep, including in-rep frames with no hand, not the ≤30
     training rows `recordingToFeatureRows()` (`js/gesture-data.js:677-695`)
     actually feeds to `knnPredict`. Separately, `reviewCount`
-    (`js/gesture-capture-ui.js:415`, `:450`) is always exactly
+    (`js/gesture-capture-ui.js:420`, `:455`) is always exactly
     `REQUIRED_REPS` (3) by the time Save is reachable —
     `segmentFrames()` only returns `ok:true` when `repsFound ===
-    REQUIRED_REPS` (`js/capture-core.js:211-219`) — so the `n !==
-    C().REQUIRED_REPS` disabled-check at `:450` is a defensive branch that
+    REQUIRED_REPS` (`js/capture-core.js:223-231`) — so the `n !==
+    C().REQUIRED_REPS` disabled-check at `:455` is a defensive branch that
     can't currently be hit, not a live gate.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
