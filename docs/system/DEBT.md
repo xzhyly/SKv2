@@ -689,7 +689,7 @@ so a later session does not re-litigate them:
     that flow (Q8, `docs/system/DECISIONS.md`; grep-confirmed absent from the
     whole repo). The guarded `tf.io.removeModel` call this item describes now
     lives in `js/gesture-capture-ui.js`'s `invalidateCaches()`
-    (`:684-691`), which every recording save calls the same way
+    (`:682-689`), which every recording save calls the same way
     `confirmAndSave` used to (cache invalidation for the sign-set's k-NN
     model/labels) — this item's underlying finding (`tf.min.js` still looks
     otherwise unused on the live path) is unchanged, only the call site moved.
@@ -926,7 +926,7 @@ so a later session does not re-litigate them:
     remains anywhere in `js/gesture-data.js`. Recording now only starts
     through the Add Data form's "Record 3 samples" button
     (`gesture-training.html:224` → `openRecordingMode()`,
-    `js/gesture-training-ui.js:1287-1304`), which reads the label, Sign Set
+    `js/gesture-training-ui.js:1325-1342`), which reads the label, Sign Set
     and Type straight from the form's own inputs — there is no `prompt()`
     path left to skip Type auto-select.
 
@@ -940,11 +940,11 @@ so a later session does not re-litigate them:
 
     **RESOLVED 2026-09-26 (video-based gesture capture).** Label, Sign Set
     and Type are now captured once, when the recording mode opens:
-    `openRecordingMode()` (`js/gesture-training-ui.js:1287-1304`) reads
+    `openRecordingMode()` (`js/gesture-training-ui.js:1325-1342`) reads
     `currentLabelClean()`, `selectedSignSet()` and the checked
     `gestureCategory` radio into the `opts` passed to
     `GestureCaptureUI.open()`, which stores them as `session`
-    (`js/gesture-capture-ui.js:192-199`) before the countdown/recording/
+    (`js/gesture-capture-ui.js:190-197`) before the countdown/recording/
     review/save flow runs. The full-screen mode has no path back to the
     form's fields until it closes, so there is nothing left to edit
     mid-flow that could disagree with what gets saved.
@@ -1189,14 +1189,14 @@ so a later session does not re-litigate them:
     flow.** The video-transcode branch (`php/api/save_gesture.php:494-564`,
     triggered by a non-empty `video_base64`) is now dead weight for every
     *new* label: `js/gesture-capture-ui.js`'s save calls
-    (`saveGestureSample(...)`, `:641-652`) never send `video_base64`/
+    (`saveGestureSample(...)`, `:639-650`) never send `video_base64`/
     `video_path` — measured directly (Task 6 e2e): 0 of 31 save requests
     carried either field, and the `assets/signs/` directory listing was
     identical before and after a full recording. A label recorded for the
     first time through Step 1 therefore gets no display clip: Reports' View
     Asset stays empty and `asset_path` stays NULL for it. The branch still
     matters for old v2-era labels that already have a clip on disk
-    (`find_label_video()`'s skip-if-exists rule, `:593-599`, still runs on
+    (`find_label_video()`'s skip-if-exists rule, `:591-597`, still runs on
     every save, it just never finds new base64 video to act on). Will be
     removed when the planned caricature/avatar feature replaces display
     clips outright.
@@ -1214,7 +1214,7 @@ so a later session does not re-litigate them:
     `RESULTS_WATCHDOG_MS` 5000 (`js/capture-core.js:19`) is long enough on a
     Pi under load. Possible mitigation, not applied: `MediaRecorder`'s
     `videoKeyFrameIntervalDuration` option (not set anywhere in
-    `js/gesture-capture-ui.js`'s `new MediaRecorder(...)` call, `:331-342`),
+    `js/gesture-capture-ui.js`'s `new MediaRecorder(...)` call, `:329-340`),
     which would make seeking more evenly spaced. The Pi's MariaDB
     `max_allowed_packet` is also unknown; a compact 301-frame two-hand v3
     sample is estimated at ~0.5 MB by the whole-phase reviewer — an
@@ -1256,10 +1256,10 @@ so a later session does not re-litigate them:
     once a push is >= 90000 ms after the first push and the take hasn't
     reached `done` (`:80-84`; a take that already reached `done` is never
     failed by it). Live, the recording is stopped and discarded with
-    "Recording too long. Try again." and Redo / Cancel
-    (`js/gesture-capture-ui.js:418-421`); offline, `segmentFrames()` returns
+    "Recording too long. Try again." and Redo (Cancel top-right)
+    (`js/gesture-capture-ui.js:416-419`); offline, `segmentFrames()` returns
     that reason and the same message is shown
-    (`js/gesture-capture-ui.js:619`). Covered by 4 unit tests in
+    (`js/gesture-capture-ui.js:617`). Covered by 4 unit tests in
     `tests/video-capture/segmenter.test.mjs` (23/23 pass, measured
     2026-09-27).
 
@@ -1268,7 +1268,7 @@ so a later session does not re-litigate them:
     JSON file to disk (`file_put_contents`, `:490`) before the DB insert
     (`save_gesture_word_to_db()`/`save_gesture_recording_to_db()`, `:567`,
     `:580`). A DB failure, or a lost HTTP response, followed by
-    `js/gesture-capture-ui.js`'s "Retry save" (`:98-100`, re-running
+    `js/gesture-capture-ui.js`'s "Retry save" (`:97-99`, re-running
     `runSaves()`, which re-POSTs any rep whose `saved` flag is still false)
     can leave a duplicate rep file on disk if the first attempt's file write
     actually succeeded but the response was never seen — the next disk→DB
@@ -1282,7 +1282,7 @@ so a later session does not re-litigate them:
 91. **Low severity, open (video-based gesture capture, 2026-09-26): if a
     wedged detector send left the live hand loop paused, the watchdog
     reports it but Redo does not resume the loop.** `toReady()`/`resetWork()`
-    (`js/gesture-capture-ui.js:299-304`, `:225-237`) releases the held
+    (`js/gesture-capture-ui.js:297-302`, `:223-235`) releases the held
     detector via `detector.release()`
     (`js/gesture-data.js:579-599`), but `release()` only resumes the live
     loop once `detectorSendPending` clears (`finishReleaseIfReady()`,
@@ -1296,7 +1296,7 @@ so a later session does not re-litigate them:
     merely paused therefore recovers on Redo, and `tests/video-capture/capture-ui-check.mjs`'s
     watchdog run now asserts that without the test resuming the loop itself. A truly wedged
     detector send still keeps detector mode on. Its results never reach `onHandResults`, so
-    Starting camera times out after `READY_TIMEOUT_MS` (30 s) with "Hand tracking is not
+    Starting camera times out after `READY_TIMEOUT_MS` (60 s since the owner follow-up) with "Hand tracking is not
     ready. Please try again." Reloading the page is still the recovery in that case.
 
 92. **Low severity, open, pre-existing (video-based gesture capture,
@@ -1315,7 +1315,7 @@ so a later session does not re-litigate them:
     count for the rep, including in-rep frames with no hand, not the ≤30
     training rows `recordingToFeatureRows()` (`js/gesture-data.js:677-695`)
     actually feeds to `knnPredict`. Separately, `reviewCount`
-    (`js/gesture-capture-ui.js:497`, `:532`) is always exactly
+    (`js/gesture-capture-ui.js:495`, `:530`) is always exactly
     `REQUIRED_REPS` (3) by the time Save is reachable —
     `segmentFrames()` only returns `ok:true` when `repsFound ===
     REQUIRED_REPS` (`js/capture-core.js:223-231`) — so the `n !==

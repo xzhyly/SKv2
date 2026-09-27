@@ -474,12 +474,12 @@ below. None of that ran.
   - **Current flow: record first, extract offline, save 3 reps.** The Add
     Data form's one button (`#startGestureDataBtn`, "Record 3 samples",
     `gesture-training.html:224`) calls `openRecordingMode()`
-    (`js/gesture-training-ui.js:1287-1304`), which reads the Gesture Name,
+    (`js/gesture-training-ui.js:1325-1342`), which reads the Gesture Name,
     Sign Set and Type from the form and opens a full-screen mode
-    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:185-204`;
+    (`window.GestureCaptureUI.open()`, `js/gesture-capture-ui.js:183-202`;
     markup `#gcMode`, `gesture-training.html:357`) that owns the rest of the
     flow end to end: **Ready** → **Countdown** (3-2-1 at 1000ms/tick,
-    `js/gesture-capture-ui.js:306-323`) → **Recording** (a `MediaRecorder`
+    `js/gesture-capture-ui.js:304-321`) → **Recording** (a `MediaRecorder`
     capture of the live camera stream, guided live by the shared
     `GestureCaptureCore` segmenter reading `js/gesture-data.js`'s hand
     results — REST → SIGN 1 of 3 → SIGN 2 of 3 → SIGN 3 of 3, hand-driven
@@ -487,7 +487,7 @@ below. None of that ran.
     capped at `MAX_RECORDING_MS` 90000, `js/capture-core.js:20`, checked
     in the segmenter at `:80-84` — reaching it before the 3rd sign's rest
     stops and discards the recording with "Recording too long. Try again."
-    and Redo / Cancel, `js/gesture-capture-ui.js:33`, `:418-421`, `:619`;
+    and Redo (Cancel top-right), `js/gesture-capture-ui.js:33`, `:416-419`, `:617`;
     added 2026-09-27, owner decision) → **Review** (the
     recorded clip plays back with the live rep count, Save disabled unless
     exactly 3 reps were found) → **Processing** (`js/video-landmarks.js`'s
@@ -519,16 +519,33 @@ below. None of that ran.
       Back to Instructions spans the bottom. Inputs and toggles are 48 px tall.
     - **The recording mode starts the camera.** Its first state is
       **Starting camera**: `showStarting()`
-      (`js/gesture-capture-ui.js:252-283`) calls the page's
+      (`js/gesture-capture-ui.js:250-281`) calls the page's
       `acquireCaptureCamera()` (`js/gesture-training-ui.js:1130-1140`), which
       reuses a live stream or runs the shared `startPageCamera()` (`:1064-1098`,
       also behind Steps 3/4's Enable Camera). START stays disabled, labelled
       "Starting camera…", until the first live hand-tracking result arrives
-      (`READY_TIMEOUT_MS` 30000, `js/gesture-capture-ui.js:40`, then "Hand
+      (`READY_TIMEOUT_MS` 60000, `js/gesture-capture-ui.js:41`, then "Hand
       tracking is not ready. Please try again.").
     - **Camera errors show inside the mode**, in English
       (`cameraErrorText()`, `js/gesture-training-ui.js:1121-1128`), with
-      Redo / Cancel.
+      Redo (Cancel is the top-right button).
+    - **Hand-tracking warm-up at page load (owner follow-up, 2026-09-27).**
+      `warmUpHandTracking()` (`js/gesture-training-ui.js:1237-1264`, called at `:1223`) runs at the start of the
+      page's `DOMContentLoaded` handler. It loads the ONE MediaPipe Hands instance
+      (`preloadMediaPipe`: WASM + model, results loop paused, no camera) and then runs one
+      detection on a blank 320x240 frame through `createVideoDetector()`. That first
+      inference, not the model load, was the ~11 s of "Starting camera…". Every
+      recording-mode open and Steps 3/4's Enable Camera reuse the instance.
+      - Cost: the first inference is one main-thread long task (11,785 ms measured in
+        headless Chrome on this laptop). It runs about 1.3 s after navigation, i.e. while the
+        PIN screen is up. Taps during it are queued, not lost.
+      - Measured with `tests/video-capture/startup-check.mjs`: Starting camera → START
+        enabled took 1,858 / 1,505 ms on the first open (was 15,410 / 12,929 ms) and
+        278 / 176 ms on the second open (was 131 / 148 ms).
+      - Steps 2-4 are unchanged within noise: Train AI 4,049 / 4,593 ms (was 4,084 /
+        3,993 ms), Step 3 camera to first result 184 / 178 ms (was 148 / 174 ms), 0 console
+        errors.
+      - `window.handTrackingWarmUp` resolves to `{ ok, ms }`.
     - **Closing releases the camera.** `close()` calls `releaseCaptureCamera()`
       (`:1142-1155`). That stops the tracks and pauses the live loop only if
       the recording mode started the camera. A camera already running for
@@ -547,8 +564,9 @@ below. None of that ran.
       hand" pill sits in the top-left corner and hints are a banner over the
       bottom of the video.
     - **Bottom bar:** the state's buttons in one row, `flex: 1` each, at
-      least 56 px tall (START; Save | Redo; Redo | Cancel; Retry save |
-      Cancel), or a status line (countdown, "REC m:ss …" while recording,
+      least 56 px tall (START; Save | Redo; Redo alone in error states; Retry save
+      alone after a failed save - Cancel is only ever the top-right button, owner follow-up
+      2026-09-27), or a status line (countdown, "REC m:ss …" while recording,
       saving), or the progress bar (processing).
     - **Measured (headless Chrome 153, fake camera,
       `tests/video-capture/screenshots.mjs`):** no scrollbar in any state at
@@ -563,8 +581,8 @@ below. None of that ran.
     per-(sign set, label) tally kept in `savedSampleInfo`, rebuilt from the
     dataset on every load/reload (`rebuildSampleInfo()`, `:298-304`) and
     updated after each save via `window.onCaptureSamplesSaved`
-    (`js/gesture-training-ui.js:1310-1313`, called by
-    `js/gesture-capture-ui.js:708-714` once `reloadDataset()` has already
+    (`js/gesture-training-ui.js:1348-1351`, called by
+    `js/gesture-capture-ui.js:706-712` once `reloadDataset()` has already
     recounted the new samples — no `frameCount` is passed here, so the line's
     "(N frames)" figure comes entirely from that recount, not from the save
     response). `SAMPLE_TARGET = 5` (`gesture-training-ui.js:267`), and the
@@ -828,7 +846,7 @@ below. None of that ran.
   `js/gesture-capture-ui.js` requires all three of `window.GestureCaptureCore`,
   `window.VideoLandmarks` and `window.GestureDataRecorder` to be loaded before
   `openRecordingMode()` can call `GestureCaptureUI.open()`
-  (`js/gesture-capture-ui.js:188-191` logs and no-ops otherwise); this list is
+  (`js/gesture-capture-ui.js:186-189` logs and no-ops otherwise); this list is
   additive only — no existing script in the load order was removed or reordered
   relative to what it already depended on.
 - **gesture-training-ui.js → php/api/save_gesture.php** (delete) — uses a

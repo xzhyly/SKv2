@@ -84,6 +84,16 @@ Run: `node --test --test-concurrency=1 tests/video-capture/*.test.mjs`
   Deletes its test label afterwards.
 
   Run: `node tests/video-capture/screenshots.mjs`
+  (`SHOTS_SIZES=1024x600` limits the sizes; `SHOTS_ONLY=ready,error-save-failed` rewrites only
+  those images, every check still runs.)
+
+- `startup-check.mjs` (owner follow-up, 2026-09-27) - timing only, prints one JSON line: the
+  recording mode's Starting camera → START enabled on the first and second open, the page-load
+  hand-tracking warm-up result, Train AI time, Step 3 camera → first hand result, 10 s of
+  Predict, console errors. Cancels before recording, so it creates no samples. Run it on the Pi
+  to fill in the unmeasured Pi timings.
+
+  Run: `node tests/video-capture/startup-check.mjs`
 
 Full measured output from the verification run is in
 `docs/reports/` / `.git/sdd/vc-task-6-report.md` (see the phase's task list for the exact path).

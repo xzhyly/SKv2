@@ -194,3 +194,105 @@ Docs (the next commit):
 - 16 screenshots under `docs/reports/img/`.
 - Line citations into the four changed files were re-mapped. Stale historical citations were
   restored or corrected by hand.
+
+## Owner follow-up (2026-09-27)
+
+Owner review: approved, plus two small changes. Both are done. Code is `1015556`, docs are in
+the commit after it.
+
+### 1. Cancel only top-right
+
+- Error states show **Redo** alone in the bottom bar, full width.
+- A failed save shows **Retry save** alone.
+- Cancel is only ever the top-right button. `#gcCancelBottom` is removed.
+- `capture-ui-check.mjs` now asserts the bottom bar contents: `gcRedo` in the camera-stopped
+  error, `gcRetrySave` in the save failure.
+
+Updated screenshots, 1024×600:
+
+| Ready | Error (save failed) |
+|---|---|
+| ![](img/capture-ui-1024x600-02b-ready.png) | ![](img/capture-ui-1024x600-08-error-save-failed.png) |
+
+### 2. Start-up time
+
+- **`READY_TIMEOUT_MS` = 60000** (was 30000), `js/gesture-capture-ui.js:41`.
+- **Warm-up at page load, one instance reused.** `warmUpHandTracking()` runs at the start of
+  `gesture-training.html`'s `DOMContentLoaded` handler (`js/gesture-training-ui.js:1223`,
+  `:1237-1264`). It loads the ONE Hands instance with `preloadMediaPipe()` (WASM + model +
+  `initialize()`, results loop paused, no camera).
+- **Every later use reuses that instance:** every overlay open and Steps 3/4's Enable Camera.
+  `setupMediaPipe()` returns early for the same `<video>`, and the camera start resumes the
+  loop.
+- **Addition: the warm-up also runs one detection on a blank 320×240 frame** (through
+  `createVideoDetector()`; loop still paused, no camera). The brief said "model init only",
+  but that alone did not help. The model init finished in 763 ms, before the first open, yet
+  the first open still took **11,157 ms**. The ~11 s is MediaPipe's **first inference**, not
+  the model load: measured as one main-thread long task of 11,574–11,785 ms.
+
+**Measured on the laptop** (`tests/video-capture/startup-check.mjs`, headless Chrome 153,
+fake camera, 1024×600). Each run loads the page, waits for the dataset, idles 2 s, opens the
+mode twice (Cancel between), then runs Train AI and Step 3. Starting camera → START enabled:
+
+| Variant | First open | Second open | Train AI | Step 3 camera → first result | Dataset count shown (after navigation) | Console errors |
+|---|---|---|---|---|---|---|
+| Before (no warm-up), run 1 / run 2 | 15,410 / 12,929 ms | 131 / 148 ms | 4,084 / 3,993 ms | 148 / 174 ms | 8,334 / 18,529 ms | 0 / 0 |
+| Model init only (the brief's wording), 1 run | 11,157 ms | 142 ms | 3,353 ms | 271 ms | 9,854 ms | 0 |
+| Init + blank-frame detection, started after the dataset load, run 1 / run 2 | 1,981 / 1,209 ms | 139 / 131 ms | 6,095 / 3,270 ms | 279 / 175 ms | 22,054 / 22,394 ms | 0 / 0 |
+| **Shipped:** init + blank-frame detection, started first thing on page load, run 1 / run 2 | **1,858 / 1,505 ms** | **278 / 176 ms** | **4,049 / 4,593 ms** | **184 / 178 ms** | **16,808 / 15,825 ms** | **0 / 0** |
+
+- **First open drops from about 13–15 s to about 1.5–1.9 s.** What remains is the camera
+  start plus the first live frames.
+- **Second open stays around 0.2 s.** The mode starts and stops its own camera each time, so
+  this includes a camera restart.
+- **Steps 2–4 are unchanged within run-to-run noise.** Train AI is 4.0–4.6 s against a
+  4.0–4.1 s baseline. Step 3's camera delivers its first hand result in under 0.2 s. Predict
+  named "hello" in 14/33 and 15/34 polls, against 17/36 and 13/34 in the baseline. There were
+  0 console errors in every run.
+- **Why "started first thing" was chosen.** Started after the startup dataset load, the
+  warm-up's long task overlapped the page's second dataset fetch, and the dataset count
+  appeared about 22 s after navigation. Started at the beginning of `DOMContentLoaded`, the
+  long task runs while the PIN screen is up (it began 1.3 s after navigation). The count then
+  appeared at 15.8–16.8 s, inside the baseline's 8.3–18.5 s range.
+
+**Cost of the blank-frame detection — please confirm:**
+- The page does not respond for about 12 s once, shortly after it loads. Taps are queued, not
+  lost.
+- Before this follow-up, the same block happened after tapping Record 3 samples, while
+  "Starting camera…" was showing.
+- On the Pi both the block and the start-up times are expected to be longer. **Pi timing is
+  not measured.** `startup-check.mjs` is committed so it can be run there.
+- If you would rather keep the page responsive at load, and accept the ~11 s wait on the
+  first open instead, the fix is to drop the blank-frame detection and keep model init only.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `node --test --test-concurrency=1 tests/video-capture/*.test.mjs` | **49/49** |
+| `capture-ui-check.mjs` | **ALL CHECKS PASSED**, including the two new bottom-bar assertions |
+| `e2e.mjs` (fake camera) | **ALL CHECKS PASSED**. Ready was reached **1,865 ms** after opening (was 11,138 ms in the previous run) |
+| `screenshots.mjs`, 1024×600, Ready + error images rewritten | **ALL CHECKS PASSED**: no scrollbar, targets ≥ 44 (bottom bar ≥ 56), no overlap, 0 console errors |
+| Warm-up console errors | 0 in every run above. A warm-up failure would log `console.warn`, not an error. |
+
+Also found:
+- **Temp folders left behind.** `startup-check.mjs` left its temp folder behind 4 times:
+  Windows still held the fake-camera file when the script deleted it. The folders were removed
+  by hand, and none were committed.
+- **Timing risk on the Pi.** `createVideoDetector()`'s `detect()` has a 10 s timeout. The
+  blank-frame detection only succeeds because the timer cannot fire during the 11.6 s main-thread
+  block. On a slower device the timeout could win: the warm-up would then log a warning, but
+  the instance still ends up warmed. This is untested on the Pi.
+
+`git diff --stat` for the code commit `1015556`:
+```
+ gesture-training.html                    |  1 -
+ js/gesture-capture-ui.js                 | 20 +++----
+ js/gesture-training-ui.js                | 38 +++++++++++++
+ tests/video-capture/capture-ui-check.mjs |  4 ++
+ tests/video-capture/screenshots.mjs      | 30 +++++++---
+ tests/video-capture/startup-check.mjs    | 94 ++++++++++++++++++++++++++++++++
+ 6 files changed, 166 insertions(+), 21 deletions(-)
+```
+Docs commit: `docs/system/UI.md`, `DECISIONS.md`, `DEBT.md`, `INVENTORY.md`,
+`tests/video-capture/README.md`, this report, and 2 images (`02b-ready` new, `08-error` updated).
