@@ -1220,10 +1220,48 @@ window.addEventListener('DOMContentLoaded', async () => {
     showToast(`✅ Gesture model loaded (${activeLabels.length} gestures)`, 2500);
   }
 
+  warmUpHandTracking();
   await mergeSavedGestureSamples();
   renderSavedDataset();
   updateUI();
 });
+
+// Warm up the ONE MediaPipe Hands instance at page load, after the startup dataset load so it does
+// not compete with it: load the WASM + model (preloadMediaPipe), then run ONE detection on a blank
+// frame through a detector (createVideoDetector; the results loop stays paused, no camera). The
+// first inference is what made the first "Starting camera" take ~11 s (measured 2026-09-27: with
+// initialize() alone the first open still took 11,157 ms). Opening the recording mode then only
+// waits for the camera; every open, and Steps 3/4's Enable Camera, reuse this instance
+// (setupMediaPipe returns early for the same <video>, and startPageCamera resumes the loop).
+// window.handTrackingWarmUp resolves to { ok, ms } for timing checks.
+function warmUpHandTracking() {
+  const g = window.GestureDataRecorder;
+  if (!g || typeof g.preloadMediaPipe !== 'function' || videoFeed.srcObject) {
+    window.handTrackingWarmUp = Promise.resolve({ ok: false, ms: 0 });
+    return;
+  }
+  const t0 = performance.now();
+  window.handTrackingWarmUp = g.preloadMediaPipe(videoFeed).then(async (ok) => {
+    if (ok && !videoFeed.srcObject && typeof g.createVideoDetector === 'function') {
+      const blank = document.createElement('canvas');
+      blank.width = 320;
+      blank.height = 240;
+      blank.getContext('2d').fillRect(0, 0, 320, 240);
+      const det = await g.createVideoDetector();
+      try { await det.detect(blank); } finally { det.release(); }
+    }
+    // A camera started while the model was loading (Enable Camera, or the recording mode):
+    // preloadMediaPipe paused the loop, so start it again (no-op if it is running).
+    if (videoFeed.srcObject && typeof g.resumeHandLoop === 'function') g.resumeHandLoop();
+    return { ok: !!ok, ms: Math.round(performance.now() - t0) };
+  }).then(
+    (res) => res,
+    (e) => {
+      console.warn('[gesture-training-ui] hand-tracking warm-up failed:', e);
+      return { ok: false, ms: Math.round(performance.now() - t0) };
+    }
+  );
+}
 
 function formulateSmartSentence(wordsArray, lang) {
   if (!wordsArray || wordsArray.length === 0) return "";

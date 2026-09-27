@@ -34,10 +34,11 @@
     noRest: 'No rest was found at the start. Please redo.',
   };
   var START_TIMEOUT_MS = 3000; // recorder 'start' must fire within this, else camera-stopped
-  // Opening the mode may have to start the camera and load MediaPipe (first use); on the Pi that
-  // takes longer than the in-recording RESULTS_WATCHDOG_MS, so the wait for the first live result
-  // before START is enabled has its own, longer bound.
-  var READY_TIMEOUT_MS = 30000;
+  // Opening the mode may have to start the camera and, if the page-load warm-up has not finished,
+  // load MediaPipe; on the Pi that takes longer than the in-recording RESULTS_WATCHDOG_MS, so the
+  // wait for the first live result before START is enabled has its own, longer bound (owner:
+  // 60 s, 2026-09-27).
+  var READY_TIMEOUT_MS = 60000;
 
   var el = null; // DOM refs, resolved once by bindDom()
   var mode = 'closed'; // closed | starting | ready | countdown | recording | review | processing | saving | finishing | error
@@ -87,11 +88,9 @@
       save: byId('gcSave'),
       retrySave: byId('gcRetrySave'),
       redo: byId('gcRedo'),
-      cancelBottom: byId('gcCancelBottom'),
     };
     if (!el.root) { el = null; return null; }
     el.cancel.addEventListener('click', onCancel);
-    el.cancelBottom.addEventListener('click', onCancel);
     el.start.addEventListener('click', startCountdown);
     el.save.addEventListener('click', saveRecording);
     el.redo.addEventListener('click', toReady);
@@ -106,8 +105,8 @@
   //   top bar title: prompt (bool, REST / SIGN n of 3), dots (bool), msg (string|null), msgError;
   //   media: live, review, countdown, hand;
   //   bottom bar: rec (bool), status (string|null), progress (0..1|null), actions (ids from
-  //   start | save | retrySave | redo | cancel), startReady (START enabled);
-  //   cancel (top-bar Cancel; false hides it).
+  //   start | save | retrySave | redo), startReady (START enabled);
+  //   cancel (the top-bar Cancel - the only Cancel; false hides it).
   function view(spec) {
     el.root.setAttribute('data-state', mode);
     el.live.hidden = !spec.live;
@@ -127,7 +126,6 @@
     el.save.hidden = actions.indexOf('save') === -1;
     el.retrySave.hidden = actions.indexOf('retrySave') === -1;
     el.redo.hidden = actions.indexOf('redo') === -1;
-    el.cancelBottom.hidden = actions.indexOf('cancel') === -1;
     el.start.disabled = !spec.startReady;
     el.start.textContent = spec.startReady ? 'START' : 'Starting camera…';
     el.cancel.hidden = spec.cancel === false;
@@ -663,7 +661,7 @@
           msg: 'Saved ' + savedN + ' of ' + total + '. Sign ' + r.repIndex + ' was not saved: ' +
             withStop(e && e.message ? e.message : String(e)),
           msgError: true,
-          actions: ['retrySave', 'cancel'],
+          actions: ['retrySave'],
         });
         return;
       }
@@ -731,7 +729,7 @@
   // ── Errors ──
   function showError(message) {
     mode = 'error';
-    view({ live: true, msg: message, msgError: true, actions: ['redo', 'cancel'] });
+    view({ live: true, msg: message, msgError: true, actions: ['redo'] });
   }
 
   window.addEventListener('pagehide', onPageHide);

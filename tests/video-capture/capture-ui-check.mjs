@@ -348,6 +348,8 @@ async function main() {
       saveErr.buttons.some((b) => b.id === 'gcRetrySave') && saveErr.buttons.some((b) => b.id === 'gcCancel') && saveErr.small.length === 0 && saveErr.scrollWidth === 1024,
       JSON.stringify(saveErr.buttons));
     check('save failure: no overlaps', saveErr.overlaps.length === 0, JSON.stringify(saveErr.overlaps));
+    const saveErrBottom = await ev(`[...document.querySelectorAll('#gcActions button')].filter((b) => !b.hidden).map((b) => b.id).join(',')`);
+    check('save failure: bottom bar is Retry save only (Cancel only top-right)', saveErrBottom === 'gcRetrySave', saveErrBottom);
 
     await ev(`window.__t5.shouldFail = null; true`);
     await click('gcRetrySave');
@@ -390,6 +392,8 @@ async function main() {
     check('camera-stopped: Redo + Cancel, >= 56 tall, scrollWidth 1024, no overlaps',
       camErr.buttons.some((b) => b.id === 'gcRedo') && camErr.buttons.some((b) => b.id === 'gcCancel') && camErr.small.length === 0 && camErr.scrollWidth === 1024 && camErr.overlaps.length === 0,
       JSON.stringify(camErr.buttons));
+    const camErrBottom = await ev(`[...document.querySelectorAll('#gcActions button')].filter((b) => !b.hidden).map((b) => b.id).join(',')`);
+    check('camera-stopped: bottom bar is Redo only (Cancel only top-right)', camErrBottom === 'gcRedo', camErrBottom);
     await click('gcRedo');
     check('Redo -> Ready', (await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50)) >= 0);
     await click('gcCancel');

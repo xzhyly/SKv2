@@ -25,6 +25,13 @@ const PAGE_URL = 'http://localhost/SKR/gesture-training.html';
 const SAVE_URL = 'http://localhost/SKR/php/api/save_gesture.php';
 const LABEL = 'zz_capture_ui_shots';
 const SIZES = [[1024, 600], [1280, 720]];
+// Optional filters: SHOTS_SIZES="1024x600" runs only that size; SHOTS_ONLY="ready,error-save-failed"
+// rewrites only those images (every check still runs for every state).
+const ONLY_SIZES = process.env.SHOTS_SIZES ? process.env.SHOTS_SIZES.split(',') : null;
+const ONLY_SHOTS = process.env.SHOTS_ONLY ? process.env.SHOTS_ONLY.split(',') : null;
+// Fixed file numbers per state (Ready was added later as 02b, so earlier files keep their names).
+const SHOT_NUMBER = { 'step1-form': '01', 'starting-camera': '02', ready: '02b', rest: '03', 'sign-2-of-3': '04',
+  review: '05', processing: '06', saving: '07', 'error-save-failed': '08' };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
@@ -90,7 +97,6 @@ async function runSize(width, height, y4m) {
     width, height,
     extraArgs: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-video-capture=${y4m}`],
   });
-  let n = 0;
   try {
     const ev = (expr) => chrome.evaluate(expr);
     const waitFor = async (expr, timeoutMs, stepMs = 50) => {
@@ -100,11 +106,12 @@ async function runSize(width, height, y4m) {
     };
     const state = `document.getElementById('gcMode').getAttribute('data-state')`;
     const shot = async (name) => {
-      n++;
       const m = await ev(`window.__shots.measure()`);
-      const r = await chrome.send('Page.captureScreenshot', { format: 'png' });
-      const file = `capture-ui-${width}x${height}-${String(n).padStart(2, '0')}-${name}.png`;
-      writeFileSync(path.join(IMG_DIR, file), Buffer.from(r.result.data, 'base64'));
+      const file = `capture-ui-${width}x${height}-${SHOT_NUMBER[name]}-${name}.png`;
+      if (!ONLY_SHOTS || ONLY_SHOTS.includes(name)) {
+        const r = await chrome.send('Page.captureScreenshot', { format: 'png' });
+        writeFileSync(path.join(IMG_DIR, file), Buffer.from(r.result.data, 'base64'));
+      }
       console.log(`  [${name}] ${file} state=${m.state} title=${JSON.stringify(m.title)} media=${JSON.stringify(m.media)} video=${JSON.stringify(m.video)}`);
       check(`${width}x${height} ${name}: no scrollbar`, m.noScroll, JSON.stringify(m.scroll));
       check(`${width}x${height} ${name}: buttons >= 44x44 (bottom bar >= 56 tall), none off-screen`, m.small.length === 0 && m.offscreen.length === 0, JSON.stringify(m.small.concat(m.offscreen)));
@@ -140,6 +147,10 @@ async function runSize(width, height, y4m) {
     check(`${width}x${height} Starting camera: START disabled with "Starting camera…"`, starting.state === 'starting' && startBtn.d && startBtn.t === 'Starting camera…', JSON.stringify(startBtn));
     const readyMs = await waitFor(`${state} === 'ready'`, 60000, 100);
     check(`${width}x${height} START enabled once camera + detector are ready`, readyMs >= 0 && (await ev(`!document.getElementById('gcStart').disabled`)), `${readyMs} ms`);
+    await sleep(2500); // the fake camera's black lead-in: capture Ready with the signer on screen
+    const ready = await shot('ready');
+    check(`${width}x${height} Ready: title READY, bottom bar START only`, ready.title === 'READY' &&
+      (await ev(`[...document.querySelectorAll('#gcActions button')].filter((b) => !b.hidden).map((b) => b.id).join(',')`)) === 'gcStart', ready.title);
 
     await ev(`document.getElementById('gcStart').click(); true`);
     await waitFor(`${state} === 'recording' && document.getElementById('gcPrompt').textContent === 'REST'`, 8000);
@@ -172,9 +183,10 @@ async function runSize(width, height, y4m) {
     await waitFor(`${state} === 'error'`, 90000, 100);
     await sleep(300);
     const err = await shot('error-save-failed');
-    const errBtns = await ev(`['gcRetrySave','gcCancelBottom','gcCancel'].map((id) => !document.getElementById(id).hidden)`);
-    check(`${width}x${height} error: message + Retry save | Cancel`, /^Saved 1 of 3\. Sign 2 was not saved:/.test(err.title || '') && errBtns[0] && errBtns[1], JSON.stringify({ t: err.title, errBtns }));
-    await ev(`document.getElementById('gcCancelBottom').click(); true`);
+    const errBtns = await ev(`({ retry: !document.getElementById('gcRetrySave').hidden, topCancel: !document.getElementById('gcCancel').hidden,
+      bottom: [...document.querySelectorAll('#gcActions button')].filter((b) => !b.hidden).map((b) => b.id) })`);
+    check(`${width}x${height} error: message + Retry save only in the bottom bar, Cancel top-right`, /^Saved 1 of 3\. Sign 2 was not saved:/.test(err.title || '') && errBtns.retry && errBtns.topCancel && JSON.stringify(errBtns.bottom) === '["gcRetrySave"]', JSON.stringify({ t: err.title, errBtns }));
+    await ev(`document.getElementById('gcCancel').click(); true`);
     await waitFor(`${state} === 'closed'`, 30000, 100);
     const camAfter = await ev(`({ src: !!document.getElementById('videoFeed').srcObject, badge: document.getElementById('camBadge').textContent.trim() })`);
     check(`${width}x${height} closing the overlay stops the camera it started`, !camAfter.src && /Camera Off/.test(camAfter.badge), JSON.stringify(camAfter));
@@ -197,7 +209,7 @@ async function cleanup() {
   const tmpDir = mkdtempSync(path.join(__dirname, '.tmp-shots-'));
   try {
     const y4m = buildY4m(tmpDir);
-    for (const [w, h] of SIZES) await runSize(w, h, y4m);
+    for (const [w, h] of SIZES) if (!ONLY_SIZES || ONLY_SIZES.includes(`${w}x${h}`)) await runSize(w, h, y4m);
   } catch (e) {
     failures++;
     console.log('  FAIL  run threw:', e && e.stack ? e.stack : e);
