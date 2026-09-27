@@ -23,6 +23,7 @@
     cameraStopped: 'The camera stopped. Please try again.',
     notReady: 'Hand tracking is not ready. Please try again.',
     tooLong: 'That sign took longer than 20 seconds. Please redo.',
+    recordingTooLong: 'Recording too long. Try again.',
     noRest: 'No rest was found at the start. Please redo.',
   };
   var START_TIMEOUT_MS = 3000; // recorder 'start' must fire within this, else camera-stopped
@@ -337,6 +338,10 @@
       failRecording(MSG.tooLong);
       return;
     }
+    if (res.event === 'recording-too-long') {
+      failRecording(MSG.recordingTooLong);
+      return;
+    }
     renderGuidance(r, t, present);
     if (res.event === 'done') {
       r.done = true;
@@ -534,6 +539,7 @@
   function segmentFailureMessage(seg) {
     var total = C().REQUIRED_REPS;
     if (seg.reason === 'rep-too-long') return MSG.tooLong;
+    if (seg.reason === 'recording-too-long') return MSG.recordingTooLong;
     if (seg.reason === 'no-rest') return MSG.noRest;
     var n = seg.repsFound;
     // too-many-reps can also mean "3 closed reps plus a 4th still open at the end".

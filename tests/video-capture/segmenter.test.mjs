@@ -67,6 +67,7 @@ test('CAPTURE is frozen and has the exact documented values', () => {
     STOP_TAIL_MS: 500,
     MAX_FRAMES_PER_REP: 301,
     RESULTS_WATCHDOG_MS: 5000,
+    MAX_RECORDING_MS: 90000,
   });
   assert.equal(CAPTURE.MAX_FRAMES_PER_REP, Math.floor(CAPTURE.MAX_REP_MS / (1000 / CAPTURE.PROCESS_FPS)) + 1);
   assert.throws(() => {
@@ -381,4 +382,59 @@ test('module exports under node via module.exports (createRequire)', () => {
   assert.equal(typeof CAPTURE, 'object');
   assert.equal(typeof createSegmenter, 'function');
   assert.equal(typeof segmentFrames, 'function');
+});
+
+// Owner decision 2026-09-27: MAX_RECORDING_MS caps the whole take (not a single rep).
+test('hands never lowered: the recording fails with recording-too-long at MAX_RECORDING_MS', () => {
+  const seg = createSegmenter();
+  let failed = null;
+  for (let i = 0; ; i++) {
+    const t = Math.round(i * STEP);
+    if (t > CAPTURE.MAX_RECORDING_MS + 1000) break;
+    const r = seg.push(t, true); // hands up during REST the whole time
+    if (r.event === 'recording-too-long') { failed = { t, r }; break; }
+  }
+  assert.ok(failed, 'expected a recording-too-long event');
+  assert.ok(failed.t >= CAPTURE.MAX_RECORDING_MS);
+  assert.ok(failed.t - STEP < CAPTURE.MAX_RECORDING_MS, 'fires on the first frame at or past the cap');
+  assert.equal(failed.r.phase, 'failed');
+  assert.equal(seg.state().failReason, 'recording-too-long');
+  assert.equal(seg.push(failed.t + 100, false).event, null, 'failed stays terminal');
+});
+
+test('nobody signs after REST: segmentFrames reports recording-too-long', () => {
+  const frames = buildFrames([
+    { ms: 1200, hand: false },
+    { ms: CAPTURE.MAX_RECORDING_MS, hand: false },
+  ]);
+  const result = segmentFrames(frames);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'recording-too-long');
+  assert.equal(result.repsFound, 0);
+});
+
+test('two reps then a long wait: recording-too-long, with the closed reps still reported', () => {
+  const frames = buildFrames([
+    { ms: 1200, hand: false },
+    { ms: 2000, hand: true },
+    { ms: 1200, hand: false },
+    { ms: 2000, hand: true },
+    { ms: CAPTURE.MAX_RECORDING_MS, hand: false },
+  ]);
+  const result = segmentFrames(frames);
+  assert.equal(result.reason, 'recording-too-long');
+  assert.equal(result.repsFound, 2);
+});
+
+test('a take that reaches done before MAX_RECORDING_MS is not failed by frames after done', () => {
+  const reps = threeCleanReps();
+  const lastT = reps[reps.length - 1].t;
+  const tail = buildFrames([{ ms: CAPTURE.MAX_RECORDING_MS, hand: false }])
+    .slice(1)
+    .map((f) => ({ t: f.t + lastT, handPresent: false }));
+  const frames = reps.concat(tail);
+  assert.ok(frames[frames.length - 1].t - frames[0].t >= CAPTURE.MAX_RECORDING_MS);
+  const result = segmentFrames(frames);
+  assert.equal(result.ok, true);
+  assert.equal(result.reps.length, 3);
 });

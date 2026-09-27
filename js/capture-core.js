@@ -17,6 +17,7 @@
     STOP_TAIL_MS: 500,
     MAX_FRAMES_PER_REP: 301,
     RESULTS_WATCHDOG_MS: 5000, // live recording fails if hand-tracking results stop for this long
+    MAX_RECORDING_MS: 90000, // whole take (owner decision 2026-09-27): not done by then -> 'recording-too-long'
   });
 
   // createSegmenter(constants) -> a fresh state machine instance.
@@ -35,6 +36,7 @@
     var reps = [];
 
     // internal only
+    var firstMs = null; // t of the first push: MAX_RECORDING_MS is measured from here
     var noHandRunStart = null; // 'rest' phase: t of the first no-hand frame of the current run
     var repStart = null; // 'rep' phase: t the current rep started (mirrors phaseStartMs while in 'rep')
 
@@ -64,11 +66,21 @@
       if (phaseStartMs === null) {
         phaseStartMs = tMs;
       }
+      if (firstMs === null) {
+        firstMs = tMs;
+      }
 
       var event = null;
 
       if (phase === 'failed') {
         return { phase: phase, repIndex: repIndex, event: null };
+      }
+
+      // The whole take is capped; a take that already reached 'done' is never failed by it.
+      if (phase !== 'done' && tMs - firstMs >= c.MAX_RECORDING_MS) {
+        phase = 'failed';
+        failReason = 'recording-too-long';
+        return { phase: phase, repIndex: repIndex, event: 'recording-too-long' };
       }
 
       if (phase === 'rest') {
@@ -198,7 +210,7 @@
     var repsFound = closedReps.length;
 
     if (st.phase === 'failed') {
-      return { ok: false, reason: 'rep-too-long', repsFound: repsFound, reps: annotatedReps };
+      return { ok: false, reason: st.failReason, repsFound: repsFound, reps: annotatedReps };
     }
 
     if (st.phase === 'rest') {
