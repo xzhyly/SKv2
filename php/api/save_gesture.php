@@ -72,9 +72,13 @@ function find_label_video($assetsSignsDir, $label, $subFolder) {
 // the given values; the stored category is only overwritten when the caller passed an explicit
 // $category (a manual tag) -- a null $category (heuristic-only, e.g. from sync_disk_to_db) never
 // touches an existing row's category.
-function save_gesture_word_to_db($label, $set, $textEn, $textFil, $category = null) {
+function save_gesture_word_to_db($label, $set, $textEn, $textFil, $category = null, $readBackCategory = true) {
     global $conn;
-    ensure_gestures_columns($conn);
+    static $columnsEnsured = false; // once per request, not per call (sync calls this per label)
+    if (!$columnsEnsured) {
+        ensure_gestures_columns($conn);
+        $columnsEnsured = true;
+    }
 
     $insertCategory = $category ?? gesture_category($label);
 
@@ -108,6 +112,10 @@ function save_gesture_word_to_db($label, $set, $textEn, $textFil, $category = nu
         $id  = (int)($row['id'] ?? 0);
         mysqli_stmt_close($sel);
         $created = false;
+    }
+
+    if (!$readBackCategory) {
+        return ['id' => $id, 'created' => $created, 'category' => $insertCategory];
     }
 
     // Read back the category actually stored for this row (covers both the insert and the
@@ -165,6 +173,18 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
     ];
 
     $diskPaths = []; // Collect every valid sample_path that exists on disk
+    // Every gestures row once: sync only upserts a label whose row is missing or differs from disk.
+    $dbRows = [];
+    $allRows = mysqli_query($conn, 'SELECT id, label, sign_language, text_en, text_fil FROM gestures');
+    while ($allRows && ($r = mysqli_fetch_assoc($allRows))) {
+        $dbRows[$r['label']] = $r;
+    }
+    // Every recorded sample_path once (replaces a SELECT per sample file).
+    $knownPaths = [];
+    $pathRows = mysqli_query($conn, "SELECT sample_path FROM gesture_recordings WHERE sample_path IS NOT NULL AND sample_path != ''");
+    while ($pathRows && ($r = mysqli_fetch_assoc($pathRows))) {
+        $knownPaths[$r['sample_path']] = true;
+    }
     $upserted  = []; // labels whose gestures row was already refreshed from disk this run
 
     foreach ($folders as $dirPath) {
@@ -180,10 +200,17 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
 
             // Disk wins: the gestures row follows sign.json (or the derived sign) on every sync.
             $sign = derive_sign($folderName, $label, $labelDir);
-            $dbGesture = null;
             if (!isset($upserted[$label])) {
-                $dbGesture = save_gesture_word_to_db($label, $sign['set'], $sign['textEn'], $sign['textFil']);
-                $upserted[$label] = $dbGesture['id'];
+                $row = $dbRows[$label] ?? null;
+                if ($row !== null
+                    && $row['sign_language'] === $sign['set']
+                    && $row['text_en'] === $sign['textEn']
+                    && $row['text_fil'] === $sign['textFil']) {
+                    $upserted[$label] = (int)$row['id'];
+                } else {
+                    $dbGesture = save_gesture_word_to_db($label, $sign['set'], $sign['textEn'], $sign['textFil'], null, false);
+                    $upserted[$label] = $dbGesture['id'];
+                }
             }
             $gestureId = $upserted[$label];
 
@@ -196,12 +223,7 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
                 $diskPaths[]  = $relativePath;
 
                 // Add to DB only if not already present
-                $chk = mysqli_prepare($conn, 'SELECT id FROM gesture_recordings WHERE sample_path = ? LIMIT 1');
-                mysqli_stmt_bind_param($chk, 's', $relativePath);
-                mysqli_stmt_execute($chk);
-                $res    = mysqli_stmt_get_result($chk);
-                $exists = mysqli_fetch_assoc($res);
-                mysqli_stmt_close($chk);
+                $exists = isset($knownPaths[$relativePath]);
 
                 if (!$exists) {
                     save_gesture_recording_to_db(
