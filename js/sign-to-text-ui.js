@@ -1,5 +1,8 @@
 // js/sign-to-text-ui.js
 
+// Sign texts are user input: escape before they go into innerHTML.
+function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
 let stream = null, modelTrained = false, tfModel = null, knnModel = null;
 let currentStep = 4; // standalone translator behaves as step 4
 const trainData = { start: [], stop: [] };
@@ -579,7 +582,7 @@ function tlStartPredLoop(){
             currentSentence.push(word);
             
             // Ipakita agad ang naiipong mga salita sa screen bilang real-time draft
-            document.getElementById('tlOutputBox').innerHTML = `<span class="tl-out-word">${currentSentence.join(' ')}...</span>`;
+            document.getElementById('tlOutputBox').innerHTML = `<span class="tl-out-word">${escapeHtml(currentSentence.join(' '))}...</span>`;
             showToast(`+ Added "${word}"`);
             tlLastDetected=null; tlHoldStart=null;
             
@@ -613,7 +616,7 @@ function tlStopPredLoop(){
 function tlRenderOutput(){
   const box=document.getElementById('tlOutputBox');
   const words=tlWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang));
-  box.innerHTML=words.length?words.map(w=>`<span class="tl-out-word">${w}</span>`).join(' '):'<span class="tl-out-empty">Translation will appear here…</span>';
+  box.innerHTML=words.length?words.map(w=>`<span class="tl-out-word">${escapeHtml(w)}</span>`).join(' '):'<span class="tl-out-empty">Translation will appear here…</span>';
 }
 
 async function tlProcessAndFinishSentence() {
@@ -626,7 +629,7 @@ async function tlProcessAndFinishSentence() {
     const finalSentence = formulateSmartSentence(currentSentence, signLang);
     
     // I-display sa UI
-    if (box) box.innerHTML = `<span class="tl-out-word">${finalSentence}</span>`;
+    if (box) box.innerHTML = `<span class="tl-out-word">${escapeHtml(finalSentence)}</span>`;
     
     // Basahin nang malakas ang BUONG pangungusap
     speakWord(finalSentence, signLang);

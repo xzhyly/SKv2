@@ -207,11 +207,11 @@
             </div>
             <div class="tr-fgrp" id="signTextEnGroup">
               <label class="tr-flbl" for="signTextEn">English text</label>
-              <input id="signTextEn" type="text" class="tr-input" placeholder="e.g. How are you?" autocomplete="off">
+              <input id="signTextEn" type="text" maxlength="255" class="tr-input" placeholder="e.g. How are you?" autocomplete="off">
             </div>
             <div class="tr-fgrp" id="signTextFilGroup">
               <label class="tr-flbl" for="signTextFil">Filipino text</label>
-              <input id="signTextFil" type="text" class="tr-input" placeholder="e.g. Kumusta ka?" autocomplete="off">
+              <input id="signTextFil" type="text" maxlength="255" class="tr-input" placeholder="e.g. Kumusta ka?" autocomplete="off">
             </div>
             <div class="tr-fgrp">
               <span class="tr-flbl">Type</span>
@@ -273,7 +273,7 @@
           <div class="tr-epoch-bar"><div class="tr-epoch-fill" id="epochBar" style="width:0%"></div></div>
         </div>
         <div class="tr-train-log" id="trainLog">Ready to train. Press Train Gesture when samples are ready.</div>
-        <button type="button" class="tr-train-btn" id="trainBtn" onclick="trainModel()">Train Gesture</button>
+        <button type="button" class="tr-train-btn" id="trainBtn" onclick="trainModelGuarded()">Train Gesture</button>
         <button type="button" class="tr-continue-btn" id="step2NextBtn" style="margin-top: 6px; display: none;" onclick="trClickPill(3)">Next: Predict →</button>
         <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(2)" style="margin-top:auto">← Back to Instructions</button>
       </div>
@@ -377,11 +377,11 @@
         <div class="tr-ds-edit-col">
           <div class="tr-fgrp" id="dsEditEnGroup">
             <label class="tr-flbl" for="dsEditEn">English text</label>
-            <input id="dsEditEn" type="text" class="tr-input" autocomplete="off">
+            <input id="dsEditEn" type="text" maxlength="255" class="tr-input" autocomplete="off">
           </div>
           <div class="tr-fgrp" id="dsEditFilGroup">
             <label class="tr-flbl" for="dsEditFil">Filipino text</label>
-            <input id="dsEditFil" type="text" class="tr-input" autocomplete="off">
+            <input id="dsEditFil" type="text" maxlength="255" class="tr-input" autocomplete="off">
           </div>
         </div>
       </div>

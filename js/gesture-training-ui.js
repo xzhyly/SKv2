@@ -621,11 +621,26 @@ function knnPredict(features) {
   return { label: bestLabel, confidence: normalized[bestLabel], scores: normalized };
 }
 
+// Sign texts are user input: escape before they go into innerHTML.
+function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
 // Step 2's "AI model" toggle: 'ESL' (ESL + Both signs, English text) or 'FSL' (FSL + Both signs,
 // Filipino text).
 function modelLanguage() {
   const r = document.querySelector('input[name="trainModelLang"]:checked');
   return r && String(r.value).toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+}
+
+// #trainBtn's handler: the Step 2 model-language radios are locked while trainModel() runs (it
+// reads the choice at the start and saves per-language state at the end), and always re-enabled.
+async function trainModelGuarded() {
+  const radios = document.querySelectorAll('input[name="trainModelLang"]');
+  radios.forEach(r => { r.disabled = true; });
+  try {
+    await trainModel();
+  } finally {
+    radios.forEach(r => { r.disabled = false; });
+  }
 }
 
 // Step 3 shows the sign's text in the model's language (ESL -> English, FSL -> Filipino).
@@ -1044,8 +1059,8 @@ function startLivePrediction(forTranslation=false) {
             
             if(currentSentence.length > 0){
               const finalSentence = formulateSmartSentence(currentSentence, signLang);
-              document.getElementById('tlHistory').innerHTML = `<span class="tl-word">${finalSentence}</span>`;
-              document.getElementById('tlBigOutput').innerHTML = `<span class="word">${finalSentence}</span>`;
+              document.getElementById('tlHistory').innerHTML = `<span class="tl-word">${escapeHtml(finalSentence)}</span>`;
+              document.getElementById('tlBigOutput').innerHTML = `<span class="word">${escapeHtml(finalSentence)}</span>`;
               speakWord(finalSentence, signLang);
               showToast(signLang === 'fil' ? '⏹ Tapos! Binabasa...' : '⏹ Done! Speaking...');
             } else {
@@ -1061,8 +1076,8 @@ function startLivePrediction(forTranslation=false) {
             currentSentence.push(word);
             isSentenceActive = true;
             
-            document.getElementById('tlHistory').innerHTML = currentSentence.map(w => `<span class="tl-word">${w}</span>`).join(' ');
-            document.getElementById('tlBigOutput').innerHTML = currentSentence.map(w => `<span class="word">${w}</span>`).join(' ') + '...';
+            document.getElementById('tlHistory').innerHTML = currentSentence.map(w => `<span class="tl-word">${escapeHtml(w)}</span>`).join(' ');
+            document.getElementById('tlBigOutput').innerHTML = currentSentence.map(w => `<span class="word">${escapeHtml(w)}</span>`).join(' ') + '...';
             showToast(`+ "${word}"`);
           }
         }
@@ -1108,7 +1123,7 @@ function removeCustomWord(idx){customWords.splice(idx,1);renderWordChips();}
 
 function renderWordChips(){
   document.getElementById('wordChips').innerHTML=customWords.map((w,i)=>
-    `<span class="tr-chip">${w}<button type="button" onclick="removeCustomWord(${i})">✕</button></span>`
+    `<span class="tr-chip">${escapeHtml(w)}<button type="button" onclick="removeCustomWord(${i})">✕</button></span>`
   ).join('');
 }
 
@@ -1120,10 +1135,10 @@ function renderTranslation(){
     big.innerHTML='<span class="tl-big-empty">Show your start gesture to begin.</span>';
     return;
   }
-  hist.innerHTML=translatedWords.map(w=>w.type==='stop'?'<span class="tl-word stop-word">⏸</span>':`<span class="tl-word">${getTranslatedWordText(w, signLang)}</span>`).join(' ');
+  hist.innerHTML=translatedWords.map(w=>w.type==='stop'?'<span class="tl-word stop-word">⏸</span>':`<span class="tl-word">${escapeHtml(getTranslatedWordText(w, signLang))}</span>`).join(' ');
   hist.scrollTop=hist.scrollHeight;
   const words=translatedWords.filter(w=>w.type!=='stop').map(w=>getTranslatedWordText(w, signLang));
-  big.innerHTML=words.length?words.map(w=>`<span class="word">${w}</span>`).join(' '):'<span class="tl-big-empty">Show your start gesture to begin.</span>';
+  big.innerHTML=words.length?words.map(w=>`<span class="word">${escapeHtml(w)}</span>`).join(' '):'<span class="tl-big-empty">Show your start gesture to begin.</span>';
 }
 
 function getAccumulatedTranslation() {

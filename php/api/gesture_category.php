@@ -68,6 +68,53 @@ function ensure_gestures_columns($conn, $table = 'gestures') {
             fail('DB ' . $table . ' alter failed: ' . mysqli_error($conn), 500);
         }
     }
+    // In-place upgrade of a pre-"sign texts" database: widen the enum to include 'BOTH' and swap
+    // UNIQUE (label, sign_language) for UNIQUE (label). One information_schema query when already
+    // migrated. The CHECK constraint is not added here (setup SQL / the migration own it).
+    $quotedName = mysqli_real_escape_string($conn, $table);
+    $info = mysqli_query($conn,
+        "SELECT 'col' AS k, COLUMN_TYPE AS v FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '$quotedName' AND COLUMN_NAME = 'sign_language' " .
+        "UNION ALL SELECT 'idx', INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '$quotedName' AND INDEX_NAME IN ('uq_gestures_label_language', 'uq_gestures_label')");
+    $colType = ''; $indexes = [];
+    while ($info && ($row = mysqli_fetch_assoc($info))) {
+        if ($row['k'] === 'col') { $colType = (string)$row['v']; } else { $indexes[$row['v']] = true; }
+    }
+    if ($colType !== '' && stripos($colType, "'BOTH'") === false) {
+        try {
+            $ok = mysqli_query($conn, "ALTER TABLE $quotedTable MODIFY sign_language ENUM('ESL','FSL','BOTH') NOT NULL DEFAULT 'ESL'");
+        } catch (Throwable $e) {
+            $ok = false;
+        }
+        if (!$ok) {
+            // A concurrent request may have widened it already -- re-check.
+            $re = mysqli_query($conn, "SHOW COLUMNS FROM $quotedTable LIKE 'sign_language'");
+            $reRow = $re ? mysqli_fetch_assoc($re) : null;
+            if (!$reRow || stripos((string)$reRow['Type'], "'BOTH'") === false) {
+                fail('DB ' . $table . ' alter failed: ' . mysqli_error($conn), 500);
+            }
+        }
+    }
+    if (isset($indexes['uq_gestures_label_language']) && !isset($indexes['uq_gestures_label'])) {
+        $dup = mysqli_query($conn, "SELECT label FROM $quotedTable GROUP BY label HAVING COUNT(*) > 1 LIMIT 1");
+        if ($dup && mysqli_num_rows($dup) === 0) {
+            try {
+                $ok = mysqli_query($conn, "ALTER TABLE $quotedTable DROP INDEX uq_gestures_label_language, ADD UNIQUE KEY uq_gestures_label (label)");
+            } catch (Throwable $e) {
+                $ok = false;
+            }
+            if (!$ok) {
+                // Concurrent swap, or duplicate rows appeared meanwhile: only fail if the old key is
+                // still there AND nobody added the new one. Otherwise leave it for the next request.
+                $re = mysqli_query($conn, "SHOW INDEX FROM $quotedTable WHERE Key_name = 'uq_gestures_label_language'");
+                $stillOld = $re && mysqli_num_rows($re) > 0;
+                $re2 = mysqli_query($conn, "SELECT label FROM $quotedTable GROUP BY label HAVING COUNT(*) > 1 LIMIT 1");
+                $nowDup = $re2 && mysqli_num_rows($re2) > 0;
+                if ($stillOld && !$nowDup) {
+                    fail('DB ' . $table . ' alter failed: ' . mysqli_error($conn), 500);
+                }
+            }
+        }
+    }
     // Sign texts (English / Filipino). Added after sign_language / text_en; no CHECK or key changes
     // here -- the sign-texts migration and database_setup.sql own those.
     foreach ([['text_en', 'sign_language'], ['text_fil', 'text_en']] as [$textColumn, $afterColumn]) {
