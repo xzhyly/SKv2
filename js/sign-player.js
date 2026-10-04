@@ -5,6 +5,12 @@
 // and :441), and it was retired (archived) together with index.html's #translator-pane, so this is a port of a copy, not a
 // shared module. Sections marked VERBATIM are unchanged from archive/script.js (line ranges given);
 // the only departures are listed in docs/superpowers/plans/2026-09-21-text-to-sign-merge.md.
+// Two further departures from the VERBATIM sections (sign-texts phase, one sign / two texts):
+//  1. fetchAndRegisterCustomGestures reads php/api/signs.php (not save_gesture.php) and registers
+//     each sign's normalized English text (ESL/BOTH) and Filipino text (FSL/BOTH) in the matching
+//     language map, valued by the sign's assetPath (else key.webm), plus the key as before.
+//  2. displaySignWithFallback uses an asset-map value that starts with "assets/" as the path as-is,
+//     instead of prefixing the language asset base.
 (function () {
   'use strict';
 
@@ -235,29 +241,28 @@ function formatGrammar(text) {
     return result.trim();
 }
 
-  // archive/script.js:851-878: the function body is VERBATIM; talk.html is always served over
-  // http, so script.js:834-836's file:// branch is dropped and the endpoint is the relative path.
-  const SAVE_ENDPOINT = "php/api/save_gesture.php";
-  // ── VERBATIM archive/script.js:851-876 ──
+  // archive/script.js:851-878, with the endpoint and the registration changed (departure 1 below).
+  const SAVE_ENDPOINT = "php/api/signs.php";
 async function fetchAndRegisterCustomGestures() {
     try {
-        const response = await fetch(SAVE_ENDPOINT + "?no_sync=1");
+        const response = await fetch(SAVE_ENDPOINT);
         if (!response.ok) return;
         const data = await response.json();
-        if (data && data.success && data.gestures) {
-            Object.keys(data.gestures).forEach(label => {
-                const spaceLabel = label.replace(/_/g, ' ');
-                const samples = data.gestures[label] || [];
-                samples.forEach(sample => {
-                    const lang = (sample.signLanguage || 'ESL').toUpperCase();
-                    const targetMap = (lang === 'FSL') ? signAssetMapFil : signAssetMapEn;
-                    if (!targetMap[label]) {
-                        targetMap[label] = `${label}.webm`;
-                    }
-                    if (!targetMap[spaceLabel]) {
-                        targetMap[spaceLabel] = `${label}.webm`;
-                    }
-                });
+        if (data && data.success && data.signs) {
+            Object.keys(data.signs).forEach(key => {
+                const sign = data.signs[key] || {};
+                const set = String(sign.set || '').toUpperCase();
+                const inEn = set === 'ESL' || set === 'BOTH';
+                const inFil = set === 'FSL' || set === 'BOTH';
+                const value = (typeof sign.assetPath === 'string' && sign.assetPath) ? sign.assetPath : `${key}.webm`;
+                const spaceKey = key.replace(/_/g, ' ');
+                const register = (map, text) => {
+                    const names = [key, spaceKey];
+                    if (typeof text === 'string' && text) names.unshift(normalizeSpeechText(text));
+                    names.forEach(name => { if (name && !map[name]) map[name] = value; });
+                };
+                if (inEn) register(signAssetMapEn, sign.textEn);
+                if (inFil) register(signAssetMapFil, sign.textFil);
             });
             rebuildKnownPhrases();
         }
@@ -399,7 +404,7 @@ async function fetchAndRegisterCustomGestures() {
       const assetMap = getActiveSignMap(lang);
       const assetFile = assetMap[normalizedItem];
       const isSuccess = assetFile
-        ? await displayMedia(assetBase + assetFile, item)
+        ? await displayMedia(assetFile.indexOf('assets/') === 0 ? assetFile : assetBase + assetFile, item)
         : false;
       if (myToken !== token) return;
 

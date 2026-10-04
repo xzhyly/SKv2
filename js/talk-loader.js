@@ -47,8 +47,15 @@
       } },
     { id: 'gestures', stack: 'sign', name: 'Gesture set (ESL)', needs: 'sign-libs',
       run: function () {
-        return autoTrainForTranslate().then(function (ok) {
-          if (!ok) throw new Error('gesture set unavailable (database unreachable and no cached model)');
+        // The sign texts (signs.php) load alongside the model; a failed loadSigns only means
+        // captions fall back to the old label translation, so it never fails this item.
+        var signs = window.GestureDataRecorder.loadSigns().then(function (ok) {
+          if (!ok) console.warn('[TalkLoader] sign texts unavailable; captions fall back to labels');
+        }, function (e) {
+          console.warn('[TalkLoader] sign texts failed to load:', e);
+        });
+        return Promise.all([autoTrainForTranslate(), signs]).then(function (r) {
+          if (!r[0]) throw new Error('gesture set unavailable (database unreachable and no cached model)');
         });
       } },
     { id: 'vosk-lib', stack: 'speech', name: 'Vosk library', needs: null,

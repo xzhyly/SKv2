@@ -60,6 +60,8 @@ const SIGN_TRANSLATIONS = {
 };
 
 function translateGestureLabel(label, lang) {
+  const t = window.GestureDataRecorder && GestureDataRecorder.getSignText && GestureDataRecorder.getSignText(label, lang);
+  if (t) return t;
   const clean = String(label || "").trim().toLowerCase().replace(/\s+/g, "_");
   if (SIGN_TRANSLATIONS[clean]) {
     return SIGN_TRANSLATIONS[clean][lang === 'fil' ? 'fil' : 'en'];
@@ -110,7 +112,7 @@ async function mergeSavedGestureSamples() {
     rows.forEach(({label,features,signLanguage}) => {
       const itemLang = signLanguage || 'ESL';
       // Load if language matches OR if it's the control gestures 'start' or 'stop' (shared across languages)
-      if (itemLang === targetLang || (label === 'start' || label === 'stop')) {
+      if (itemLang === targetLang || itemLang === 'BOTH' || (label === 'start' || label === 'stop')) {
         if (!trainData[label]) trainData[label] = [];
         trainData[label].push(features);
         loadedCount++;
