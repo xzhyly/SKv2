@@ -86,14 +86,18 @@ function applyStepLayoutClass(step) {
 // ── Dataset Modal Logic ──
 // Tab order and titles for the dataset modal; the default tab is the first one.
 const DATASET_TABS = [['word', 'Words'], ['letter', 'Letters'], ['number', 'Numbers'], ['phrase', 'Phrases']];
-let datasetGroups = null;          // category -> [{label, signSet, samples}], set by renderSavedDataset(); null = no table
+let datasetGroups = null;          // category -> [{label, signSet, textEn, textFil, samples}], set by renderSavedDataset(); null = no table
 let datasetActiveTab = 'word';
+let datasetEditing = null;         // { key, oldSet } while the edit panel is open, else null
+let datasetEditBusy = false;
 
 function trOpenDatasetModal() {
-  // Every open starts on the Words tab with an empty search.
+  // Every open starts on the Words tab with an empty search, in table mode.
   datasetActiveTab = 'word';
   const search = document.getElementById('datasetSearch');
   if (search) search.value = '';
+  datasetEditing = null;
+  trShowDatasetEditPanel(false);
   trRenderDatasetView();
   document.getElementById('datasetModal').classList.add('show');
 }
@@ -103,14 +107,29 @@ function trSetDatasetTab(category) {
   trRenderDatasetView();
 }
 
-// Renders the modal's tabs and the active tab's rows, filtered by the search box (label substring,
-// case-insensitive). Called on open, tab click, every search keystroke, and after every
-// renderSavedDataset() so a delete made from the modal shows up immediately.
+// A text the sign's set does not use shows "—" even if a hidden text is stored.
+function datasetShownText(row, which) {
+  const set = String(row.signSet || 'ESL').toUpperCase();
+  const used = which === 'en' ? set !== 'FSL' : set !== 'ESL';
+  const text = which === 'en' ? row.textEn : row.textFil;
+  return used && text ? text : '—';
+}
+// English text, else Filipino text, else the key (used in the delete confirm).
+function datasetDisplayName(key) {
+  const sign = GestureDataRecorder.getSigns()[key] || {};
+  return sign.textEn || sign.textFil || key;
+}
+
+// Renders the modal's tabs and the active tab's rows, filtered by the search box (substring,
+// case-insensitive, over the key and both texts). Called on open, tab click, every search
+// keystroke, and after every renderSavedDataset() so a delete/edit shows up immediately.
+// All user text goes in through textContent -- never innerHTML.
 function trRenderDatasetView() {
   const tabsEl = document.getElementById('datasetTabs');
   const search = document.getElementById('datasetSearch');
   const modalBody = document.getElementById('datasetModalBody');
   if (!tabsEl || !search || !modalBody) return;
+  if (datasetEditing) return;   // the edit panel owns the card; Save/Cancel re-render when it closes
 
   if (!datasetGroups) {   // empty dataset, still loading, or load error: show the status message as before
     tabsEl.innerHTML = '';
@@ -127,34 +146,144 @@ function trRenderDatasetView() {
   }).join('');
 
   const query = search.value.trim().toLowerCase();
-  const rows = datasetGroups[datasetActiveTab].filter(r => r.label.toLowerCase().includes(query));
+  const rows = datasetGroups[datasetActiveTab].filter(r =>
+    r.label.toLowerCase().includes(query) ||
+    (r.textEn || '').toLowerCase().includes(query) ||
+    (r.textFil || '').toLowerCase().includes(query));
 
-  let html = '<table style="width:100%; border-collapse:collapse; font-size:11px; color:var(--text);">';
-  html += '<tr style="background:var(--navy); color:#fff; font-weight:bold;">';
-  html += '<th style="padding:6px 4px; text-align:left;">Label</th>';
-  html += '<th style="padding:6px 4px; text-align:center;">Sign Set</th>';
-  html += '<th style="padding:6px 4px; text-align:center;">Samples</th>';
-  html += '<th style="padding:6px 4px; text-align:center;">Action</th>';
-  html += '</tr>';
-  if (rows.length === 0) {
-    const message = query ? 'No matches' : 'No gestures in this category yet.';
-    html += `<tr><td colspan="4" style="padding:14px 5px; text-align:center; color:var(--muted); font-style:italic;">${message}</td></tr>`;
-  }
-  rows.forEach(({ label, signSet, samples }) => {
-    html += `<tr style="border-bottom:1px solid var(--border);">`;
-    html += `<td style="padding:6px 5px; font-weight:700;">${label}</td>`;
-    html += `<td style="padding:6px 5px; text-align:center;">${signSetName(signSet)}</td>`;
-    html += `<td style="padding:6px 5px; text-align:center;">${samples}</td>`;
-    html += `<td style="padding:6px 5px; text-align:center;"><button type="button" onclick="deleteGesture('${label}')" style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:10px; font-weight:700; cursor:pointer;">Delete</button></td>`;
-    html += `</tr>`;
+  const table = document.createElement('table');
+  table.className = 'tr-ds-table';
+  const head = table.createTHead().insertRow();
+  ['English text', 'Filipino text', 'Set', 'Samples', 'Edit', 'Delete'].forEach(t => {
+    const th = document.createElement('th'); th.textContent = t; head.appendChild(th);
   });
-  html += '</table>';
-  modalBody.innerHTML = html;
+  const body = table.createTBody();
+  if (rows.length === 0) {
+    const td = body.insertRow().insertCell();
+    td.colSpan = 6; td.className = 'tr-ds-empty';
+    td.textContent = query ? 'No matches' : 'No gestures in this category yet.';
+  }
+  rows.forEach(row => {
+    const tr = body.insertRow();
+    tr.dataset.key = row.label;
+    const en = tr.insertCell(); en.className = 'tr-ds-text'; en.textContent = datasetShownText(row, 'en');
+    const fil = tr.insertCell(); fil.className = 'tr-ds-text'; fil.textContent = datasetShownText(row, 'fil');
+    const set = tr.insertCell(); set.className = 'tr-ds-c'; set.textContent = signSetName(row.signSet);
+    const n = tr.insertCell(); n.className = 'tr-ds-c'; n.textContent = row.samples;
+    const editTd = tr.insertCell(); editTd.className = 'tr-ds-c';
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button'; editBtn.className = 'tr-ds-btn tr-ds-editbtn'; editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => trOpenDatasetEdit(row.label));
+    editTd.appendChild(editBtn);
+    const delTd = tr.insertCell(); delTd.className = 'tr-ds-c';
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button'; delBtn.className = 'tr-ds-btn tr-ds-del'; delBtn.textContent = 'Delete';
+    delBtn.addEventListener('click', () => deleteGesture(row.label));
+    delTd.appendChild(delBtn);
+  });
+  modalBody.replaceChildren(table);
 }
+
+// ── Edit panel: change a sign's set and both texts without re-recording ──
+function trShowDatasetEditPanel(on) {
+  const panel = document.getElementById('datasetEditPanel');
+  const title = document.getElementById('datasetModalTitle');
+  if (panel) panel.style.display = on ? '' : 'none';
+  ['datasetTabs', 'datasetSearch', 'datasetModalBody'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = on ? 'none' : '';
+  });
+  if (!on && title) title.textContent = '📁 Active Gesture Dataset';
+}
+function trDatasetEditSet() {
+  const r = document.querySelector('input[name="dsEditSet"]:checked');
+  const v = r ? String(r.value).toUpperCase() : 'ESL';
+  return v === 'FSL' || v === 'BOTH' ? v : 'ESL';
+}
+function trDatasetEditUpdateFields() {
+  const set = trDatasetEditSet();
+  document.getElementById('dsEditEnGroup').style.display = set === 'FSL' ? 'none' : '';
+  document.getElementById('dsEditFilGroup').style.display = set === 'ESL' ? 'none' : '';
+}
+function trDatasetEditMessage(text) {
+  const el = document.getElementById('dsEditMsg');
+  if (el) el.textContent = text || '';
+}
+function trOpenDatasetEdit(key) {
+  const cat = Object.keys(datasetGroups || {}).find(c => datasetGroups[c].some(r => r.label === key));
+  if (!cat) return;
+  const row = datasetGroups[cat].find(r => r.label === key);
+  const oldSet = String(row.signSet || 'ESL').toUpperCase();
+  datasetEditing = { key, oldSet };
+  const catTitle = DATASET_TABS.find(t => t[0] === cat)[1].replace(/s$/, '');
+  document.getElementById('datasetModalTitle').textContent = `Edit sign — key: ${key} · ${row.samples} sample${row.samples === 1 ? '' : 's'}`;
+  const radio = document.querySelector(`input[name="dsEditSet"][value="${oldSet}"]`);
+  if (radio) radio.checked = true;
+  document.getElementById('dsEditType').textContent = `Type: ${catTitle}`;
+  document.getElementById('dsEditEn').value = row.textEn || '';
+  document.getElementById('dsEditFil').value = row.textFil || '';
+  trDatasetEditMessage('');
+  trDatasetEditUpdateFields();
+  trShowDatasetEditPanel(true);
+}
+function trDatasetEditCancel() {
+  datasetEditing = null;
+  trShowDatasetEditPanel(false);
+  trRenderDatasetView();
+}
+async function trDatasetEditSave() {
+  if (!datasetEditing || datasetEditBusy) return;
+  const { key, oldSet } = datasetEditing;
+  const set = trDatasetEditSet();
+  const en = document.getElementById('dsEditEn').value.trim();
+  const fil = document.getElementById('dsEditFil').value.trim();
+  if (set !== 'FSL' && !en) { trDatasetEditMessage('Enter the English text.'); return; }
+  if (set !== 'ESL' && !fil) { trDatasetEditMessage('Enter the Filipino text.'); return; }
+  trDatasetEditMessage('');
+  const saveBtn = document.getElementById('dsEditSave');
+  datasetEditBusy = true; saveBtn.disabled = true;
+  try {
+    const res = await fetch('php/api/signs.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update', key, set,
+        textEn: set === 'FSL' ? null : en, textFil: set === 'ESL' ? null : fil })
+    });
+    let json = null;
+    try { json = await res.json(); } catch (e) { /* non-JSON body */ }
+    if (!res.ok || !json || !json.success) {
+      trDatasetEditMessage((json && json.error) || `Save failed (HTTP ${res.status}).`);
+      return;
+    }
+    // Model caches: clear every language whose membership changed (ESL = ESL|BOTH, FSL = FSL|BOTH).
+    const inLang = (s, lang) => s === 'BOTH' || s === lang;
+    ['ESL', 'FSL'].forEach(lang => {
+      if (inLang(oldSet, lang) !== inLang(set, lang)) {
+        try { localStorage.removeItem(`sining_kamay_labels_${lang}`); } catch (e) { /* storage unavailable */ }
+      }
+    });
+    showToast('Saved.');
+    datasetEditing = null;
+    trShowDatasetEditPanel(false);
+    await window.reloadDataset();
+    trRenderDatasetView();
+  } catch (err) {
+    trDatasetEditMessage('Save failed: ' + err.message);
+  } finally {
+    datasetEditBusy = false; saveBtn.disabled = false;
+  }
+}
+window.trOpenDatasetEdit = trOpenDatasetEdit;
+window.trDatasetEditCancel = trDatasetEditCancel;
+window.trDatasetEditSave = trDatasetEditSave;
+window.trDatasetEditUpdateFields = trDatasetEditUpdateFields;
 window.trSetDatasetTab = trSetDatasetTab;
 window.trRenderDatasetView = trRenderDatasetView;
 
 function trCloseDatasetModal() {
+  datasetEditing = null;
+  trShowDatasetEditPanel(false);
+  trRenderDatasetView();
   document.getElementById('datasetModal').classList.remove('show');
 }
 
@@ -393,7 +522,7 @@ async function renderSavedDataset(prefetchedGestures) {
       const signSet = (sign && sign.set) || samples[0]?.signLanguage || 'ESL';
       const stored = storedCategoryFor(label, String(signSet).toUpperCase());
       const category = stored || GestureCategory.guess(label);
-      (groups[category] || groups.word).push({ label, signSet, samples: samples.length });
+      (groups[category] || groups.word).push({ label, signSet, textEn: sign && sign.textEn, textFil: sign && sign.textFil, samples: samples.length });
     });
     Object.keys(groups).forEach(cat => groups[cat].sort((a, b) => a.label.localeCompare(b.label)));
     datasetGroups = groups;
@@ -407,7 +536,9 @@ async function renderSavedDataset(prefetchedGestures) {
 
 // ── FRONTEND DELETE ACTION ──
 async function deleteGesture(label) {
-  if (!confirm(`Sigurado ka bang nais mong burahin ang lahat ng data para sa "${label}"?`)) return;
+  const delSign = GestureDataRecorder.getSigns()[label];
+  const bothNote = delSign && String(delSign.set).toUpperCase() === 'BOTH' ? ' (ESL and FSL)' : '';
+  if (!confirm(`Sigurado ka bang nais mong burahin ang lahat ng data para sa "${datasetDisplayName(label)}"${bothNote}?`)) return;
   try {
     const SAVE_ENDPOINT = (location.protocol === "file:")
       ? "http://localhost/Sining_kamay/php/api/save_gesture.php"

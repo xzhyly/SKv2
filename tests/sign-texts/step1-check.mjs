@@ -53,7 +53,7 @@ async function main() {
     await sleep(500);
     await ev(`showStepContent(1); true`);
     // wait for the startup dataset load (signs state)
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 600; i++) {
       if (await ev(`Object.keys(GestureDataRecorder.getSigns()).length > 0 && document.getElementById('datasetCount').textContent !== '0 gestures'`)) break;
       await sleep(150);
     }
@@ -167,7 +167,7 @@ async function main() {
     console.log('--- dataset modal Sign Set column ---');
     await ev(`showStepInstruction(1); showStepContent(1); trOpenDatasetModal(); true`);
     await sleep(300);
-    const col = await ev(`Array.from(document.querySelectorAll('#datasetModalBody tr')).slice(1, 40).map((tr) => tr.children[1] && tr.children[1].textContent)`);
+    const col = await ev(`Array.from(document.querySelectorAll('#datasetModalBody tr')).slice(1, 40).map((tr) => tr.children[2] && tr.children[2].textContent)`);
     check('modal Sign Set column shows ESL/FSL/Both', col.length > 0 && col.every((c) => ['ESL', 'FSL', 'Both'].includes(c)) && col.includes('Both'), JSON.stringify([...new Set(col)]));
 
     const errs = chrome.getConsoleErrors();

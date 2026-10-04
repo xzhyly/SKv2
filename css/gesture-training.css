@@ -176,6 +176,8 @@ a{text-decoration:none}
   box-shadow:0 4px 12px rgba(249,115,22,.25);transition:background .18s;
 }
 .tr-record-btn:hover{background:var(--orange-deep)}
+.tr-record-btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.tr-record-btn:disabled:hover{background:var(--orange)}
 
 .tr-lm-card{
   background:var(--bg);border:1.5px solid var(--border);
@@ -714,6 +716,47 @@ video#videoFeed{width:100%;height:100%;object-fit:contain;border-radius:12px;tra
   margin-bottom: 8px;
   flex-shrink: 0;
 }
+
+/* Dataset modal: wide card, text table and edit panel (sign-texts phase, task 5) */
+#datasetModal .tr-modal-card {
+  max-width: min(960px, calc(100vw - 32px));
+  padding: 16px 20px;
+}
+#datasetModal .tr-modal-header { padding-bottom: 8px; margin-bottom: 8px; }
+.tr-ds-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; color: var(--text); }
+.tr-ds-table th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--navy); color: #fff; font-weight: 700; font-size: 12px;
+  padding: 6px 8px; text-align: left; white-space: nowrap;
+}
+.tr-ds-table th:nth-child(1), .tr-ds-table th:nth-child(2) { width: 30%; }
+.tr-ds-table th:nth-child(3) { width: 9%; }
+.tr-ds-table th:nth-child(4) { width: 10%; }
+.tr-ds-table th:nth-child(5), .tr-ds-table th:nth-child(6) { width: 10.5%; }
+.tr-ds-table th:nth-child(n+3) { text-align: center; }
+.tr-ds-table tbody tr { border-bottom: 1px solid var(--border); }
+.tr-ds-table td { padding: 0 8px; height: 44px; vertical-align: middle; }
+.tr-ds-text { font-weight: 700; overflow-wrap: anywhere; padding-top: 4px; padding-bottom: 4px; }
+.tr-ds-c { text-align: center; }
+.tr-ds-empty { padding: 14px 8px; text-align: center; color: var(--muted); font-style: italic; }
+.tr-ds-btn {
+  min-width: 56px; width: 100%; max-width: 88px; height: 44px; border: none; border-radius: 8px;
+  color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.tr-ds-editbtn { background: var(--navy); }
+.tr-ds-del { background: #ef4444; }
+#datasetEditPanel { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+#datasetEditPanel .tr-ds-edit-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+#datasetEditPanel .tr-ds-edit-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#datasetEditPanel .tr-flbl { font-size: 14px; }
+#datasetEditPanel .tr-input { height: 48px; font-size: 16px; }
+#datasetEditPanel .tr-sign-opt { height: 48px; font-size: 15px; }
+.tr-ds-edit-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.tr-ds-edit-btn { height: 48px; min-width: 120px; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; flex-shrink: 0; }
+.tr-ds-edit-btn.cancel { border: 1.5px solid var(--border); background: var(--white); color: var(--text); }
+.tr-ds-edit-btn.save { border: none; background: var(--orange); color: #fff; }
+.tr-ds-edit-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tr-ds-edit-msg { flex: 1; font-size: 13px; font-weight: 700; color: #ef4444; line-height: 1.2; overflow: hidden; max-height: 32px; }
 
 /* The on-screen keyboard (css/virtual-keyboard.css, z-index 9999) must sit above this modal
    (z-index 11000) while the dataset search box is being typed into, and the card must fit in the

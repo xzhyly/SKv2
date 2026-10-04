@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Train Gestures ✿ Sining Kamay</title>
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.9">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.10">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
   <script src="js/lib/tf.min.js" defer></script>
   <script src="js/lib/mediapipe/hands.js" defer></script>
@@ -353,13 +353,43 @@
 <div id="datasetModal" class="tr-modal-overlay">
   <div class="tr-modal-card">
     <div class="tr-modal-header">
-      <h3>📁 Active Gesture Dataset</h3>
+      <h3 id="datasetModalTitle">📁 Active Gesture Dataset</h3>
       <button type="button" class="tr-modal-close" onclick="trCloseDatasetModal()">✕</button>
     </div>
     <div class="tr-ds-tabs" id="datasetTabs" role="tablist" aria-label="Gesture categories"></div>
-    <input id="datasetSearch" type="search" class="tr-input tr-ds-search" placeholder="Search labels in this tab…" autocomplete="off" aria-label="Search labels in this tab" oninput="trRenderDatasetView()">
+    <input id="datasetSearch" type="search" class="tr-input tr-ds-search" placeholder="Search key or text in this tab…" autocomplete="off" aria-label="Search key or text in this tab" oninput="trRenderDatasetView()">
     <div class="tr-modal-body" id="datasetModalBody">
       <p style="font-size:11px; color:#94a3b8; text-align:center; padding:16px;">No gestures recorded yet.</p>
+    </div>
+    <div id="datasetEditPanel" style="display:none">
+      <div class="tr-ds-edit-cols">
+        <div class="tr-ds-edit-col">
+          <div class="tr-fgrp">
+            <span class="tr-flbl">Sign Set</span>
+            <div class="tr-sign-toggle tr-sign-toggle-3">
+              <label class="tr-sign-opt"><input type="radio" name="dsEditSet" value="ESL" onchange="trDatasetEditUpdateFields()"> ESL</label>
+              <label class="tr-sign-opt"><input type="radio" name="dsEditSet" value="FSL" onchange="trDatasetEditUpdateFields()"> FSL</label>
+              <label class="tr-sign-opt"><input type="radio" name="dsEditSet" value="BOTH" onchange="trDatasetEditUpdateFields()"> Both</label>
+            </div>
+          </div>
+          <div class="tr-flbl" id="dsEditType"></div>
+        </div>
+        <div class="tr-ds-edit-col">
+          <div class="tr-fgrp" id="dsEditEnGroup">
+            <label class="tr-flbl" for="dsEditEn">English text</label>
+            <input id="dsEditEn" type="text" class="tr-input" autocomplete="off">
+          </div>
+          <div class="tr-fgrp" id="dsEditFilGroup">
+            <label class="tr-flbl" for="dsEditFil">Filipino text</label>
+            <input id="dsEditFil" type="text" class="tr-input" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="tr-ds-edit-actions">
+        <div id="dsEditMsg" class="tr-ds-edit-msg" role="alert"></div>
+        <button type="button" id="dsEditCancel" class="tr-ds-edit-btn cancel" onclick="trDatasetEditCancel()">Cancel</button>
+        <button type="button" id="dsEditSave" class="tr-ds-edit-btn save" onclick="trDatasetEditSave()">Save</button>
+      </div>
     </div>
   </div>
 </div>
