@@ -27,16 +27,22 @@ ON DUPLICATE KEY UPDATE id=id;
 -- 2. GESTURE TRAINING TENSORS & RECORDINGS
 -- ─────────────────────────────────────────────────────────────
 
+-- One row per sign (label = the folder key). sign_language is the sign's SET: ESL, FSL or BOTH.
+-- text_en / text_fil are the English / Filipino texts; chk_gestures_texts requires the text(s) the
+-- set shows. Disk (saved_gestures/<key>/sign.json) is the source of truth for set + texts.
 CREATE TABLE IF NOT EXISTS `gestures` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `label` varchar(255) NOT NULL,
-  `sign_language` enum('ESL','FSL') NOT NULL DEFAULT 'ESL',
+  `sign_language` enum('ESL','FSL','BOTH') NOT NULL DEFAULT 'ESL',
+  `text_en` varchar(255) DEFAULT NULL,
+  `text_fil` varchar(255) DEFAULT NULL,
   `category` enum('word','letter','number','phrase') NOT NULL DEFAULT 'word',
   `asset_path` varchar(255) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_gestures_label_language` (`label`,`sign_language`)
+  UNIQUE KEY `uq_gestures_label` (`label`),
+  CONSTRAINT `chk_gestures_texts` CHECK ((`sign_language` = 'FSL' OR (`text_en` IS NOT NULL AND `text_en` <> '')) AND (`sign_language` = 'ESL' OR (`text_fil` IS NOT NULL AND `text_fil` <> '')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE IF NOT EXISTS `gesture_recordings` (

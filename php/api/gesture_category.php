@@ -59,13 +59,28 @@ function ensure_gestures_columns($conn, $table = 'gestures') {
     $quotedTable = '`' . str_replace('`', '', $table) . '`';
     if (!column_exists($conn, $table, 'sign_language')) {
         try {
-            $ok = mysqli_query($conn, "ALTER TABLE $quotedTable ADD COLUMN sign_language ENUM('ESL','FSL') NOT NULL DEFAULT 'ESL' AFTER label");
+            $ok = mysqli_query($conn, "ALTER TABLE $quotedTable ADD COLUMN sign_language ENUM('ESL','FSL','BOTH') NOT NULL DEFAULT 'ESL' AFTER label");
         } catch (Throwable $e) {
             $ok = false;
         }
         if (!$ok && !column_exists($conn, $table, 'sign_language')) {
             // Not already added by a concurrent request either -- genuine failure.
             fail('DB ' . $table . ' alter failed: ' . mysqli_error($conn), 500);
+        }
+    }
+    // Sign texts (English / Filipino). Added after sign_language / text_en; no CHECK or key changes
+    // here -- the sign-texts migration and database_setup.sql own those.
+    foreach ([['text_en', 'sign_language'], ['text_fil', 'text_en']] as [$textColumn, $afterColumn]) {
+        if (!column_exists($conn, $table, $textColumn)) {
+            try {
+                $ok = mysqli_query($conn, "ALTER TABLE $quotedTable ADD COLUMN $textColumn VARCHAR(255) NULL AFTER $afterColumn");
+            } catch (Throwable $e) {
+                $ok = false;
+            }
+            // A concurrent request may have added it between our check and the ALTER -- re-check.
+            if (!$ok && !column_exists($conn, $table, $textColumn)) {
+                fail('DB ' . $table . ' alter failed: ' . mysqli_error($conn), 500);
+            }
         }
     }
     if (!column_exists($conn, $table, 'category')) {

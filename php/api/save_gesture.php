@@ -6,6 +6,7 @@ header('Access-Control-Allow-Headers: Content-Type');
 
 require_once __DIR__ . '/../connect.php';
 require_once __DIR__ . '/gesture_category.php';
+require_once __DIR__ . '/sign_meta.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(204);
@@ -27,12 +28,7 @@ function fail($message, $code = 400) {
     exit;
 }
 
-function clean_label($label) {
-    $label = strtolower(trim((string)$label));
-    $label = preg_replace('/\s+/', '_', $label);
-    $label = preg_replace('/[^a-z0-9_-]/', '', $label);
-    return trim($label, '_-');
-}
+// clean_label() and the sign.json helpers live in sign_meta.php (required above).
 
 // Mirrors js/capture-core.js MAX_FRAMES_PER_REP (301 = floor(MAX_REP_MS / (1000 / PROCESS_FPS)) + 1)
 // — a v3 sample is one rep's frames, so it shares that same ceiling.
@@ -72,27 +68,29 @@ function find_label_video($assetsSignsDir, $label, $subFolder) {
 // gesture_category.php (required above) so a CLI test script can exercise the migration against a
 // scratch table without executing this file's request-handling code.
 
-function save_gesture_word_to_db($label, $signLanguage, $category = null) {
+// Upserts the gestures row for a sign by label. sign_language/text_en/text_fil are always set to
+// the given values; the stored category is only overwritten when the caller passed an explicit
+// $category (a manual tag) -- a null $category (heuristic-only, e.g. from sync_disk_to_db) never
+// touches an existing row's category.
+function save_gesture_word_to_db($label, $set, $textEn, $textFil, $category = null) {
     global $conn;
     ensure_gestures_columns($conn);
 
     $insertCategory = $category ?? gesture_category($label);
 
-    // Atomic upsert — avoids race-condition duplicate key crashes.
-    // ON DUPLICATE KEY UPDATE makes LAST_INSERT_ID() return the existing row id
-    // when there is a collision, so we always get back a valid id. The stored category is only
-    // overwritten when the caller passed an explicit $category (a manual tag); a null $category
-    // (heuristic-only, e.g. from sync_disk_to_db) never touches an existing row's category.
+    // Atomic upsert -- avoids race-condition duplicate key crashes.
+    // ON DUPLICATE KEY UPDATE makes LAST_INSERT_ID() return the existing row id on a collision.
     $stmt = mysqli_prepare(
         $conn,
-        'INSERT INTO gestures (label, sign_language, category) VALUES (?, ?, ?)
-         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), category = IF(?, ?, category)'
+        'INSERT INTO gestures (label, sign_language, text_en, text_fil, category) VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), sign_language = VALUES(sign_language),
+           text_en = VALUES(text_en), text_fil = VALUES(text_fil), category = IF(?, ?, category)'
     );
     if (!$stmt) {
         fail('DB prepare failed: ' . mysqli_error($conn), 500);
     }
     $hasExplicitCategory = $category !== null ? 1 : 0;
-    mysqli_stmt_bind_param($stmt, 'sssis', $label, $signLanguage, $insertCategory, $hasExplicitCategory, $insertCategory);
+    mysqli_stmt_bind_param($stmt, 'sssssis', $label, $set, $textEn, $textFil, $insertCategory, $hasExplicitCategory, $insertCategory);
     if (!mysqli_stmt_execute($stmt)) {
         fail('DB insert failed: ' . mysqli_stmt_error($stmt), 500);
     }
@@ -102,8 +100,8 @@ function save_gesture_word_to_db($label, $signLanguage, $category = null) {
 
     // If ON DUPLICATE KEY returned 0, look up the existing id
     if ($id === 0) {
-        $sel = mysqli_prepare($conn, 'SELECT id FROM gestures WHERE label = ? AND sign_language = ? LIMIT 1');
-        mysqli_stmt_bind_param($sel, 'ss', $label, $signLanguage);
+        $sel = mysqli_prepare($conn, 'SELECT id FROM gestures WHERE label = ? LIMIT 1');
+        mysqli_stmt_bind_param($sel, 's', $label);
         mysqli_stmt_execute($sel);
         $res = mysqli_stmt_get_result($sel);
         $row = mysqli_fetch_assoc($res);
@@ -159,14 +157,17 @@ function sync_db_to_disk($conn, $datasetRoot) {
 function sync_disk_to_db($conn, $unusedDatasetRoot) {
     ensure_gestures_columns($conn);
 
+    // saved_gestures first, then the legacy saved_gestures_fsl (read-only). A label found in both
+    // keeps the saved_gestures sign; the legacy folder's samples are still registered.
     $folders = [
-        'ESL' => __DIR__ . '/../../saved_gestures',
-        'FSL' => __DIR__ . '/../../saved_gestures_fsl'
+        __DIR__ . '/../../saved_gestures',
+        __DIR__ . '/../../saved_gestures_fsl'
     ];
 
     $diskPaths = []; // Collect every valid sample_path that exists on disk
+    $upserted  = []; // labels whose gestures row was already refreshed from disk this run
 
-    foreach ($folders as $lang => $dirPath) {
+    foreach ($folders as $dirPath) {
         $realPath = realpath($dirPath);
         if ($realPath === false) continue;
 
@@ -175,15 +176,20 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
         foreach (glob($realPath . '/*', GLOB_ONLYDIR) ?: [] as $labelDir) {
             $label = basename($labelDir);
             $files = glob($labelDir . '/sample_*.json') ?: [];
+            if (!$files) continue;
+
+            // Disk wins: the gestures row follows sign.json (or the derived sign) on every sync.
+            $sign = derive_sign($folderName, $label, $labelDir);
+            $dbGesture = null;
+            if (!isset($upserted[$label])) {
+                $dbGesture = save_gesture_word_to_db($label, $sign['set'], $sign['textEn'], $sign['textFil']);
+                $upserted[$label] = $dbGesture['id'];
+            }
+            $gestureId = $upserted[$label];
 
             foreach ($files as $file) {
                 $json = json_decode(file_get_contents($file), true);
                 if (!is_array($json)) continue;
-
-                $signLanguage = strtoupper(trim((string)($json['signLanguage'] ?? $json['sign_language'] ?? $lang)));
-                if (!in_array($signLanguage, ['ESL', 'FSL'], true)) {
-                    $signLanguage = $lang;
-                }
 
                 $filename     = basename($file);
                 $relativePath = $folderName . '/' . $label . '/' . $filename;
@@ -198,13 +204,11 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
                 mysqli_stmt_close($chk);
 
                 if (!$exists) {
-                    $dbGesture = save_gesture_word_to_db($label, $signLanguage);
-                    $encoded = json_encode($json);
                     save_gesture_recording_to_db(
-                        $dbGesture['id'],
+                        $gestureId,
                         count($json['frames'] ?? []),
                         $relativePath,
-                        $encoded
+                        json_encode($json)
                     );
                 }
             }
@@ -242,34 +246,31 @@ function sync_disk_to_db($conn, $unusedDatasetRoot) {
     );
 }
 
-// Builds {"ESL": {label: category, ...}, "FSL": {label: category, ...}} for every (label,
-// sign_language) pair that appears among the given $gestures samples. Reads the DB in ONE query
-// (gesture_category() as heuristic fallback for labels with no row, or if the SELECT itself
-// fails) -- the dataset list must never fail because of categories.
-function build_categories_map($conn, $gestures) {
-    $dbCategory = []; // "ESL\x00label" -> category
+// Builds {"ESL": {label: category, ...}, "FSL": {label: category, ...}} from the signs map
+// ({label: {set, ...}}): a label is under ESL if its set is ESL or BOTH, under FSL if FSL or BOTH.
+// Reads the DB in ONE query (gesture_category() as heuristic fallback for labels with no row, or if
+// the SELECT itself fails) -- the dataset list must never fail because of categories.
+function build_categories_map($conn, $signs) {
+    $dbCategory = []; // label -> category
     try {
-        $result = mysqli_query($conn, 'SELECT label, sign_language, category FROM gestures');
+        $result = mysqli_query($conn, 'SELECT label, category FROM gestures');
     } catch (Throwable $e) {
         $result = false; // fall through to the per-label heuristic below
     }
     if ($result) {
         while ($row = mysqli_fetch_assoc($result)) {
-            $set = strtoupper((string)($row['sign_language'] ?? 'ESL')) === 'FSL' ? 'FSL' : 'ESL';
-            $dbCategory[$set . "\x00" . $row['label']] = $row['category'];
+            $dbCategory[$row['label']] = $row['category'];
         }
     }
 
     $categories = ['ESL' => [], 'FSL' => []];
-    foreach ($gestures as $label => $samples) {
-        $sets = [];
-        foreach ($samples as $sample) {
-            $set = strtoupper((string)($sample['signLanguage'] ?? 'ESL')) === 'FSL' ? 'FSL' : 'ESL';
-            $sets[$set] = true;
+    foreach ($signs as $label => $sign) {
+        $category = $dbCategory[$label] ?? gesture_category($label);
+        if ($sign['set'] === 'ESL' || $sign['set'] === 'BOTH') {
+            $categories['ESL'][$label] = $category;
         }
-        foreach (array_keys($sets) as $set) {
-            $key = $set . "\x00" . $label;
-            $categories[$set][$label] = $dbCategory[$key] ?? gesture_category($label);
+        if ($sign['set'] === 'FSL' || $sign['set'] === 'BOTH') {
+            $categories['FSL'][$label] = $category;
         }
     }
     return $categories;
@@ -292,6 +293,7 @@ function list_samples($defaultRoot) {
     ];
 
     $gestures = [];
+    $signs = [];
 
     foreach ($folders as $folder) {
         $dirPath = realpath(__DIR__ . '/../../' . $folder);
@@ -303,6 +305,9 @@ function list_samples($defaultRoot) {
 
             if (!isset($gestures[$label])) {
                 $gestures[$label] = [];
+            }
+            if (!isset($signs[$label])) {
+                $signs[$label] = derive_sign($folder, $label, $labelDir);
             }
 
             foreach ($files as $file) {
@@ -325,7 +330,8 @@ function list_samples($defaultRoot) {
         'success' => true,
         'datasetRoot' => 'saved_gestures',
         'gestures' => $gestures,
-        'categories' => build_categories_map($conn, $gestures),
+        'signs' => (object)$signs,
+        'categories' => build_categories_map($conn, $signs),
     ]);
     exit;
 }
@@ -349,31 +355,40 @@ if (isset($body['action']) && $body['action'] === 'delete_gesture') {
     $label = clean_label($body['label'] ?? '');
     if ($label === '') fail('Label is required');
 
-    // 1. Delete samples folder on disk from both ESL and FSL folders
+    // 1. Delete the sign's folder (all *.json incl. sign.json) from saved_gestures and the legacy
+    //    saved_gestures_fsl.
     foreach (['saved_gestures', 'saved_gestures_fsl'] as $folder) {
-        $labelDir = realpath(__DIR__ . '/../../' . $folder) . DIRECTORY_SEPARATOR . $label;
+        $folderRoot = realpath(__DIR__ . '/../../' . $folder);
+        if ($folderRoot === false) continue;
+        $labelDir = $folderRoot . DIRECTORY_SEPARATOR . $label;
         if (is_dir($labelDir)) {
             foreach (glob($labelDir . '/*.json') ?: [] as $file) {
                 unlink($file);
             }
-            rmdir($labelDir);
+            @rmdir($labelDir);
         }
     }
 
-    // 2. Delete database entries in MySQL
-    require_once __DIR__ . '/../connect.php';
-    
-    $stmt = mysqli_prepare($conn, "SELECT id FROM gestures WHERE label = ? LIMIT 1");
+    // 2. Delete database entries in MySQL (at most one gestures row per label)
+    $stmt = mysqli_prepare($conn, "SELECT id FROM gestures WHERE label = ?");
     mysqli_stmt_bind_param($stmt, 's', $label);
     mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
-    $row = mysqli_fetch_assoc($res);
-    $gestureId = $row ? (int)$row['id'] : 0;
+    $ids = [];
+    while ($r = mysqli_fetch_assoc($res)) {
+        $ids[] = (int)$r['id'];
+    }
     mysqli_stmt_close($stmt);
 
-    if ($gestureId > 0) {
-        mysqli_query($conn, "DELETE FROM gesture_recordings WHERE gesture_id = $gestureId");
-        mysqli_query($conn, "DELETE FROM gestures WHERE id = $gestureId");
+    foreach ($ids as $gestureId) {
+        $delRec = mysqli_prepare($conn, 'DELETE FROM gesture_recordings WHERE gesture_id = ?');
+        mysqli_stmt_bind_param($delRec, 'i', $gestureId);
+        mysqli_stmt_execute($delRec);
+        mysqli_stmt_close($delRec);
+        $delG = mysqli_prepare($conn, 'DELETE FROM gestures WHERE id = ?');
+        mysqli_stmt_bind_param($delG, 'i', $gestureId);
+        mysqli_stmt_execute($delG);
+        mysqli_stmt_close($delG);
     }
 
     mysqli_close($conn);
@@ -381,17 +396,35 @@ if (isset($body['action']) && $body['action'] === 'delete_gesture') {
     exit;
 }
 
-$label        = clean_label($body['label'] ?? $body['word'] ?? '');
-$signLanguage = strtoupper(trim((string)($body['sign_language'] ?? $body['dataset'] ?? 'ESL')));
-if (!in_array($signLanguage, ['ESL', 'FSL'], true)) {
-    $signLanguage = 'ESL';
-}
+$set          = valid_sign_set($body['sign_language'] ?? $body['dataset'] ?? null) ?? 'ESL';
 $frames       = $body['frames']      ?? null;
 $videoBase64  = $body['video_base64'] ?? null;   // optional recorded video
 $category     = valid_gesture_category($body['category'] ?? null); // invalid/missing -> null
 
-if ($label === '') {
-    fail('Gesture label is required');
+[$textEn, $textErr]  = sign_text_field($body['text_en'] ?? null, 'text_en');
+if ($textErr) fail($textErr);
+[$textFil, $textErr] = sign_text_field($body['text_fil'] ?? null, 'text_fil');
+if ($textErr) fail($textErr);
+$textsSent = $textEn !== null || $textFil !== null;
+
+if ($textsSent) {
+    // New-style call: the key comes from the text of the sign's primary language.
+    if (($set === 'ESL' || $set === 'BOTH') && $textEn === null) {
+        fail('English text is required for this sign set');
+    }
+    if (($set === 'FSL' || $set === 'BOTH') && $textFil === null) {
+        fail('Filipino text is required for this sign set');
+    }
+    $label = clean_label($set === 'FSL' ? $textFil : $textEn);
+    if ($label === '') {
+        fail('The text must contain at least one letter or number');
+    }
+} else {
+    // Legacy call (label/word only): key as before, texts come from the stored sign or a draft.
+    $label = clean_label($body['label'] ?? $body['word'] ?? '');
+    if ($label === '') {
+        fail('Gesture label is required');
+    }
 }
 if (!is_array($frames)) {
     fail('frames must be an array');
@@ -414,15 +447,63 @@ if ($isV3) {
     }
 }
 
-// ── Save landmark JSON to appropriate folder based on sign language ──
-$targetFolder = ($signLanguage === 'FSL') ? 'saved_gestures_fsl' : 'saved_gestures';
-$targetDatasetRoot = realpath(__DIR__ . '/../../' . $targetFolder);
-if ($targetDatasetRoot === false) {
-    $targetDatasetRoot = __DIR__ . '/../../' . $targetFolder;
-    if (!mkdir($targetDatasetRoot, 0775, true)) {
-        fail("Unable to create $targetFolder folder", 500);
+// ── Existing sign with this key? (sign.json / samples in saved_gestures, the legacy
+//    saved_gestures_fsl folder, or a DB row by label). A different set is a collision. ──
+$existingSign = null;
+foreach (['saved_gestures', 'saved_gestures_fsl'] as $legacyFolder) {
+    $existingDir = __DIR__ . '/../../' . $legacyFolder . '/' . $label;
+    if (is_dir($existingDir) && (is_file($existingDir . '/sign.json') || glob($existingDir . '/sample_*.json'))) {
+        $existingSign = derive_sign($legacyFolder, $label, $existingDir);
+        break;
     }
-    $targetDatasetRoot = realpath($targetDatasetRoot);
+}
+if ($existingSign === null) {
+    ensure_gestures_columns($conn);
+    $existSel = mysqli_prepare($conn, 'SELECT sign_language, text_en, text_fil FROM gestures WHERE label = ? LIMIT 1');
+    if (!$existSel) {
+        fail('DB prepare failed: ' . mysqli_error($conn), 500);
+    }
+    mysqli_stmt_bind_param($existSel, 's', $label);
+    mysqli_stmt_execute($existSel);
+    $existRow = mysqli_fetch_assoc(mysqli_stmt_get_result($existSel));
+    mysqli_stmt_close($existSel);
+    if ($existRow) {
+        $existingSign = ['set' => valid_sign_set($existRow['sign_language']) ?? 'ESL',
+                         'textEn' => $existRow['text_en'], 'textFil' => $existRow['text_fil']];
+    }
+}
+if ($existingSign !== null && $existingSign['set'] !== $set) {
+    http_response_code(409);
+    echo json_encode([
+        'success'     => false,
+        'error'       => 'A sign with this key already exists as ' . $existingSign['set'] . '.',
+        'existingSet' => $existingSign['set'],
+    ]);
+    exit;
+}
+
+// Final texts: sent texts replace stored ones; an unsent text keeps the stored one; a brand-new
+// legacy sign gets the draft text for the languages its set shows.
+if (!$textsSent) {
+    if ($existingSign !== null) {
+        $textEn  = $existingSign['textEn'];
+        $textFil = $existingSign['textFil'];
+    } else {
+        $textEn  = $set !== 'FSL' ? sign_draft_text($label) : null;
+        $textFil = $set !== 'ESL' ? sign_draft_text($label) : null;
+    }
+} elseif ($existingSign !== null) {
+    $textEn  = $textEn  ?? $existingSign['textEn'];
+    $textFil = $textFil ?? $existingSign['textFil'];
+}
+// A legacy row/folder may lack a text its set requires; never violate chk_gestures_texts.
+if ($set !== 'FSL' && ($textEn === null || $textEn === '')) $textEn = sign_draft_text($label);
+if ($set !== 'ESL' && ($textFil === null || $textFil === '')) $textFil = sign_draft_text($label);
+
+// ── Save landmark JSON: always saved_gestures/<key>/ (saved_gestures_fsl is read-only legacy) ──
+$targetDatasetRoot = realpath(__DIR__ . '/../../saved_gestures');
+if ($targetDatasetRoot === false) {
+    fail('Unable to find saved_gestures folder', 500);
 }
 
 $labelDir = $targetDatasetRoot . DIRECTORY_SEPARATOR . $label;
@@ -439,6 +520,9 @@ if ($resolvedLabelDir === false || strpos($resolvedLabelDir, $targetDatasetRoot)
 // video rule below keys on it (a label's first sample always refreshes its clip).
 $priorSampleCount = count(glob($resolvedLabelDir . DIRECTORY_SEPARATOR . 'sample_*.json') ?: []);
 
+// A sample's own signLanguage is FSL only for FSL signs; ESL and BOTH signs record as ESL.
+$sampleLanguage = ($set === 'FSL') ? 'FSL' : 'ESL';
+
 $filename = 'sample_' . round(microtime(true) * 1000) . '_' . bin2hex(random_bytes(3)) . '.json';
 $path     = $resolvedLabelDir . DIRECTORY_SEPARATOR . $filename;
 
@@ -453,7 +537,7 @@ if ($isV3) {
         'frameCount'   => count($frames),
         'format'       => 'mediapipe_hands_raw_v3',
         'formatVersion'=> 3,
-        'signLanguage' => $signLanguage,
+        'signLanguage' => $sampleLanguage,
         'source'       => (string)($body['source'] ?? 'video-live'),
         'repIndex'     => (int)($body['repIndex'] ?? 0),
         'videoWidth'   => (int)($body['videoWidth'] ?? 0),
@@ -477,7 +561,7 @@ if ($isV3) {
         'createdAt'   => gmdate('c'),
         'frameCount'  => count($frames),
         'format'      => 'mediapipe_hands_landmarks_v2',
-        'signLanguage'=> $signLanguage,
+        'signLanguage'=> $sampleLanguage,
         'frames'      => $frames,
     ];
 }
@@ -491,6 +575,11 @@ if ($encoded === false || file_put_contents($path, $encoded, LOCK_EX) === false)
     fail('Unable to write gesture sample', 500);
 }
 
+// sign.json (set + texts) before any DB write -- disk is the source of truth.
+if (!write_sign_json($resolvedLabelDir, $label, $set, $textEn, $textFil)) {
+    fail('Unable to write sign.json', 500);
+}
+
 // Save recorded video to assets/signs/<label>.mp4 (or fallback to .webm if ffmpeg is missing)
 $videoAssetRelative = $body['video_path'] ?? null;
 $videoSkipped    = false;
@@ -500,7 +589,7 @@ if (!empty($videoBase64)) {
     $base64Data = preg_replace('/^data:[^;]+;base64,/', '', $videoBase64);
     $videoBytes = base64_decode($base64Data, true);
     if ($videoBytes !== false && strlen($videoBytes) > 0) {
-        $subFolder = ($signLanguage === 'FSL') ? 'fil' : 'en';
+        $subFolder = ($set === 'FSL') ? 'fil' : 'en';
         $assetsSignsDir = realpath(__DIR__ . '/../../assets/signs/' . $subFolder);
         if ($assetsSignsDir === false) {
             $assetsSignsDir = __DIR__ . '/../../assets/signs/' . $subFolder;
@@ -563,8 +652,8 @@ if (!empty($videoBase64)) {
     }
 }
 
-$relativePath  = $targetFolder . '/' . $label . '/' . $filename;
-$dbGesture     = save_gesture_word_to_db($label, $signLanguage, $category);
+$relativePath  = 'saved_gestures/' . $label . '/' . $filename;
+$dbGesture     = save_gesture_word_to_db($label, $set, $textEn, $textFil, $category);
 
 // Never overwrite an existing asset_path with nothing (same rule as the old IFNULL()).
 $assetUpdate = mysqli_prepare($conn, 'UPDATE gestures SET asset_path = COALESCE(?, asset_path) WHERE id = ?');
@@ -589,7 +678,10 @@ mysqli_close($conn);
 echo json_encode([
     'success'          => true,
     'label'            => $label,
-    'signLanguage'     => $signLanguage,
+    'signLanguage'     => $set,
+    'set'              => $set,
+    'textEn'           => $textEn,
+    'textFil'          => $textFil,
     'category'         => $dbGesture['category'],
     'file'             => $relativePath,
     'videoAsset'       => $videoAssetRelative,
