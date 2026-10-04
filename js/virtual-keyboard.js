@@ -18,7 +18,7 @@
         ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
         ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
         ["caps", "z", "x", "c", "v", "b", "n", "m", "backspace"],
-        ["clear", "space", "hide"]
+        ["clear", "-", "'", ",", "space", ".", "?", "!", "hide"]
     ];
 
     function initKeyboard() {
@@ -177,7 +177,7 @@
 
         // Handle space and normal characters
         let charToInsert = (key === 'space') ? ' ' : key;
-        if (capsOn && key !== 'space') {
+        if (capsOn && key !== 'space' && /[a-z]/.test(key)) {
             charToInsert = charToInsert.toUpperCase();
         }
 

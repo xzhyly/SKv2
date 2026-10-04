@@ -468,10 +468,10 @@
     </div>
 
     <section id="tab-esl" class="active" role="tabpanel" aria-labelledby="tab-btn-esl">
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Key</th><th>Label</th><th>Text</th><th>Asset</th><th>Created</th></tr></thead><tbody id="eslRows"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Key</th><th>Set</th><th>Text</th><th>Asset</th><th>Created</th></tr></thead><tbody id="eslRows"></tbody></table></div>
     </section>
     <section id="tab-fsl" role="tabpanel" aria-labelledby="tab-btn-fsl" hidden>
-      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Key</th><th>Label</th><th>Text</th><th>Asset</th><th>Created</th></tr></thead><tbody id="fslRows"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Key</th><th>Set</th><th>Text</th><th>Asset</th><th>Created</th></tr></thead><tbody id="fslRows"></tbody></table></div>
     </section>
     <section id="tab-conversations" role="tabpanel" aria-labelledby="tab-btn-conversations" hidden>
       <div class="conv-toolbar"><button type="button" class="conv-btn danger" id="clearAllBtn" hidden>Clear all</button></div>
@@ -666,14 +666,18 @@
       }
     });
 
+    function setName(set) {
+      return set === 'BOTH' ? 'Both' : (set || '');
+    }
+
     function renderSigns(target, rows) {
       target.innerHTML = rows.length ? rows.map(row => `
         <tr>
           <td>${esc(row.id)}</td>
           <td><span class="pill">${esc(row.label)}</span></td>
-          <td>${esc(row.display_label)}</td>
-          <td>${esc(row.display_label)}</td>
-          <td>${row.asset_path ? `<button type="button" onclick="viewAsset('${esc(row.asset_path)}', '${esc(row.display_label)}')" class="pill" style="background:rgba(249,115,22,0.08); border-color:rgba(249,115,22,0.2); color:var(--orange); cursor:pointer; font-family:inherit; border:1px solid rgba(249,115,22,0.2);">View Asset</button>` : '-'}</td>
+          <td>${esc(setName(row.set))}</td>
+          <td>${esc(row.text)}</td>
+          <td>${row.asset_path ? `<button type="button" onclick="viewAsset(${esc(JSON.stringify(row.asset_path))}, ${esc(JSON.stringify(row.text ?? ''))})" class="pill" style="background:rgba(249,115,22,0.08); border-color:rgba(249,115,22,0.2); color:var(--orange); cursor:pointer; font-family:inherit; border:1px solid rgba(249,115,22,0.2);">View Asset</button>` : '-'}</td>
           <td>${esc(row.created_at)}</td>
         </tr>
       `).join('') : '<tr><td class="empty" colspan="6">No records found.</td></tr>';
