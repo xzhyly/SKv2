@@ -35,8 +35,8 @@ and listing all 300+ leaf files individually would not add ownership information
 |---|---|---|
 | [index.html](../../index.html) | 822 | Kiosk home/dashboard screen; boot entry point (see §3). **Dashboard only since 2026-09-21** — `#translator-pane` and its scripts were retired; the line count is now 93 |
 | [archive/sign-to-text.html](../../archive/sign-to-text.html) | 120 | **Archived 2026-09-21** (merged into `talk.html`; see `archive/SIGN-TO-TEXT.md`) — was the sign-to-text screen shell |
-| [gesture-training.html](../../gesture-training.html) | 394 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26; 2026-09-26: Step 1's old countdown/preview capture UI replaced by the full-screen `#gcMode` — see `docs/system/DECISIONS.md`; 2026-09-27 capture UI layout fix: Step 1 is a two-column form with no camera panel, and `#gcMode` is a top bar / media / bottom bar grid) |
-| [reports.html](../../reports.html) | 633 | Admin reports/analytics screen |
+| [gesture-training.html](../../gesture-training.html) | 435 | Admin/trainer screen for recording new gesture samples (Phase 2: video-import button removed, see `docs/system/DEBT.md` item 26; 2026-09-26: Step 1's old countdown/preview capture UI replaced by the full-screen `#gcMode` — see `docs/system/DECISIONS.md`; 2026-09-27 capture UI layout fix: Step 1 is a two-column form with no camera panel, and `#gcMode` is a top bar / media / bottom bar grid) **2026-10-04 (sign-texts phase):** Step 1 Gesture Name replaced by Sign Set (ESL/FSL/Both) + English/Filipino text fields (`maxlength="255"`), Step 2 gained the "AI model" ESL/FSL toggle, the dataset modal gained an edit panel; `css/gesture-training.css?v=1.0.10`. Line count re-measured 2026-10-05. |
+| [reports.html](../../reports.html) | 954 | Admin reports/analytics screen **2026-10-04:** ESL/FSL tables show ID/Key/Set/Text/Asset/Created; a Both sign is in both tabs. Line count re-measured 2026-10-05. |
 | [learn-signs.html](../../learn-signs.html) | 93 | Learner reference screen, linked from index.html |
 | [diagnostic.html](../../diagnostic.html) | 193 | Standalone diagnostics page; no inbound/outbound links found (see §6) |
 | [start_kiosk.sh](../../start_kiosk.sh) | 17 | Kiosk boot script: kills existing Chromium, launches `chromium --kiosk ... http://localhost/SKR/index.html` |
@@ -53,18 +53,20 @@ and listing all 300+ leaf files individually would not add ownership information
 | File | Lines | Owns |
 |---|---|---|
 | [archive/script.js](../../archive/script.js) | 1094 | **Archived 2026-09-21** (commit `c94d62c`) with index.html's `#translator-pane`; its pipeline was ported to `js/sign-player.js` / `js/talk-speaking.js` (see `archive/TEXT-TO-SIGN-PANE.md`) |
-| [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1136 | Loaded by `talk.html` via `js/talk-loader.js` since 2026-09-21 (was `sign-to-text.html`); k-NN/label/sentence logic |
-| [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1356 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26; 2026-09-26: Step 1's countdown/preview capture logic removed, replaced by a thin `openRecordingMode()` that opens `js/gesture-capture-ui.js`, see `docs/system/DECISIONS.md`; 2026-09-27: the camera start is one `startPageCamera()` shared by Enable Camera and the recording mode's `acquireCaptureCamera()`/`releaseCaptureCamera()`; owner follow-up: `warmUpHandTracking()` warms up the Hands instance at page load) |
-| [js/gesture-data.js](../../js/gesture-data.js) | 759 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML (and `talk.html`); gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed; 2026-09-26: `FRAME_TARGET`/`captureFrameIfRecording()`/the "G" hotkey removed, `createVideoDetector()`/`onHandResults()`/`letterboxRect()`/`saveGestureSample()` meta-fields/`recordingToFeatureRows()` subsampling added — see `docs/system/DECISIONS.md`) |
+| [js/sign-to-text-ui.js](../../js/sign-to-text-ui.js) | 1112 | Loaded by `talk.html` via `js/talk-loader.js` since 2026-09-21 (was `sign-to-text.html`); k-NN/label/sentence logic **2026-10-04 (sign-texts phase):** `translateGestureLabel` asks `GestureDataRecorder.getSignText` first, `mergeSavedGestureSamples` also admits `BOTH` signs, `escapeHtml()` added (`:4`). Line count re-measured 2026-10-05. |
+| [js/gesture-training-ui.js](../../js/gesture-training-ui.js) | 1592 | Loaded by `gesture-training.html`; training screen logic, calls `save_gesture.php` (Phase 2: `bulk_importer_api.php?action=convert_video` call and its "Upload & Process Video" handler removed, see `docs/system/DEBT.md` item 26; 2026-09-26: Step 1's countdown/preview capture logic removed, replaced by a thin `openRecordingMode()` that opens `js/gesture-capture-ui.js`, see `docs/system/DECISIONS.md`; 2026-09-27: the camera start is one `startPageCamera()` shared by Enable Camera and the recording mode's `acquireCaptureCamera()`/`releaseCaptureCamera()`; owner follow-up: `warmUpHandTracking()` warms up the Hands instance at page load) **2026-10-04 (sign-texts phase):** `currentKey()` derived from the shown text, Step 2 model toggle (`modelLanguage()`, `trainModelGuarded()`), `predictDisplayText()`, dataset modal columns/search/edit panel (`trDatasetEditSave()` -> `signs.php`), `escapeHtml()`. Line count re-measured 2026-10-05. |
+| [js/gesture-data.js](../../js/gesture-data.js) | 821 | Loaded by camera-translator/diagnostic/sign-to-text/gesture-training HTML (and `talk.html`); gesture dataset handling, posts to `save_gesture.php` (Phase 2: orphaned `processVideoFile()` helper removed; 2026-09-26: `FRAME_TARGET`/`captureFrameIfRecording()`/the "G" hotkey removed, `createVideoDetector()`/`onHandResults()`/`letterboxRect()`/`saveGestureSample()` meta-fields/`recordingToFeatureRows()` subsampling added — see `docs/system/DECISIONS.md`) **2026-10-04 (sign-texts phase):** `state.signs`, `getSigns()`/`getSignText()`/`loadSigns()` (GET `php/api/signs.php`), training rows keyed by `signs[label].set`, `saveGestureSample` sends `text_en`/`text_fil` and `sign_language` ESL/FSL/BOTH, one-time `sining_kamay_model_schema` = `"2"` cache reset. Line count re-measured 2026-10-05. |
 | [js/capture-core.js](../../js/capture-core.js) | 246 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; DOM-free `window.GestureCaptureCore` — the REST/SIGN hand-presence segmenter (`createSegmenter`, `segmentFrames`) shared by the live recording UI and offline video segmentation. Also runnable under node (`module.exports`) |
 | [js/video-landmarks.js](../../js/video-landmarks.js) | 245 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; `window.VideoLandmarks.extractVideoLandmarks()` turns a recorded video Blob into per-frame MediaPipe landmarks by seeking frame-by-frame, via a caller-supplied detector (`js/gesture-data.js`'s `createVideoDetector()`). `seekTimes()` is also runnable under node |
-| [js/gesture-capture-ui.js](../../js/gesture-capture-ui.js) | 738 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; the full-screen "Record 3 samples" mode (`#gcMode`) — Starting camera → Ready → Countdown → Recording → Review → Processing → Saving → Done state machine (Starting camera added 2026-09-27: it starts the camera itself), `window.GestureCaptureUI = {open, close, streamIsLive}` |
+| [js/gesture-capture-ui.js](../../js/gesture-capture-ui.js) | 756 | **New 2026-09-26** (video-based gesture capture phase). Loaded by `gesture-training.html`; the full-screen "Record 3 samples" mode (`#gcMode`) — Starting camera → Ready → Countdown → Recording → Review → Processing → Saving → Done state machine (Starting camera added 2026-09-27: it starts the camera itself), `window.GestureCaptureUI = {open, close, streamIsLive}` **2026-10-04:** accepts the BOTH set and the two texts, chip `<text> · <ESL|FSL|Both> · <Type>`. Line count re-measured 2026-10-05. |
 | js/db-api.js | 148 | **Deleted 2026-09-25** (saved-conversations phase, Task 6, option A). Was: loaded by camera-translator.html/diagnostic.html/gesture-training.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
 | js/db-local.js | 65 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wrapped `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
 | [js/talk-history.js](../../js/talk-history.js) | 109 | **New 2026-09-25** (saved-conversations phase, Task 4). Loaded by `talk.html`; fire-and-forget save client for `php/api/save_conversation.php` — `window.TalkHistory.saveMessage()`/`.end()` |
+| [js/sign-player.js](../../js/sign-player.js) | 486 | Loaded by `talk.html`; `window.SignPlayer`, the text-to-sign pipeline (port of the archived `js/script.js`). **2026-10-04 (sign-texts phase):** `fetchAndRegisterCustomGestures()` reads `php/api/signs.php` and registers each sign's English text (ESL/Both) and Filipino text (FSL/Both) in the matching language map, with and without "?"; an asset-map value starting with `assets/` is used as-is (`:413`). Not previously listed here. |
+| [js/talk-loader.js](../../js/talk-loader.js) | 161 | Loaded by `talk.html`; the background loading queue (5 items). **2026-10-04 (sign-texts phase):** the `gestures` item runs `autoTrainForTranslate()` and `GestureDataRecorder.loadSigns()` together (`:48-60`); a failed `loadSigns()` only warns. Not previously listed here. |
 | [js/camera-helper.js](../../js/camera-helper.js) | 68 | Loaded by gesture-training.html/sign-to-text.html; camera device helper |
 | [js/speech-synthesis.js](../../js/speech-synthesis.js) | 66 | Loaded by gesture-training.html/sign-to-text.html; TTS output helper |
-| [js/virtual-keyboard.js](../../js/virtual-keyboard.js) | 186 | Loaded by index.html/camera-translator.html/gesture-training.html; on-screen keyboard widget |
+| [js/virtual-keyboard.js](../../js/virtual-keyboard.js) | 210 | Loaded by index.html/camera-translator.html/gesture-training.html; on-screen keyboard widget **2026-10-04 (sign-texts phase):** last row is now `clear - ' , space . ? ! hide`; Caps uppercases only a-z. Loaded by `gesture-training.html` and `talk.html` (not `index.html`/`reports.html`). Line count re-measured 2026-10-05. |
 | [js/vosk.js](../../js/vosk.js) | 369 | Loaded by index.html; Vosk offline speech-recognition JS bundle (5.4 MB file, `js/vosk.js`, per `du`) |
 
 ### `js/lib/` — vendored, unmodified
@@ -90,12 +92,15 @@ and listing all 300+ leaf files individually would not add ownership information
 | [php/auth.php](../../php/auth.php) | 95 | Auth logic; **no frontend caller found in this repo** (see §6) |
 | [php/admin_api.php](../../php/admin_api.php) | 196 | Admin API; **no frontend caller found in this repo** (see §6) |
 | php/api/core_api.php | 177 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: "unified api router" per `js/db-local.js:10`; backed `db-local.js` |
-| [php/api/save_gesture.php](../../php/api/save_gesture.php) | 604 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe`. Rewritten 2026-09-24 for the normalized `gestures`/`gesture_recordings` schema (`label`/`frame_count`, `asset_path`, no `esl_signs`/`fsl_signs`); 2026-09-26: accepts a compact-JSON `mediapipe_hands_raw_v3` format alongside v2, frame cap raised 120→301 (see `docs/system/BACKEND.md`) |
+| [php/api/save_gesture.php](../../php/api/save_gesture.php) | 718 | Gesture save endpoint; called from `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html`; uses `ffmpeg.exe`. Rewritten 2026-09-24 for the normalized `gestures`/`gesture_recordings` schema (`label`/`frame_count`, `asset_path`, no `esl_signs`/`fsl_signs`); 2026-09-26: accepts a compact-JSON `mediapipe_hands_raw_v3` format alongside v2, frame cap raised 120→301 (see `docs/system/BACKEND.md`) **2026-10-04 (sign-texts phase):** set ESL/FSL/BOTH + `text_en`/`text_fil`, key derived from the text, 409 on a set collision, `sign.json` written, GET returns `signs` and set-based `categories`, fast disk-wins sync. Callers now `js/gesture-data.js`, `js/gesture-capture-ui.js`, `js/gesture-training-ui.js` (delete), `diagnostic.html` (`js/script.js` is archived). Line count re-measured 2026-10-05. |
 | php/api/save_translation.php | 99 | **Deleted 2026-09-25** (saved-conversations phase, Task 6). Was: translation save endpoint; called from `js/db-api.js` |
 | php/api/get_translations.php | 65 | **Deleted 2026-09-25** (same phase). Was: translation fetch endpoint; called from `js/db-api.js` |
 | [php/api/save_history.php](../../php/api/save_history.php) | 24 | History save endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** (DB cleanup, `BACKEND.md`) |
 | [php/api/get_history.php](../../php/api/get_history.php) | 14 | History fetch endpoint; **no frontend caller found in this repo** (see §6). **Deleted 2026-09-24** |
-| [php/api/reports.php](../../php/api/reports.php) | 63 | Reports data endpoint; called from `reports.html`. `translations` query/keys removed 2026-09-25 (see below) |
+| [php/api/reports.php](../../php/api/reports.php) | 81 | Reports data endpoint; called from `reports.html`. `translations` query/keys removed 2026-09-25 (see below) **2026-10-04:** ESL tab = ESL+BOTH, FSL tab = FSL+BOTH, rows carry `set`/`text`. Line count re-measured 2026-10-05. |
+| [php/api/signs.php](../../php/api/signs.php) | 152 | **New 2026-10-04** (sign-texts phase). GET: every sign's set/texts/category/asset path/sample count from the DB; POST `update`: changes a sign's set and texts without touching samples (`sign.json` first, then the `gestures` row). No auth (`DEBT.md` item 72). Called from `js/gesture-data.js` (`loadSigns()`), `js/sign-player.js`, `js/gesture-training-ui.js` (edit panel) |
+| [php/api/sign_meta.php](../../php/api/sign_meta.php) | 119 | **New 2026-10-04.** Pure helpers (no output, no DB): `clean_label`, `sign_draft_text`, `valid_sign_set`, `read_sign_json`/`write_sign_json`, `derive_sign`, `sign_text_field`; `require_once`'d by `save_gesture.php` and `signs.php` |
+| [php/api/gesture_category.php](../../php/api/gesture_category.php) | 179 | Not previously listed here. Category heuristic + `ensure_gestures_columns()` (**2026-10-04:** also upgrades a pre-phase DB in place: enum widened to `BOTH`, unique key swapped when no label is duplicated, `text_en`/`text_fil` added, never the CHECK); `require_once`'d by `save_gesture.php` and `signs.php` |
 | [php/api/save_conversation.php](../../php/api/save_conversation.php) | 154 | **New 2026-09-25** (saved-conversations phase, Task 2). Kiosk-facing, write-only; called from `js/talk-history.js` |
 | [php/api/conversations.php](../../php/api/conversations.php) | 180 | **New 2026-09-25** (Task 3). Admin-facing list/detail/delete/clear_all; called from `reports.html`, after its PIN |
 
@@ -105,7 +110,7 @@ and listing all 300+ leaf files individually would not add ownership information
 |---|---|---|
 | [css/style.css](../../css/style.css) | 596 | Loaded by index.html; base/dashboard styling |
 | [css/virtual-keyboard.css](../../css/virtual-keyboard.css) | 101 | Loaded by index.html/camera-translator.html/gesture-training.html; keyboard widget styling |
-| [css/gesture-training.css](../../css/gesture-training.css) | 1089 | Loaded by gesture-training.html (2026-09-26: `.gc-*` rules for `#gcMode`'s full-screen recording UI added; 2026-09-27 capture UI layout fix: those rules rewritten as a full-viewport 3-row grid, `:951-1056`, plus the two-column Step 1 layout that hides the camera panel, `:1058-1089`) |
+| [css/gesture-training.css](../../css/gesture-training.css) | 1134 | Loaded by gesture-training.html (2026-09-26: `.gc-*` rules for `#gcMode`'s full-screen recording UI added; 2026-09-27 capture UI layout fix: those rules rewritten as a full-viewport 3-row grid, `:951-1056`, plus the two-column Step 1 layout that hides the camera panel, `:1058-1089`) **2026-10-04:** `.tr-sign-toggle-3`, 960 px dataset modal + edit panel (`.tr-ds-edit-*`), `.tr-record-btn:disabled`, Step 2 toggle buttons (`css/gesture-training.css?v=1.0.10`). Line count re-measured 2026-10-05. |
 | [css/sign-to-text.css](../../css/sign-to-text.css) | 338 | Orphaned since `sign-to-text.html` was archived 2026-09-21 (`DEBT.md` item 50) |
 | [css/fonts.css](../../css/fonts.css) | 10 | Added Phase 2; loaded by index.html, camera-translator.html, gesture-training.html, sign-to-text.html, reports.html, learn-signs.html — self-hosted Inter `@font-face` |
 
@@ -113,7 +118,7 @@ and listing all 300+ leaf files individually would not add ownership information
 
 | File | Lines/Size | Owns |
 |---|---|---|
-| [db-schema/database_setup.sql](../../db-schema/database_setup.sql) | 88 lines, 5 `CREATE TABLE IF NOT EXISTS` statements (was 8 statements before the 2026-09-24/09-25 phases) | Idempotent schema-creation script; 5 tables (see §5) — `conversations`/`messages` added and the `translations` block removed 2026-09-25 |
+| [db-schema/database_setup.sql](../../db-schema/database_setup.sql) | 94 lines, 5 `CREATE TABLE IF NOT EXISTS` statements (was 8 statements before the 2026-09-24/09-25 phases) | Idempotent schema-creation script; 5 tables (see §5) — `conversations`/`messages` added and the `translations` block removed 2026-09-25 **2026-10-04 (sign-texts phase):** the `gestures` block (`:30-46`) is the migrated DDL: `ENUM('ESL','FSL','BOTH')`, `text_en`, `text_fil`, `uq_gestures_label`, `chk_gestures_texts`. |
 | [db-schema/sining_kamay_db_backup.sql](../../db-schema/sining_kamay_db_backup.sql) | 2,648,411 bytes | Full dump backup of the old 8-table schema (pre-2026-09-24, not the current 5), ANSI-encoded |
 
 ### `models/`
@@ -136,8 +141,8 @@ and listing all 300+ leaf files individually would not add ownership information
 
 | Path | Count | Size | Owns |
 |---|---|---|---|
-| `saved_gestures/` | 120 subdirectories, 121 `.json` files | 6.6 MB | Recorded ESL gesture landmark samples, one folder per word |
-| `saved_gestures_fsl/` | 89 subdirectories, 90 `.json` files | 4.9 MB | Recorded FSL gesture landmark samples, one folder per word |
+| `saved_gestures/` | 122 subdirectories, 249 `.json` files (127 `sample_*.json` + 122 `sign.json`), 6,847,740 bytes | 6.5 MB | Recorded gesture landmark samples, **one folder per sign** for every set (ESL, FSL or Both); each folder holds the sign's samples once and a `sign.json` (`{key, set, textEn, textFil, updatedAt}`, see `docs/system/BACKEND.md`). Measured 2026-10-05 with `find`/`du -sb`; before the 2026-10-04 sign-texts migration: 120 subdirectories (the owner's `hi`/`yow` were untracked then). |
+| `saved_gestures_fsl/` | 0 files (measured 2026-10-05; the directory exists locally but is empty and no file in it is tracked) | 0 | **Legacy, read-only.** Held 89 subdirectories / 90 `.json` files (4.9 MB) before the 2026-10-04 sign-texts migration moved all 90 into `E:\ACADSS\IOT\backups\2026-10-04-sign-texts\saved_gestures_fsl\` (proven identical to ESL twins, now Both signs). Code still reads it if it exists (a missing directory is skipped: `php/api/save_gesture.php:191-192`, `:321-322`) and never writes it. |
 
 ### `docs/`
 
@@ -170,6 +175,8 @@ Also holds `archive/old-revision-docs/` (see `### docs/` below).
 |---|---|
 | [db-schema/migrations/2026-09-24-normalize.php](../../db-schema/migrations/2026-09-24-normalize.php) | One-time CLI migration: folds `esl_signs`/`fsl_signs` into `gestures`, renames `word`→`label`/`sample_count`→`frame_count`, adds the `gesture_recordings`→`gestures` FK, drops the old tables/columns. See `docs/system/BACKEND.md` |
 | [db-schema/migrations/2026-09-24-backfill-asset-path.php](../../db-schema/migrations/2026-09-24-backfill-asset-path.php) | One-time CLI backfill of `gestures.asset_path` from on-disk `.webm` files, run once on live (62 rows filled) |
+| [db-schema/migrations/2026-10-04-sign-texts.php](../../db-schema/migrations/2026-10-04-sign-texts.php) | **New 2026-10-04** (sign-texts phase), 493 lines. One-time CLI migration: merges the 89 FSL signs that copy an ESL recording into Both signs, adds the `BOTH` enum value and `text_en`/`text_fil`, writes `sign.json` into every `saved_gestures/<key>/`, moves the 90 duplicate FSL files to a backup folder (proof + sha256 first), then `uq_gestures_label` and `chk_gestures_texts`. 8 idempotent steps; options `--db --root --backup-dir --stop-after --verify-only --no-dump-check`. See `docs/system/BACKEND.md`. |
+| [db-schema/migrations/2026-10-04-sign-texts-pairs.json](../../db-schema/migrations/2026-10-04-sign-texts-pairs.json) | **New 2026-10-04**, 723 lines. Fixture for the migration: `generated`, `pairs` (89 `{fsl, fslFile, esl, eslFile, ...}`) and the `stray` root file (`sample_1784112605537_bec003.json` -> `my_name`). |
 
 ### `tests/normalization/` (new 2026-09-24, DB normalization)
 
@@ -219,6 +226,30 @@ plain node scripts (not `node --test` files) run individually — 28/74/52
 checks respectively, all PASS as of the Task 6 e2e run
 (`.git/sdd/vc-task-6-report.md`).
 
+### `tests/sign-texts/` (new 2026-10-04, sign-texts phase)
+
+| File | Owns |
+|---|---|
+| tests/sign-texts/helper.mjs | Shared clone-database helper (clone from the pre-phase dump into a scratch DB with a `USE`/`CREATE DATABASE` guard, temp workspace, `endState()`); reuses `tests/normalization/clone-helper.mjs` |
+| tests/sign-texts/api-helper.mjs | Runs `php/api/save_gesture.php` / `signs.php` under php-cgi for the endpoint tests (same approach as `tests/conversations/helper.mjs`) |
+| tests/sign-texts/migration.test.mjs | 10 tests for `2026-10-04-sign-texts.php` on a clone DB: full run, no-op re-run + `--verify-only`, stop after each of steps 1..7 then resume, crash simulation, tamper aborts at step 2 (118 s measured) |
+| tests/sign-texts/save-sign.test.mjs | 11 tests for the `save_gesture.php` sign-texts behavior (set, texts, key derivation, 409 collision, legacy no-text callers, `sign.json`, sync, delete); `zz`-prefixed probes on the live DB |
+| tests/sign-texts/signs-endpoint.test.mjs | 5 tests for `signs.php` (GET, update validation, hidden-text kept, 404/400/405); contains a full-sync GET that upserts real rows (`DEBT.md` item 102) |
+| tests/sign-texts/gesture-data-signs.test.mjs | 9 tests (`node:vm`, fake storage/fetch) for `js/gesture-data.js`: `getSignText`, `loadSigns`, training rows keyed by set, `saveGestureSample` payload, the one-time schema reset |
+| tests/sign-texts/talk-texts.test.mjs | 10 tests (`node:vm`) for `js/sign-to-text-ui.js` `translateGestureLabel` and `js/sign-player.js` text registration (with/without "?", no overwrite, `assets/` values) |
+| tests/sign-texts/upgrade-path.test.mjs | 2 tests: `ensure_gestures_columns()` upgrades a scratch DB cloned from the pre-phase dump in place (enum, key swap, no CHECK, duplicate labels) |
+| tests/sign-texts/step1-check.mjs | CDP check (headless Chrome 1024x600) of Step 1 layout/validation/collision/Step 2 toggle/Predict text (48 PASS) |
+| tests/sign-texts/dataset-check.mjs | CDP check of the dataset modal: columns, search, edit panel, cache clearing, keyboard-open fit, delete (`zz_edit_probe`) |
+| tests/sign-texts/talk-check.mjs | CDP check of `talk.html`: loading queue, models, captions from texts, text-to-sign asset requests |
+| tests/sign-texts/reports-keyboard-check.mjs | CDP check of Reports Key/Set/Text and the on-screen keyboard punctuation row on `gesture-training.html` and `talk.html` (27 PASS) |
+| tests/sign-texts/verify-e2e.mjs | End-to-end verification of the whole phase through the real UI with a fake camera (80 PASS): counts/backup/manifest, Both/ESL/FSL signs, Train/Predict, edit, collision, Let's Talk, text-to-sign |
+| tests/sign-texts/xss-check.mjs | CDP check that a hostile sign text renders literally in Step 4 (`escapeHtml()`) |
+
+Run the node test files with the serial suite (`docs/system/BACKEND.md`, "Tests": 188 tests, 187 pass, 0 fail, 1 skip as of the
+whole-phase fix); the `*-check.mjs`/`verify-e2e.mjs` files are plain node scripts run individually, each ALL CHECKS PASSED
+at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md`). `tests/video-capture/capture-ui-check.mjs`, `e2e.mjs`,
+`screenshots.mjs` and `startup-check.mjs` were adapted to the new Step 1 field (`#signTextEn`).
+
 ### `.superpowers/` (4 files)
 
 Session artifacts from a prior agent-assisted work session (`sdd/progress.md`,
@@ -252,6 +283,7 @@ Per-page script load order (in document order, from each HTML file's `<script sr
   `wireRecordButton()` (`js/gesture-training-ui.js:1353-1356`) reads
   `window.GestureCaptureUI` at parse time.
 - **diagnostic.html**: `js/lib/tf.min.js` → `js/lib/mediapipe/hands.js` → `js/db-api.js` → `js/gesture-data.js`
+- **talk.html** (added 2026-10-05; the sign stack is loaded by `js/talk-loader.js`, queue order in `docs/system/UI.md` Part 3a): as of the sign-texts phase the queue's `gestures` item runs `autoTrainForTranslate()` (`js/sign-to-text-ui.js`) together with `GestureDataRecorder.loadSigns()` (`js/gesture-data.js`, GET `php/api/signs.php`), and `js/sign-player.js` fetches `php/api/signs.php` on first entry to Speak or Type. `js/virtual-keyboard.js` is loaded by `talk.html` and `gesture-training.html` only.
 - **reports.html**, **learn-signs.html**: no `<script src>` tags found
 
 ## 3. Entry points and boot order
@@ -269,7 +301,8 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 
 | Endpoint | Called from (found in repo) |
 |---|---|
-| `php/api/save_gesture.php` | `js/script.js`, `js/gesture-data.js`, `js/gesture-training-ui.js`, `diagnostic.html` |
+| `php/api/save_gesture.php` | `js/gesture-data.js` (save + dataset load), `js/gesture-capture-ui.js` (via `saveGestureSample`), `js/gesture-training-ui.js` (delete), `diagnostic.html`; `js/script.js` was a caller until archived 2026-09-21 |
+| `php/api/signs.php` | `js/gesture-data.js` (`loadSigns()`, used by `gesture-training.html` and `talk.html`), `js/sign-player.js`, `js/gesture-training-ui.js` (dataset edit panel) — new 2026-10-04 |
 | `php/api/save_translation.php` | deleted 2026-09-25; was called only by `js/db-api.js` (also deleted) |
 | `php/api/get_translations.php` | deleted 2026-09-25; was called only by `js/db-api.js` (also deleted) |
 | `php/api/core_api.php` | deleted 2026-09-24; was called only by `js/db-local.js` (also deleted), described as "unified api router" in `js/db-local.js:10` |
@@ -310,6 +343,12 @@ Column-level detail was not extracted this pass (reserved for the Pass 2
 backend/database document, using the `mysql` skill) — see
 `docs/system/BACKEND.md` for the current, exact `CREATE TABLE` for
 `gestures`/`gesture_recordings`.
+
+**Updated 2026-10-04 (sign-texts phase):** the table list is unchanged, but `gestures` changed shape:
+`sign_language` is now the sign's set `ENUM('ESL','FSL','BOTH')`, new nullable `text_en`/`text_fil` (`VARCHAR(255)`),
+`UNIQUE KEY uq_gestures_label (label)` replaced `uq_gestures_label_language`, and `CHECK chk_gestures_texts`
+was added. Live: 122 `gestures` rows (89 `BOTH`, 33 `ESL`), 127 `gesture_recordings`
+(`docs/system/BACKEND.md`, "Tables"). `messages.sign_language` is still `ESL`|`FSL`|NULL.
 
 ## 6. Files that look dead, orphaned, half-finished, or out of place
 

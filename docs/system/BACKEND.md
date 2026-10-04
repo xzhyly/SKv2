@@ -7,35 +7,41 @@
 - `php/admin_api.php` (196 lines)
 - `php/api/core_api.php` (177 lines) (**deleted 2026-09-24**, DB
   normalization — see "DB normalization" below)
-- `php/api/save_gesture.php` (604 lines as of the 2026-09-26 video-based
-  gesture capture phase — was 585 before the 2026-09-23 gesture-categorization
-  phase, further edited 2026-09-24 for the normalized schema, and again
-  2026-09-26 to accept v3 raw samples and raise the frame cap, see below)
-- `php/api/gesture_category.php` (44 lines, new in the gesture-categorization
-  phase)
+- `php/api/save_gesture.php` (718 lines as of the 2026-10-04 sign-texts phase —
+  604 lines after the 2026-09-26 video-based gesture capture phase, 585 before
+  the 2026-09-23 gesture-categorization phase; also edited 2026-09-24 for the
+  normalized schema. See "One sign, two texts" below)
+- `php/api/gesture_category.php` (179 lines as of the sign-texts phase; 44 lines
+  when first added in the gesture-categorization phase)
+- `php/api/sign_meta.php` (119 lines, new 2026-10-04, sign-texts phase) — shared
+  pure helpers for a sign's set, two texts and `sign.json`
+- `php/api/signs.php` (152 lines, new 2026-10-04) — sign list and edit endpoint
 - `php/api/save_translation.php` (99 lines) (**deleted 2026-09-25**,
   saved-conversations phase, Task 6 — see "translations dropped" below)
 - `php/api/get_translations.php` (65 lines) (**deleted 2026-09-25**, same phase)
 - `php/api/save_history.php` (24 lines) (**deleted 2026-09-24**, DB cleanup)
 - `php/api/get_history.php` (14 lines) (**deleted 2026-09-24**, DB cleanup)
-- `php/api/reports.php` (63 lines, `translations` query/keys removed
-  2026-09-25 — see below)
+- `php/api/reports.php` (81 lines as of the sign-texts phase; 63 lines after
+  the 2026-09-25 `translations` removal — see below)
 - `php/api/save_conversation.php` (154 lines, new 2026-09-25, saved-conversations
   phase) — kiosk-facing, write-only
 - `php/api/conversations.php` (180 lines, new 2026-09-25) — admin-facing
   list/detail/delete/clear_all, read by `reports.html`
 - `scratch/trigger_sync.php` (170 lines) (**deleted 2026-09-24**, DB
   normalization)
-- `db-schema/database_setup.sql`
+- `db-schema/database_setup.sql` (94 lines; `gestures` DDL re-synced to the migrated live DDL 2026-10-04)
 - `db-schema/sining_kamay_db_backup.sql`
 - `sining_kamay_db.sql`
 - `db-schema/migrations/2026-09-24-normalize.php` (new 2026-09-24, DB
   normalization)
 - `db-schema/migrations/2026-09-24-backfill-asset-path.php` (new 2026-09-24)
+- `db-schema/migrations/2026-10-04-sign-texts.php` (493 lines, new 2026-10-04,
+  sign-texts phase) and its fixture `db-schema/migrations/2026-10-04-sign-texts-pairs.json`
+  (723 lines: 89 pairs + 1 stray) — see "The 2026-10-04 sign-texts migration" below
 
 ## 2. What it does
 
-PHP 8 + MySQL (actual server per dump headers: **MariaDB 10.4.32**, `db-schema/sining_kamay_db_backup.sql:5`, `sining_kamay_db.sql:5` — "MySQL" in the brief is imprecise) endpoints for: user auth (`auth.php`), admin CRUD over users/history/gestures (`admin_api.php`), a "unified" data router for recordings/translations/gesture words (`core_api.php`), gesture-sample persistence including video transcoding (`save_gesture.php`), translation logging (`save_translation.php`, `get_translations.php`, `save_history.php`, `get_history.php` — all four now deleted; translations logging was never wired to any live UI, see "translations dropped" below), a read-only dictionary/report dump (`reports.php`), and, since the 2026-09-25 saved-conversations phase, `talk.html`'s Let's Talk history: a kiosk-facing write-only save endpoint (`save_conversation.php`) and an admin-facing list/detail/delete endpoint (`conversations.php`).
+PHP 8 + MySQL (actual server per dump headers: **MariaDB 10.4.32**, `db-schema/sining_kamay_db_backup.sql:5`, `sining_kamay_db.sql:5` — "MySQL" in the brief is imprecise) endpoints for: user auth (`auth.php`), admin CRUD over users/history/gestures (`admin_api.php`), a "unified" data router for recordings/translations/gesture words (`core_api.php`), gesture-sample persistence including video transcoding (`save_gesture.php`), translation logging (`save_translation.php`, `get_translations.php`, `save_history.php`, `get_history.php` — all four now deleted; translations logging was never wired to any live UI, see "translations dropped" below), a read-only dictionary/report dump (`reports.php`), and, since the 2026-09-25 saved-conversations phase, `talk.html`'s Let's Talk history: a kiosk-facing write-only save endpoint (`save_conversation.php`) and an admin-facing list/detail/delete endpoint (`conversations.php`). Since the 2026-10-04 sign-texts phase every sign is one folder with a set (`ESL`/`FSL`/`BOTH`) and two texts, mirrored in `gestures`; `signs.php` lists and edits them and `sign_meta.php` holds the helpers `save_gesture.php` and `signs.php` share.
 
 Confirmed data-persistence/admin-only: no PHP file here touches MediaPipe/TensorFlow.js or the frame-classification loop. All are reached via `fetch()` from front-end JS/HTML after inference already happened client-side (see Section 6 for exact callers). This matches the brief's claim that PHP/MySQL is never in the live translation path.
 
@@ -52,30 +58,74 @@ POST only, 405 otherwise (`php/api/core_api.php:14`). Comment at line 2-6
 self-describes as "Single entry-point for all Sining Kamay DB operations."
 Actions via `switch($action)` (line 49): `save_recording`/`get_recordings`/`delete_recording` → `gesture_recordings` (columns `gesture_type`, `sample_count`, `thumbnail` — all three dropped by the normalization, see below); `save_translation`/`get_translations`/`delete_translation` → `translations` using columns **`detected_word`, `language`, `full_sentence`** (lines 101, 110-111) — see Problem #1, these columns do not exist in any of the 3 SQL sources; `save_gesture_word` → `gesture_words`; `clear_store` → truncates one of `gesture_recordings`/`translations`/`gesture_words` by name map (line 149); `get_stats` → row counts of those 3 tables. Deleted rather than fixed: it had no live caller (`js/db-local.js`'s only confirmed caller had no callers of its own, `DEBT.md` items 6/8), and it referenced columns/tables the normalization removes outright — repointing it would have kept dead code alive for no reader. `js/db-local.js` (its only caller) and its `<script>` tag in `gesture-training.html` were deleted in the same commit; `scratch/trigger_sync.php` was deleted too, since running it would have recreated `esl_signs`/`fsl_signs` and the old columns.
 
-**save_gesture.php** — GET or POST (`php/api/save_gesture.php:333-339`; re-measured 2026-09-26, video-based gesture capture phase — was previously cited as `440-446`, itself shifted from an earlier `386-392`; this file's line numbers have moved at least three times across phases, so treat any citation into it as due for re-checking after the next edit). GET (no `action`) lists samples from disk (`list_samples`, defined at line 278), and unless `?no_sync` is set, first runs `sync_disk_to_db` (called at line 283, function defined at line 159) which walks `saved_gestures/` and `saved_gestures_fsl/` JSON sample files and reconciles them into `gestures` and `gesture_recordings` (2026-09-24: no longer touches `esl_signs`/`fsl_signs` — those tables are gone; the `ensure_language_dataset_table()`/`save_gesture_to_language_dataset()` functions and the `*_signs` cascade deletes were removed in the same phase). A `?no_sync` GET still runs `ensure_gestures_columns()` (called at line 287, defined in `php/api/gesture_category.php:58`) so the `category` column exists before the response is built even on a not-yet-migrated DB. Both GET forms return a top-level `categories` key — `{"ESL": {label: category}, "FSL": {label: category}}` — built by `build_categories_map()` (lines 249-276; the SELECT is wrapped in `try/catch (Throwable)` at line 251 so a PHP 8.1+ `mysqli_sql_exception` also falls back instead of failing the request) from one `SELECT label, sign_language, category FROM gestures` query (was `SELECT word, ...` before the rename), falling back to the `gesture_category()` heuristic per label when a label has no DB row or the query itself fails. POST body JSON: `action="delete_gesture"` (label-based delete across disk + `gestures`/`gesture_recordings`, lines 348-382 — the `esl_signs`/`fsl_signs` deletes are gone with the tables; selects `SELECT id FROM gestures WHERE label = ? LIMIT 1` via a parameterized `mysqli_prepare`/`bind_param` at lines 366-368 (not string interpolation), recordings deleted before the gesture row, required now that the FK is `ON DELETE RESTRICT`) or default path: `{label|word, sign_language|dataset, frames[], video_base64?, video_path?, category?, formatVersion?}` — frames capped `1..301` since the 2026-09-26 video-based gesture capture phase raised `MAX_FRAMES_PER_SAMPLE` from 120 to 301 (`= MAX_FRAMES_PER_REP`, `php/api/save_gesture.php:39`, checked at `:402-404`; the HTTP 413 message is now `'Too many frames in one sample (max 301)'`, `:403` — the old "expected 20-40 frames" text is gone). `category` (line 391, `valid_gesture_category($body['category'] ?? null)`) is optional: invalid or missing means "use the heuristic on insert, leave an existing row's category alone on update" (`save_gesture_word_to_db()`, lines 75-126 — the `ON DUPLICATE KEY UPDATE ... category = IF(?, ?, category)` clause at line 89 only overwrites when the caller passed an explicit, non-null category; `word` → `label` in the INSERT and the fallback SELECT since the rename). The response echoes the stored category back as `category` (line 593), read back from the DB (lines 117-122) rather than recomputed, so it reflects the update-or-leave-alone rule exactly. Saves a JSON landmark sample file to `saved_gestures/<label>/sample_<ms>_<hex>.json` or the `_fsl` variant, format tag `mediapipe_hands_landmarks_v2` — **or, since 2026-09-26, `mediapipe_hands_raw_v3`** when the request body's `formatVersion` is `3` (`$isV3 = $formatVersion === 3`, `:407`; see "v3 raw samples" below for the shape difference and why it's stored compact. This v3 path is what `js/gesture-capture-ui.js`'s new full-screen recording mode uses; v2's own shape, validation and pretty-printing are untouched). If `video_base64` present, decodes and shells out to **ffmpeg** (see below) to produce `assets/signs/<en|fil>/<label>.mp4`, falling back to raw `.webm` if ffmpeg is unavailable or fails; after `save_gesture_word_to_db`, `$assetUpdate` (`save_gesture.php:570`) runs `UPDATE gestures SET asset_path = COALESCE(?, asset_path) WHERE id = ?` with the produced asset path — "never overwrite with something if nothing new was produced," the same rule the old `IFNULL`-based `*_signs` write had. `save_gesture_recording_to_db($gestureId, $frameCount, $samplePath, $landmarkJson)` inserts `(gesture_id, frame_count, sample_path, landmark_json)` (was `sample_count`, plus the now-dropped `gesture_type`/`sign_language`/`thumbnail`) at line 580. The response's `dbDatasetTable`/`dbDatasetId` keys (named the dropped `*_signs` tables) were removed — grep-verified no caller read them. Also has a hardcoded absolute Windows path `C:\Users\Techlife\OneDrive\Documents\New folder (5)\Sining_kamay\assets\signs\<subfolder>` (lines 542, 557) that it copies videos into if that directory exists — developer-machine-specific, not Pi-portable.
+**save_gesture.php** — GET or POST (`php/api/save_gesture.php:361-367`). This file's line numbers have moved at least four times across phases; every citation below was re-measured on 2026-10-05 against the 718-line version (sign-texts phase), so treat any citation into it as due for re-checking after the next edit. It requires `connect.php`, `gesture_category.php` and `sign_meta.php` (`:7-9`).
 
-**gesture_category.php** — no HTTP entry point of its own; `require_once`'d by `save_gesture.php` (`php/api/save_gesture.php:8`). `ensure_gestures_columns()` (line 58) and `backfill_gesture_categories()` (line 95) operate on `label` and the `sign_language ENUM('ESL','FSL')` since the 2026-09-24 normalization (previously `word` and a plain `VARCHAR(10)`); the `sign_language` ALTER only runs if the column is still missing, and now adds it as `enum('ESL','FSL') NOT NULL DEFAULT 'ESL' AFTER label`. Two pure functions, no DB/side effects: `gesture_category(string $label): string` — the word/letter/number/phrase heuristic (first match wins: all-digit or a closed English/Filipino number-word list → `number`; single `a-z` char → `letter`; contains `_` → `phrase`; else `word` — see `docs/system/DECISIONS.md` for the exact word list and measured counts) — and `valid_gesture_category($value): ?string` — lowercases/trims and returns the value only if it's one of the 4 valid categories, else `null`. Mirrored exactly in `js/gesture-category.js` (browser + Node, no DOM) for the Step 1 UI's Type selector; the two implementations are parity-tested (`tests/categorization/heuristic-parity.test.mjs`).
+*GET* (no `action`; dispatch `:361-363`) calls `list_samples()` (`:301-359`). Unless `?no_sync` is set it first runs `sync_disk_to_db()` (called `:306`, defined `:165-269`; semantics in "One sign, two texts" below). Then it runs `ensure_gestures_columns()` (`:310`, defined `php/api/gesture_category.php:58`) so a `?no_sync` GET on a not-yet-upgraded DB still has its columns before `build_categories_map()` reads them. It walks `saved_gestures/` then the legacy `saved_gestures_fsl/` (`:312-315`, `:320-349`) and returns `{success, datasetRoot, gestures, signs, categories}` (`:351-357`):
+- `gestures` — label → sample objects `{file, label, frames, frameCount, createdAt, signLanguage}`; `signLanguage` is the sample file's own field (default `ESL`, `:338-345`).
+- `signs` — label → `{set, textEn, textFil}` from `derive_sign()` (`:331-333`); the first folder that has the label wins, `saved_gestures/` before the legacy folder. New in the sign-texts phase.
+- `categories` — `{"ESL": {label: category}, "FSL": {label: category}}` from `build_categories_map($conn, $signs)` (`:275-299`), one `SELECT label, category FROM gestures` (`:278`) wrapped in `try/catch (Throwable)` (`:277-281`) so a PHP 8.1+ `mysqli_sql_exception` also falls back to the `gesture_category()` heuristic per label (`:290`). A label whose set is `BOTH` appears under **both** `categories.ESL` and `categories.FSL` (`:291-296`) with the same category; the category column is per sign, not per language.
+
+*POST* `action="delete_gesture"` (`:376-419`, label-based): `clean_label()` the label (`:377`, 400 if empty), delete every `*.json` (including `sign.json`) and then the folder from **both** `saved_gestures/` and the legacy `saved_gestures_fsl/` (`:380-392`), then `SELECT id FROM gestures WHERE label = ?` (prepared, `:395-398`) and delete recordings before the gesture row (`:405-414`, required since the FK is `ON DELETE RESTRICT`). The label is unique now, so there is at most one `gestures` row (`:394`). All statements are prepared with `bind_param`, none string-interpolated.
+
+*POST* default path — save one sample. Body: `{sign_language|dataset: "ESL"|"FSL"|"BOTH", text_en?, text_fil?, label|word? (legacy), frames[], video_base64?, video_path?, category?, formatVersion?, ...}`.
+- **Set** (`:421`): `valid_sign_set($body['sign_language'] ?? $body['dataset'])`, default `ESL` when missing or invalid.
+- **Texts** (`:426-430`): `text_en` / `text_fil` go through `sign_text_field()` (`php/api/sign_meta.php:104-119`): trimmed; empty becomes null; a non-string or a value over 255 characters (`SIGN_TEXT_MAX`, `sign_meta.php:7`) is HTTP 400.
+- **Key derivation** (`:430-450`). If either text is sent (a "new-style call"), every text the set shows is required (HTTP 400 `English text is required for this sign set` / `Filipino text is required for this sign set`, `:434-439`) and the key is `clean_label(text_fil)` for FSL, `clean_label(text_en)` for ESL and BOTH (`:440`); a key that cleans to empty is 400 `The text must contain at least one letter or number` (`:441-443`). If neither text is sent (a legacy caller sending only `label`/`word`, e.g. `diagnostic.html`) the key is `clean_label(label ?? word)` (`:446`, 400 `Gesture label is required` if empty), and the texts come from the stored sign or a draft (`:509-516`). The key is never typed by the user in the UI; it is derived from the text.
+- **Frames** (`:451-459`): `1..301`, over 301 is HTTP 413 `Too many frames in one sample (max 301)`. `MAX_FRAMES_PER_SAMPLE = 301` is `:35` (= `MAX_FRAMES_PER_REP` in `js/capture-core.js`). v3 per-frame validation `:461-470`.
+- **Collision** (`:472-505`). An existing sign with this key is looked up in `saved_gestures/<key>/` then the legacy `saved_gestures_fsl/<key>/` (a folder counts if it has `sign.json` or at least one sample, `:475-481`), else by `gestures` row (`:482-496`; an empty folder with neither is not an existing sign). Same set: the save goes ahead (samples are added, texts updated). Different set: HTTP **409** `{success:false, error:"A sign with this key already exists as <SET>.", existingSet:"<SET>"}` and **nothing is written** (`:497-505`, checked before the label folder or any file is created).
+- **Final texts** (`:507-523`): sent texts replace stored ones; an unsent text keeps the stored one; a brand-new legacy sign gets `sign_draft_text($label)` for the languages its set shows (`:514-515`); a text the set requires is never left empty (`:522-523`), so `chk_gestures_texts` can never be violated by this path.
+- **Disk** (`:525-546`, `:548-598`): always `saved_gestures/<key>/` — `saved_gestures_fsl/` is never written again. `sample_<ms>_<hex>.json` keeps the v2/v3 format unchanged (`format: mediapipe_hands_landmarks_v2`, or `mediapipe_hands_raw_v3` when `formatVersion` is `3`, `$isV3`, `:461-462`; shapes in "v3 raw samples" below). The sample's own `signLanguage` field is `FSL` only for FSL signs and `ESL` for ESL **and** BOTH signs (`$sampleLanguage`, `:546`, used `:562` and `:586`); `sign.json`, not the sample, decides a sign's set.
+- **sign.json** is written after the sample file and before any DB write (`:600-603`): disk first.
+- **Video** (`:605-675`) is unchanged in behavior: if `video_base64` is present, ffmpeg transcodes to `assets/signs/<sub>/<key>.mp4` (raw `.webm` fallback); `<sub>` is `fil` for an FSL sign and `en` for ESL **and BOTH** (`:614`), so a BOTH sign's one clip lives under `assets/signs/en/`. Samples 2+ of a key with a clip skip the transcode (`$skipVideo`, `:624`). The hardcoded developer-machine OneDrive copy is at `:653` and `:668` (see Problems #5). v3 captures send no video (`docs/system/DEBT.md` item 86).
+- **DB**: `save_gesture_word_to_db($label, $set, $textEn, $textFil, $category)` (called `:678`, defined `:75-132`) upserts by label (`:87-92`): `ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), sign_language = VALUES(sign_language), text_en = VALUES(text_en), text_fil = VALUES(text_fil), category = IF(?, ?, category)`. Set and both texts are always overwritten with the final values; `category` (validated by `valid_gesture_category`, `:424`) is only overwritten when the caller sent an explicit one (`$hasExplicitCategory`, `:96`), so a heuristic-only call never changes an existing row's category (unchanged 2026-09-23 rule). `$assetUpdate` (`:681-689`) runs `UPDATE gestures SET asset_path = COALESCE(?, asset_path) WHERE id = ?`. `save_gesture_recording_to_db()` (`:134-155`, called `:691-696`) inserts `(gesture_id, frame_count, sample_path, landmark_json)` with the same JSON string that was written to disk.
+- **Response** (`:700-718`): `success`, `label` (the derived key), `signLanguage` (= the set, kept so old callers still read it), `set`, `textEn`, `textFil`, `category` (read back from the DB, `:117-131`), `file`, `videoAsset`, `frameCount`, `dbGestureId`, `dbGestureCreated`, `dbRecordingId`, `labelSampleCount`, `videoSkipped`, `videoTranscoded`, `videoExisting`.
+
+Callers: `js/gesture-data.js` (`SAVE_ENDPOINT` `:5-7`, `saveGestureSample()` `:640`, which sends `text_en`/`text_fil` from `meta.textEn`/`meta.textFil`, and `sign_language` ESL|FSL|BOTH), `js/gesture-capture-ui.js:648`, `js/gesture-training-ui.js:545` (delete), `diagnostic.html:111-112` (legacy label-only caller).
+
+**gesture_category.php** — no HTTP entry point of its own; `require_once`'d by `save_gesture.php` (`:8`) and `signs.php` (`:22`). `column_exists()` is `:49-54`, `ensure_gestures_columns()` `:58-152` and `backfill_gesture_categories()` `:157-179`. As of 2026-10-04 `ensure_gestures_columns()` also upgrades a pre-sign-texts database in place (enum widened to `BOTH`, unique key swapped, `text_en`/`text_fil` added, never the CHECK — see "Upgrade of a pre-phase database" below). Since the 2026-09-24 normalization it operates on `label` and the `sign_language` enum (previously `word` and a plain `VARCHAR(10)`); a missing `sign_language` column is added as `ENUM('ESL','FSL','BOTH') NOT NULL DEFAULT 'ESL' AFTER label` (`:62`; `ENUM('ESL','FSL')` before 2026-10-04). Two pure functions, no DB/side effects: `gesture_category(string $label): string` — the word/letter/number/phrase heuristic (first match wins: all-digit or a closed English/Filipino number-word list → `number`; single `a-z` char → `letter`; contains `_` → `phrase`; else `word` — see `docs/system/DECISIONS.md` for the exact word list and measured counts) — and `valid_gesture_category($value): ?string` (`:41-47`) — lowercases/trims and returns the value only if it's one of the 4 valid categories, else `null`. Mirrored exactly in `js/gesture-category.js` (browser + Node, no DOM) for the Step 1 UI's Type selector; the two implementations are parity-tested (`tests/categorization/heuristic-parity.test.mjs`). The heuristic runs on the **key** (the folder label), never on the display texts.
+
+**One sign, two texts (2026-10-04, sign-texts phase).** Plan and owner decisions: `docs/reports/2026-10-04-sign-texts-step1.md`; design choices in `docs/system/DECISIONS.md` "Decisions made during the sign-texts phase". A *sign* is now one folder `saved_gestures/<key>/` holding its samples **once**, plus `sign.json`; there is no copying between folders. A sign has a **set** — `ESL`, `FSL` or `BOTH` (DB column `gestures.sign_language`, widened to `ENUM('ESL','FSL','BOTH')`, column name kept) — and two texts, English (`gestures.text_en`) and Filipino (`gestures.text_fil`). ESL shows/requires only the English text, FSL only the Filipino text, BOTH both. Texts keep their casing and punctuation (`"How are you?"`, `"Kumusta ka?"`); the key is derived, never typed.
+
+- **`sign.json`** (written by `write_sign_json()`, `sign_meta.php:51-65`): pretty-printed (`JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`), `LOCK_EX`, keys exactly `key`, `set`, `textEn`, `textFil`, `updatedAt` (`gmdate('c')`, ISO 8601 UTC). `textEn`/`textFil` are strings or `null`:
+  ```
+  {"key":"how_are_you","set":"BOTH","textEn":"How are you","textFil":"Kamusta ka","updatedAt":"<ISO 8601 UTC>"}
+  ```
+  `read_sign_json()` (`:37-48`) returns null for a missing, unreadable or invalid file. A sign's `sign.json` and a sample's `signLanguage` field can disagree (BOTH signs record samples as `ESL`); `sign.json` wins.
+- **Key** = `clean_label(text)` (`sign_meta.php:9-16`: lowercase, whitespace → `_`, strip `[^a-z0-9_-]`, trim `_-`) of the English text for ESL/BOTH, of the Filipino text for FSL; `clean_label` moved into `sign_meta.php` (guarded with `function_exists`). Draft text rule `sign_draft_text()` (`:19-25`): `_` → space, first character upper-cased (`kamusta_ka` → `Kamusta ka`).
+- **`derive_sign($folderName, $label, $dir)`** (`sign_meta.php:72-100`) returns `{set, textEn, textFil}`: if `sign.json` exists with a valid set (`valid_sign_set()`, `:28-34`) its set and non-empty string texts are used; otherwise the set is `FSL` for the legacy folder `saved_gestures_fsl` and `ESL` for `saved_gestures`, or the first sample's own `signLanguage` when that is `ESL`/`FSL` (`:79-89`), with the draft text of the label for that language. Whatever the source, a text the set requires and that is still empty gets the draft (`:93-98`), so the result always satisfies `chk_gestures_texts`. A hand-edited `sign.json` missing a required text therefore becomes the draft in the DB; the file itself is not rewritten.
+- **Disk is the source of truth.** The DB mirrors it; every full GET reconciles disk to DB (below). `sync_db_to_disk()` stays a no-op (`:157-163`).
+- **`saved_gestures_fsl/`** is legacy: still **read** (sync `:170-173`, list `:312-315`, collision check `:475`, delete `:382`) but never written again. A legacy folder without `sign.json` derives as FSL. After the 2026-10-04 migration it holds 0 sample files (`.git/sdd/st-task-8-report.md`, item 1: `"fslSamples":0`).
+- **Sync semantics** (`sync_disk_to_db()`, `:165-269`): it walks `saved_gestures/` then the legacy folder (`:170-173`), skips a folder with no sample files (`:198-199`) and, for each label, takes `derive_sign()` (`:202`). **Disk wins:** the `gestures` row is upserted only when it is missing or its `sign_language`/`text_en`/`text_fil` differ from the derived sign (`:203-214`); a label present in both folders keeps the `saved_gestures` sign (the `$upserted` guard `:203`; the legacy folder's samples are still registered). Sync passes no category and skips the category read-back (`save_gesture_word_to_db(..., null, false)`, `:211`, `$readBackCategory` `:117-119`), so a manual re-tag is never overwritten. New recordings are inserted for sample files whose path is unknown (`:226-235`); stale recordings and recording-less gestures are deleted exactly as before (`:242-268`).
+- **Sync speed (measured).** The first version of the sync called `save_gesture_word_to_db()` once per label folder, and each call ran `ensure_gestures_columns()` (four `SHOW COLUMNS`) plus a category read-back. A full GET of `save_gesture.php` measured **12.2-14.5 s** (122 labels; `.git/sdd/st-task-2-report.md` fix round 1). Fix commit `78df63d`: one column check per request (`static $columnsEnsured`, `:77-81`), all `gestures` rows loaded once (`:177-181`), all recorded `sample_path`s loaded once (`:183-187`, replacing a SELECT per sample file), upsert only on difference. Interleaved against the pre-phase code (`.git/sdd/progress.md`, Task 2 fix round 1): new 2.30 / 1.88 / 1.86 s vs old 1.75 / 2.10 / 1.85 s; the task report's own noisier run of the fixed code was 1.65-3.05 s against 2.14-2.30 s for the old code. After the whole-phase fix commit `16c15ce`: **0.76 / 0.77 / 0.83 s** (an earlier run 0.90 s; `.git/sdd/st-final-fix-report.md`). All on the dev machine; the Pi was not measured.
+- **Counts after the migration** (live, 2026-10-04): 122 `gestures` rows (89 `BOTH`, 33 `ESL`, 0 `FSL`) and 127 `gesture_recordings` (`.git/sdd/st-task-3-migration-output.txt`; re-confirmed by `--verify-only` and the final live check). Before the phase: 211 gestures (122 ESL + 89 FSL) and 216 recordings (`.git/sdd/progress.md`, Task 0).
+
+**signs.php** (`php/api/signs.php`, 152 lines, new 2026-10-04; no auth, same posture as `reports.php`/`conversations.php` — `docs/system/DEBT.md` item 72 stays open). `fail()` at `:10-14`; OPTIONS → 204 (`:16-19`); any method other than GET/POST → 405 `GET or POST only` (`:44-46`); everything runs in `try { ... } catch (Throwable)` → `Database error: ...` 500 (`:150-152`). It calls `ensure_gestures_columns()` first (`:49`).
+- `GET` (`:51-70`): one query, `SELECT g.label, g.sign_language, g.text_en, g.text_fil, g.category, g.asset_path, COUNT(r.id) AS samples FROM gestures g LEFT JOIN gesture_recordings r ON r.gesture_id = g.id GROUP BY g.id` → `{success:true, signs:{<key>:{set, textEn, textFil, category, assetPath, samples}}}`. It reads the DB, not the disk (no sync): a sign that exists only on disk is not listed until some full GET of `save_gesture.php` has synced it.
+- `POST {"action":"update","key","set","textEn","textFil"}` (`:72-148`): body must be a JSON object (400 `Invalid JSON body`) with `action` = `update` (400 `Unknown action`). `key` must be a string that equals its own `clean_label()` and a folder `saved_gestures/<key>/` with at least one `sample_*.json` must exist inside `saved_gestures` (realpath-checked) or it is **404 `Sign not found`** (`:80-89`). Note this looks only in `saved_gestures/`: a legacy-only FSL folder 404s. `set` must be ESL/FSL/BOTH (400 `set must be ESL, FSL or BOTH`, `:91-94`); `textEn`/`textFil` go through `sign_text_field()` (400 for a non-string or >255 chars, `:95-98`); **the shown texts must be sent non-empty** (400 `English text is required for this sign set` / `Filipino text ...`, `:100-106`) even if a stored value exists. A **hidden** text is stored if sent, else the stored one is kept — `sign.json`'s value first, then the DB row's (`:115-119`), so narrowing a set keeps the now-hidden text stored.
+- Write order (`:121-138`): `sign.json` first (500 `Unable to write sign.json`), then `UPDATE gestures SET sign_language = ?, text_en = ?, text_fil = ? WHERE label = ?`, or an `INSERT` (category from `gesture_category($key)`) when the sign had no row yet. It then reads the row back from the DB (`:140-146`) and responds `{success:true, sign:{key, set, textEn, textFil}}` (`:148`). Sample files are never touched; no recording is moved or copied. A moved set changes which model a sign belongs to; the client clears the affected cached models (`docs/system/UI.md` Part 2).
+
+**Upgrade of a pre-phase database** (`ensure_gestures_columns()`, `gesture_category.php:58-152`; added in the whole-phase fix `16c15ce`). On any request, an existing DB that predates this phase is upgraded in place: the `sign_language` column is added if missing (`:60-70`); one `information_schema` UNION query reads its type and which of `uq_gestures_label_language` / `uq_gestures_label` exist (`:74-81`); if the type lacks `'BOTH'`, `ALTER TABLE ... MODIFY sign_language ENUM('ESL','FSL','BOTH') NOT NULL DEFAULT 'ESL'` (`:82-96`, with a concurrent-request re-check); if the old unique key exists and the new does not **and no label appears twice**, `DROP INDEX uq_gestures_label_language, ADD UNIQUE KEY uq_gestures_label (label)` (`:97-117`) — with duplicate labels the old key is kept, no error is raised, and the swap happens on a later request once the duplicates are gone; `text_en` (after `sign_language`) and `text_fil` (after `text_en`) are added as `VARCHAR(255) NULL` (`:120-132`); `category` as before (`:133-151`). It **never adds `chk_gestures_texts`**: an upgraded DB has no CHECK until `database_setup.sql` or the migration is applied, and PHP alone guarantees the required texts (`save_gesture.php:522-523`, `sign_meta.php:93-98`, `signs.php:100-106`). One full sync then fills the texts from disk (drafts where there is no `sign.json`). Tested by `tests/sign-texts/upgrade-path.test.mjs` on a scratch DB cloned from the pre-phase dump: 2 tests pass; against the pre-fix `gesture_category.php` 0 pass / 2 fail (`.git/sdd/st-final-fix-report.md`). The tests cover: enum gains `BOTH`; key swapped; a `BOTH` row stores `BOTH`; no CHECK added; second call a no-op; duplicate label keeps the old key and swaps after removal.
 
 **v3 raw samples (2026-09-26, video-based gesture capture phase).** When
 `$isV3` is true, `save_gesture.php` builds a richer `$recording` array
-(`:445-473`) instead of v2's plain `{label, createdAt, frameCount, format,
+(`:551-579`) instead of v2's plain `{label, createdAt, frameCount, format,
 signLanguage, frames}`: `format: 'mediapipe_hands_raw_v3'`, `formatVersion:
 3`, `source` (`(string)($body['source'] ?? 'video-live')`), `repIndex`
 (`(int)($body['repIndex'] ?? 0)`), `videoWidth`/`videoHeight` (the
 recording's native camera resolution), `fps`, and `input: {width, height,
 contentRect: {x, y, w, h}}` (the extractor's 320×240-by-default canvas and
 the letterboxed content rect within it — see `docs/system/DECISIONS.md`, Q5).
-Every numeric field is coerced with a local `$numOrZero` closure (`:448`) so
+Every numeric field is coerced with a local `$numOrZero` closure (`:554`) so
 a missing/malformed value becomes `0`, never a PHP notice. `frames` itself is
 each v3 frame's raw shape straight from the client: `{t, hands: [{label,
-score, landmarks: [{x,y,z}, …21]}]}` — validated per-frame at `:410-414`
+score, landmarks: [{x,y,z}, …21]}]}` — validated per-frame at `:464-470`
 (`t` numeric, `hands` an array) before any of this runs.
 **Why v3 is stored compact, not pretty-printed:** a pretty-printed 301-frame,
 two-hand sample measured ~1.18 MB, over MariaDB's default
 `max_allowed_packet` (1 MiB, `C:\xampp\mysql\bin\my.ini:37`), and the
 `gesture_recordings` insert (which stores the same JSON string in
 `landmark_json`, see "Tables" below) failed against it. `$encoded =
-json_encode($recording, $isV3 ? 0 : JSON_PRETTY_PRINT)` (`:489`) stores v3
+json_encode($recording, $isV3 ? 0 : JSON_PRETTY_PRINT)` (`:595`) stores v3
 compact and leaves v2's pretty-printed on-disk format exactly as it was.
 Measured (Task 6 e2e): 14,861 / 14,868 / 14,849 bytes for three compact
 17-frame reps of the same sample. The response gains no new top-level keys
@@ -87,11 +137,11 @@ saves never send `video_base64`/`video_path`, so `videoSkipped`/
 (`false`/`false`/`null`) for a v3-only label — see `docs/system/DEBT.md`
 item 86.
 
-ffmpeg invocation (`php/api/save_gesture.php:528`):
+ffmpeg invocation (`php/api/save_gesture.php:639`):
 ```
 "$ffmpeg -i <tempRawPath> -vf \"scale=360:-2\" -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3.0 -r 25 -an -b:v 300k <videoPath> -y 2>&1"
 ```
-ffmpeg lookup order (`get_ffmpeg_path()`, lines 36-52): global `ffmpeg` via `shell_exec('ffmpeg -version 2>&1')`, else `<project root>/ffmpeg.exe`, `<project root>/bin/ffmpeg.exe`, or `C:\ffmpeg\bin\ffmpeg.exe`.
+ffmpeg lookup order (`get_ffmpeg_path()`, lines 37-53): global `ffmpeg` via `shell_exec('ffmpeg -version 2>&1')`, else `<project root>/ffmpeg.exe`, `<project root>/bin/ffmpeg.exe`, or `C:\ffmpeg\bin\ffmpeg.exe`.
 
 **save_translation.php** — **deleted 2026-09-25** (saved-conversations phase,
 Task 6, option A). Was: POST only (405 otherwise, line 25). Body JSON:
@@ -183,28 +233,7 @@ item 72 (its scope now explicitly includes this file too).
 
 **get_history.php** (deleted 2026-09-24) — GET, no params. Returns top 50 `translation_history` rows.
 
-**reports.php** (`php/api/reports.php`, 63 lines — was 74/80 lines before the
-`translations` query and its response keys were removed 2026-09-25,
-saved-conversations phase Task 5) — GET, no params required.
-`fetch_gestures($conn, $signLanguage, $subFolder)` (`:22`) runs `SELECT id,
-label, asset_path, is_active, created_at FROM gestures WHERE sign_language =
-? ORDER BY created_at DESC, id DESC` for `'ESL'` and `'FSL'` (was two
-separate `esl_signs`/`fsl_signs` queries before the 2026-09-24 normalization);
-each row also gets a computed `display_label` = `str_replace('_', ' ',
-label)` (`:43`) so the visible Reports columns ("Key"/"Label"/"Text") stay
-exactly as before the rename. The empty-`asset_path` `.mp4`-on-disk backfill
-(`:30-41`) keeps its old logic but now targets `gestures` directly (`UPDATE
-gestures SET asset_path = ? WHERE id = ?`, `:35`) — it only fires per-request
-for a still-NULL row with a `.mp4` on disk, unlike the one-time `.webm`
-backfill script (see "Schema migration and fresh-machine setup" below), so a
-synced-but-video-less row without a `.mp4` stays NULL until that script runs
-(`DEBT.md` item 75). Response shape as of 2026-09-25: `{success, summary:
-{esl, fsl}, data: {esl, fsl}}` — the `translations`/`summary.translations`/
-`data.translations` keys are gone; Reports' third tab and metric now come
-from `conversations.php` instead (fetched by `reports.html`, only after the
-PIN — see `docs/system/UI.md` Part 3c). `reports.php` itself is still fetched
-at page load, before the PIN, exactly as before — the ESL/FSL gesture
-dictionary it returns isn't private, unlike conversation contents.
+**reports.php** (`php/api/reports.php`, 81 lines as of the sign-texts phase — 63 lines after the 2026-09-25 `translations` removal, saved-conversations phase Task 5) — GET, no params required. `fetch_gestures($conn, $sets, $subFolder, $textColumn)` (`:22-64`) runs a prepared `SELECT id, label, sign_language, text_en, text_fil, asset_path, is_active, created_at FROM gestures WHERE sign_language IN (...) ORDER BY created_at DESC, id DESC` (`:25-29`), with `$sets` a fixed list from this file, never user input (`:23`). It is called twice (`:66-67`): ESL tab = `['ESL','BOTH']` with `text_en`, FSL tab = `['FSL','BOTH']` with `text_fil`, so a **Both sign is listed in both tabs**, each with its own text. Each row also gets `set` (the `sign_language` value, `:59`) and `text` (the tab's text column, `:60`) beside the computed `display_label` = `str_replace('_', ' ', label)` (`:58`, kept from before so existing columns still work). The empty-`asset_path` `.mp4`-on-disk backfill (`:45-57`) keeps its old logic against `gestures` (`UPDATE gestures SET asset_path = ? WHERE id = ?`, `:50`): it only fires per-request for a still-NULL row with a `.mp4` on disk, unlike the one-time `.webm` backfill script (see "Schema migration and fresh-machine setup" below), so a synced-but-video-less row without a `.mp4` stays NULL until that script runs (`DEBT.md` item 75); for a Both sign on the FSL tab it looks in `assets/signs/fil/<label>.mp4`. Response shape: `{success, summary: {esl, fsl}, data: {esl, fsl}}` (`:69-79`), where `summary` is the row count of each list (live 2026-10-04: esl 122 = 33 ESL + 89 Both, fsl 89 = the 89 Both; measured by `tests/sign-texts/reports-keyboard-check.mjs`, `.git/sdd/st-task-7-report.md`). The Conversations tab/metric come from `conversations.php` (fetched by `reports.html`, only after the PIN — `docs/system/UI.md` Part 3c). `reports.php` itself is still fetched at page load, before the PIN, exactly as before — the ESL/FSL gesture dictionary it returns isn't private, unlike conversation contents.
 
 **scratch/trigger_sync.php** — **deleted 2026-09-24** (DB normalization,
 Task 4). Was: standalone CLI/browser script, requires `php/connect.php`
@@ -222,11 +251,14 @@ caller (`DEBT.md` items 8/71).
 below; `esl_signs`/`fsl_signs` were dropped in the earlier 2026-09-24
 schema-normalization phase, folded into `gestures.asset_path`/`is_active`;
 `gesture_words` and `translation_history` were dropped in the same day's
-earlier DB cleanup, see below). Exact `SHOW CREATE TABLE`, `gestures`/
-`gesture_recordings` taken from `db-schema/database_setup.sql:30-54`
-(verified live-identical by Task 4's scratch-database comparison,
-`.git/sdd/progress.md` Task 4); `conversations`/`messages` taken from
-`db-schema/database_setup.sql:60-88` and confirmed live-identical (no
+earlier DB cleanup, see below). Exact `SHOW CREATE TABLE`: `gestures` as of the 2026-10-04 sign-texts migration, taken from the live
+`SHOW CREATE TABLE` printed by the migration's step 8 (`.git/sdd/st-task-3-migration-output.txt`)
+and identical to `db-schema/database_setup.sql:30-46` (Task 2 created the setup SQL's DDL on a
+scratch DB and confirmed the CHECK rejects an FSL row with no `text_fil` and a BOTH row with no
+`text_fil`, `.git/sdd/st-task-2-report.md`); `gesture_recordings` from
+`db-schema/database_setup.sql:48-60` (verified live-identical by the 2026-09-24 Task 4 scratch-database
+comparison, `.git/sdd/progress.md` Task 4); `conversations`/`messages` taken from
+`db-schema/database_setup.sql:66-94` and confirmed live-identical (no
 `ON UPDATE` clause, the FK's `ON DELETE CASCADE`, and both CHECK constraints
 all present) by Task 1's `SHOW CREATE TABLE` run, `.git/sdd/conv-task-1-report.md`:
 
@@ -234,13 +266,16 @@ all present) by Task 1's `SHOW CREATE TABLE` run, `.git/sdd/conv-task-1-report.m
 CREATE TABLE `gestures` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `label` varchar(255) NOT NULL,
-  `sign_language` enum('ESL','FSL') NOT NULL DEFAULT 'ESL',
+  `sign_language` enum('ESL','FSL','BOTH') NOT NULL DEFAULT 'ESL',
+  `text_en` varchar(255) DEFAULT NULL,
+  `text_fil` varchar(255) DEFAULT NULL,
   `category` enum('word','letter','number','phrase') NOT NULL DEFAULT 'word',
   `asset_path` varchar(255) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_gestures_label_language` (`label`,`sign_language`)
+  UNIQUE KEY `uq_gestures_label` (`label`),
+  CONSTRAINT `chk_gestures_texts` CHECK ((`sign_language` = 'FSL' OR (`text_en` IS NOT NULL AND `text_en` <> '')) AND (`sign_language` = 'ESL' OR (`text_fil` IS NOT NULL AND `text_fil` <> '')))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `gesture_recordings` (
@@ -306,9 +341,20 @@ rule that would otherwise attach to "the first TIMESTAMP column" never fires).
 `confidence` was considered and dropped — `talk.html`'s recognizer never
 produces a sentence-level score (`js/talk-signing.js:119-128`).
 
-209 `gestures` rows (ESL 67 word/26 letter/10 number/17 phrase; FSL 50/0/10/29),
-210 `gesture_recordings` rows (measured pre-migration 2026-09-24, unchanged in
-count by the migration — see `docs/reports/2026-09-24-db-normalization-step1.md`).
+122 `gestures` rows (89 `BOTH`, 33 `ESL`, 0 `FSL`) and 127 `gesture_recordings` rows
+(measured live 2026-10-04 after the sign-texts migration, `.git/sdd/st-task-3-migration-output.txt`;
+re-confirmed by `--verify-only` and `.git/sdd/st-final-fix-report.md`). Before that phase:
+211 `gestures` (122 ESL + 89 FSL) and 216 `gesture_recordings` (`.git/sdd/progress.md` Task 0).
+Per-category counts after the migration were not measured in this phase's reports. (The
+2026-09-24 figures — 209 `gestures`, 210 `gesture_recordings`, see
+`docs/reports/2026-09-24-db-normalization-step1.md` — are history.)
+
+`gestures.sign_language` is the sign's **set** (`ESL`|`FSL`|`BOTH`), not the language of a
+copy; `text_en`/`text_fil` are the two texts; `uq_gestures_label` makes the label (the
+folder key) unique on its own (it replaced `uq_gestures_label_language (label, sign_language)`);
+`chk_gestures_texts` requires `text_en` unless the set is FSL and `text_fil` unless the set is
+ESL. `messages.sign_language` is unchanged (`ESL`|`FSL`|NULL): a Let's Talk message records the
+language the signer used, never `BOTH` (`php/api/save_conversation.php` validates `ESL`|`FSL`).
 
 - `esl_signs` / `fsl_signs` — **dropped 2026-09-24** (schema-normalization
   phase, Task 2). Was: `id INT PK AUTO_INCREMENT`, `sign_key VARCHAR(120)
@@ -343,8 +389,10 @@ erDiagram
     conversations ||--o{ messages : "has"
     gestures {
         int id PK
-        varchar label
-        enum sign_language "ESL or FSL"
+        varchar label UK "the sign key"
+        enum sign_language "set: ESL, FSL or BOTH"
+        varchar text_en "nullable, English text"
+        varchar text_fil "nullable, Filipino text"
         enum category "word/letter/number/phrase"
         varchar asset_path "nullable"
         tinyint is_active
@@ -406,7 +454,7 @@ is plain ASCII and imports directly with no conversion step. Anyone setting up
 a fresh local environment should import `db-schema/sining_kamay_db_backup.sql`,
 not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 - **Prepared statements vs raw string interpolation coexist** (e.g. `save_translation.php`, `get_translations.php`, `save_gesture.php` use `mysqli_prepare`; `save_history.php`, `admin_api.php`, `auth.php`, `core_api.php`'s `clear_store`/`get_stats` build raw SQL strings, some with escaping and some without): reason not documented in code — looks like incremental authorship rather than a deliberate standard.
-- **`sync_db_to_disk` explicitly disabled** (`php/api/save_gesture.php:151-157`; re-measured 2026-09-26, was previously cited as `219-225`): comment states disk is the authoritative source and restoring DB rows to disk caused deleted gestures to resurrect — a documented past bug fix, not a design principle stated up front.
+- **`sync_db_to_disk` explicitly disabled** (`php/api/save_gesture.php:157-163`; re-measured 2026-10-05, was `151-157` on 2026-09-26 and `219-225` before that): comment states disk is the authoritative source and restoring DB rows to disk caused deleted gestures to resurrect — a documented past bug fix, not a design principle stated up front.
 
 ## 5. Constraints
 
@@ -419,10 +467,12 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 - **auth.php**: touches `users` table only. No caller found in tracked frontend JS/HTML (verified via repo-wide grep for `auth.php`/"auth" endpoint patterns — only `docs/system/INVENTORY.md`, `.planning/...progress.md`, and `admin_api.php` itself reference it). Currently dead code; removing it breaks nothing observable in the frontend as shipped.
 - **admin_api.php**: touches `users`, `gestures` (its `translation_history` actions were removed 2026-09-24). Its admin check trusts a client-supplied `requester_id` — see `DEBT.md` item 72. No caller found in tracked frontend (same grep). Dead code as far as the shipped frontend is concerned; presumably meant for an admin dashboard that either was never built against it or was replaced by direct calls elsewhere.
 - **core_api.php**: touches `gesture_recordings`, `translations` (its `gesture_words` action and map entries were removed 2026-09-24; `js/db-local.js`'s uncalled `saveGestureWord()` still posts the removed `save_gesture_word` action and would now get "Unknown action"). No auth check at all — see `DEBT.md` item 72. Only confirmed caller is `js/db-local.js:9` ("points to unified api router"). If its `translations` INSERT/SELECT column names (`detected_word`/`full_sentence`) are changed to match the real schema, any code path that actually exercises `db-local.js`'s translation save/get would start working for the first time (currently it fails against schema — see Problems #1); if `core_api.php` is deleted, whatever front-end flow uses `db-local.js` for camera-translator recording/translation storage breaks.
-- **save_gesture.php**: touches `gestures`, `esl_signs`/`fsl_signs`, `gesture_recordings`, disk folders `saved_gestures/`, `saved_gestures_fsl/`, `assets/signs/en|fil/`, and shells out to **ffmpeg.exe**. Confirmed callers: `js/script.js:849`, `js/gesture-data.js:7` (its `saveGestureSample()`, called by `js/gesture-capture-ui.js:639-650` for every v3 rep), `js/gesture-training-ui.js:246`, `diagnostic.html:113`. Changing its request/response JSON shape breaks the gesture-recording UI in all four; removing ffmpeg breaks only the MP4 transcode (falls back to `.webm` automatically, lines 550-562) — moot for v3-only saves, which never send a video at all (`docs/system/DEBT.md` item 86).
+- **save_gesture.php**: touches `gestures`, `gesture_recordings`, disk folders `saved_gestures/` (read and write) and the legacy `saved_gestures_fsl/` (read and delete only), `assets/signs/en|fil/`, and shells out to **ffmpeg.exe**. Confirmed callers: `js/gesture-data.js:5-7` (its `saveGestureSample()` at `:640`, called by `js/gesture-capture-ui.js:648` for every v3 rep), `js/gesture-training-ui.js:545` (delete), `diagnostic.html:111-112` (legacy label-only POST). (`js/script.js:849`, a former caller, is archived.) Changing its request/response JSON shape breaks the gesture-recording UI; removing ffmpeg breaks only the MP4 transcode (falls back to `.webm` automatically, `:661-673`) — moot for v3-only saves, which never send a video at all (`docs/system/DEBT.md` item 86).
 - **save_translation.php / get_translations.php**: touched `translations` (real schema columns). Confirmed callers: `js/db-api.js:35` and `:75`. Both files, `js/db-api.js`, and the `translations` table itself were **deleted 2026-09-25** together (saved-conversations phase, Tasks 5-6) — see "translations dropped" below.
 - **save_history.php / get_history.php**: touched `translation_history`; both deleted 2026-09-24 together with the table. No caller found in tracked frontend JS/HTML (grep-verified) — dead code as shipped.
-- **reports.php**: touches `gestures` only as of 2026-09-25 (the `translations` read and its opportunistic `asset_path` backfill UPDATE were removed with the table). Confirmed caller: `reports.html` (per system brief; endpoint itself has no auth/session check — any client can call it, and it is still fetched before the PIN).
+- **reports.php**: touches `gestures` only (the `translations` read was removed 2026-09-25; it also still issues the opportunistic `asset_path` backfill UPDATE for `.mp4`s, `:50`). Confirmed caller: `reports.html` (endpoint itself has no auth/session check — any client can call it, and it is still fetched before the PIN).
+- **signs.php** (2026-10-04): touches `gestures`/`gesture_recordings` (read: GET; write: update) and the file `saved_gestures/<key>/sign.json` (write, update only). Confirmed callers: `js/gesture-data.js:10` (`loadSigns()`, used by `gesture-training.html`, and by `talk.html` through `js/talk-loader.js:50`), `js/sign-player.js:245` (text-to-sign registration), `js/gesture-training-ui.js:246` (dataset-modal edit). No auth (`DEBT.md` item 72).
+- **sign_meta.php** (2026-10-04): no table, no output; pure helpers, `require_once`'d by `save_gesture.php:9` and `signs.php:23`. The sign-texts migration carries its own copies of the draft-text and JSON-writing helpers (`db-schema/migrations/2026-10-04-sign-texts.php:108-113`, `:167`) instead of requiring it (the task report states no reason).
 - **save_conversation.php**: touches `conversations`/`messages` only, write-only (INSERT/UPDATE, never SELECT). No auth of any kind, but it is same-origin, write-only, and never echoes back anything but `{"success":...}`, so it cannot be used to read past conversations even without auth. Confirmed caller: `js/talk-history.js`, wired from `talk.html`.
 - **conversations.php**: touches `conversations`/`messages`, read+delete. No server-side auth (`DEBT.md` item 72's scope now includes this file). Confirmed caller: `reports.html`, only after its client-side PIN. Deleting a conversation cascades to its messages via the FK; `clear_all` has no probe/real-data distinction server-side (`tests/conversations/conversations-admin.test.mjs`'s own `clear_all` test guards itself, opt-in via `SK_ALLOW_CLEAR_ALL=1`, but the endpoint itself does not).
 - **scratch/trigger_sync.php**: touches `gestures`, `esl_signs`, `gesture_recordings`, and `saved_gestures/` only (not the FSL folder) — a one-off/manual migration tool, not wired to any frontend caller.
@@ -435,10 +485,10 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
    - `php/api/save_history.php:18` — `$text`/`$source` are passed through `mysqli_real_escape_string` first (line 15-16), so this is escaped, not truly raw, but still string-built rather than parameterized.
    - `php/auth.php:56,62,64,83` — same pattern: escaped via `mysqli_real_escape_string` then interpolated.
    - `php/admin_api.php:19,56,59,65,83,87,99,106,111,132` — `$requesterId`/`$id` are cast with `intval()` first (safe), but string fields go through `mysqli_real_escape_string` then interpolation (same "escaped-but-not-parameterized" pattern throughout the file).
-   - `php/api/save_gesture.php:375-376` (re-measured 2026-09-26; was previously cited as `428-429,432-433`, which described a `mysqli_real_escape_string` call this file no longer makes anywhere — grep-confirmed) — `$gestureId`, already `(int)`-cast at line 371, is concatenated directly into the two `DELETE ... WHERE id = $gestureId`/`DELETE ... WHERE gesture_id = $gestureId` queries. `$label` itself is never string-interpolated: its lookup (`SELECT id FROM gestures WHERE label = ? LIMIT 1`) is a parameterized `mysqli_prepare`/`bind_param` at lines 366-368, safer than the escape-then-concatenate pattern this bullet used to describe.
+   - `php/api/save_gesture.php:395-413` (re-measured 2026-10-05; the 2026-09-26 citation `375-376` described two `DELETE ... WHERE id = $gestureId` queries that concatenated an `(int)`-cast id) — `delete_gesture` is now fully parameterized: the lookup `SELECT id FROM gestures WHERE label = ?` (`:395-398`), `DELETE FROM gesture_recordings WHERE gesture_id = ?` (`:406`) and `DELETE FROM gestures WHERE id = ?` (`:410`) all use `mysqli_prepare`/`bind_param`. `$label` and the `signs.php`/`reports.php` inputs are never string-interpolated into SQL (`signs.php:108-146` and `reports.php:25-35` are prepared; only `reports.php:50` and the migration scripts build SQL with fixed or escaped values).
    - No unescaped/unparameterized raw concatenation of unsanitized user input was found in the 10 owned PHP files — all raw-SQL spots use either `intval()`/`(int)` casts, `mysqli_real_escape_string` before interpolation, or (as `save_gesture.php`'s `delete_gesture` action now does) a parameterized statement for the only string input. Risk is inconsistency of style, not a confirmed live injection hole, but it is fragile (a future edit dropping a cast/escape/parameterization would reintroduce one).
 4. **Hardcoded DB credentials** (flag only, per instructions): `php/connect.php:2-5` — `$host="localhost"`, `$user="root"`, `$pass=""` (empty), `$db="sining_kamay_db"`. Comment marks it "XAMPP default" (line 4).
-5. **Hardcoded developer-machine path**: `php/api/save_gesture.php:542,557` (re-measured 2026-09-26; was previously cited as `535,550`) — `C:\Users\Techlife\OneDrive\Documents\New folder (5)\Sining_kamay\assets\signs\<subfolder>`. Will silently no-op (`is_dir()` false) on any machine other than the original developer's, including the Raspberry Pi target — dead/unportable code path, not a crash risk, but a leftover of individual dev environment.
+5. **Hardcoded developer-machine path**: `php/api/save_gesture.php:653,668` (re-measured 2026-10-05; was `542,557` on 2026-09-26 and `535,550` before that) — `C:\Users\Techlife\OneDrive\Documents\New folder (5)\Sining_kamay\assets\signs\<subfolder>`. Will silently no-op (`is_dir()` false) on any machine other than the original developer's, including the Raspberry Pi target — dead/unportable code path, not a crash risk, but a leftover of individual dev environment.
 6. **Default admin credential auto-seeded on every request**: `php/auth.php:27-31` — `admin`/`admin123` (bcrypt-hashed) inserted whenever no admin row exists; also duplicated as a static bcrypt hash seed in `db-schema/database_setup.sql:77-78`. Anyone reaching `auth.php` (currently unreachable from tracked frontend, see #2) could log in with these known default credentials if never changed.
 7. **Inconsistent error-response shape** across endpoints: some return `{"success":false,"message":...}` (`auth.php`, `admin_api.php`, `core_api.php`'s "Unknown action"), others `{"error":...}` (`connect.php`, `save_translation.php`, `get_translations.php`, `save_history.php`), others `{"success":false,"error":...}` (`save_gesture.php`, `reports.php`). No shared contract; a frontend switching between endpoints must special-case each.
 8. **Could not determine**: exact MySQL/MariaDB port (not specified anywhere in `connect.php` or the `.sql` files — mysqli default assumed but never stated in code); whether `sining_kamay_db_backup.sql`'s ANSI encoding is intentional or accidental (no code comment explains it); the actual production Apache vhost/config (no `.htaccess` or Apache config file among owned files to cite).
@@ -578,56 +628,87 @@ non-empty via `reports.php`).
   match after it.
 
 **FRESH MACHINE / PI SETUP — read before importing anything (review
-finding, `.git/sdd/progress.md` "Whole-phase review", Important #1):** the
-two tracked dumps, `sining_kamay_db.sql` and
-`db-schema/sining_kamay_db_backup.sql`, are **pre-normalization snapshots**
-(they still have `esl_signs`/`fsl_signs`, `gestures.word`,
-`gesture_recordings.sample_count`/`gesture_type`/`thumbnail`) and are **not
-importable as-is** with the current code — `save_gesture.php` and the other
-endpoints now expect the normalized, current 5-table shape (see "Tables"
-above) and will error against the old one. The migration script **cannot** be pointed at a fresh import of
-either dump to fix this: it requires the `category` column added in the
-2026-09-23 gesture-categorization phase (neither dump has it), and its
-default `--snapshot` path is a hardcoded Windows path
-(`E:\ACADSS\IOT\backups\...`), not portable to the Pi's Linux filesystem.
+finding, `.git/sdd/progress.md` "Whole-phase review", Important #1; routes
+rewritten 2026-10-04 for the sign-texts phase):** the two tracked dumps,
+`sining_kamay_db.sql` and `db-schema/sining_kamay_db_backup.sql`, are
+**pre-normalization snapshots** (they still have `esl_signs`/`fsl_signs`,
+`gestures.word`, `gesture_recordings.sample_count`/`gesture_type`/`thumbnail`)
+and, since the sign-texts phase, they also lack `gestures.text_en`/`text_fil`,
+the `BOTH` enum value, `uq_gestures_label` and `chk_gestures_texts`. They are
+**not importable as-is** with the current code — `save_gesture.php` and the
+other endpoints expect the current 5-table shape (see "Tables" above) and will
+error against the old one. Neither migration script can be pointed at a fresh
+import of a dump to fix this: `2026-09-24-normalize.php` requires the
+`category` column added in the 2026-09-23 gesture-categorization phase (neither
+dump has it) and defaults to hardcoded Windows paths
+(`E:\ACADSS\IOT\backups\...`); `2026-10-04-sign-texts.php` is a one-time
+script for this repo's exact data (its fixture names the 89 FSL files by path,
+see "The 2026-10-04 sign-texts migration" below), also with a hardcoded Windows
+default backup dir, and it stops at step 1/2 on a dataset that does not match.
 
-Two ways to bring up a working database on a fresh machine (including the
-Pi):
+Three supported ways to bring up a working database:
 - **Recommended: dump the migrated live DB and import that.**
-  `mysqldump.exe` the current, already-normalized `sining_kamay_db` and
-  import the result on the new machine. This keeps every manual category
-  re-tag (`DEBT.md` item 65) and every `asset_path` value exactly as they are
-  now — nothing needs re-deriving.
+  `mysqldump.exe` the current `sining_kamay_db` (already in the current shape:
+  5 tables, `BOTH`, both texts, `uq_gestures_label`, the CHECK) and import the
+  result on the new machine, together with the matching `saved_gestures/`
+  folders (disk is the source of truth, and every sign folder carries its own
+  `sign.json`). This keeps every manual category re-tag (`DEBT.md` item 65)
+  and every `asset_path` value exactly as they are now — nothing needs
+  re-deriving. Do not use the pre-phase dump
+  `E:\ACADSS\IOT\backups\2026-10-04-sign-texts\sining_kamay_db_before-sign-texts.sql`
+  for this: it is the shape from *before* this phase (route 3 applies to it).
 - **Alternative: run the setup script, then one sync, then the backfill.**
   Run `db-schema/database_setup.sql` (creates the 5 tables directly in their
-  final shape — `users`, `gestures`, `gesture_recordings`, `conversations`,
-  `messages`, no `translations` block since 2026-09-25 — `CREATE TABLE IF NOT
-  EXISTS` throughout so it's safe to re-run), do one full-sync GET of
-  `php/api/save_gesture.php` (no `?no_sync`) so `sync_disk_to_db` populates
-  `gestures`/`gesture_recordings` from the `saved_gestures*/` folders, then
-  run `db-schema/migrations/2026-09-24-backfill-asset-path.php` to fill
-  `asset_path` from the `.webm` files on disk. **This loses every manual
-  category re-tag** — the sync has no re-tag information to offer, so every
-  label falls back to the `gesture_category()` heuristic (`DEBT.md` item 65
-  already documents this as the accepted cost of category being DB-only).
-  `conversations`/`messages` need no seeding — they start empty either way.
+  final shape — `users`, `gestures` with `text_en`/`text_fil`/`BOTH`/
+  `uq_gestures_label`/`chk_gestures_texts`, `gesture_recordings`,
+  `conversations`, `messages`; `CREATE TABLE IF NOT EXISTS` throughout so it is
+  safe to re-run), do one full-sync GET of `php/api/save_gesture.php` (no
+  `?no_sync`) so `sync_disk_to_db` populates `gestures`/`gesture_recordings`
+  from `saved_gestures/` — each sign's **set and both texts come from its
+  `sign.json`, so they are not lost** — then run
+  `db-schema/migrations/2026-09-24-backfill-asset-path.php` to fill
+  `asset_path` from the `.webm` files on disk (a `BOTH` row is looked up under
+  `assets/signs/en/`, `:73` of that script, like ESL). **This loses every
+  manual category re-tag** — the sync has no re-tag information to offer, so
+  every label falls back to the `gesture_category()` heuristic (`DEBT.md` item
+  65 already documents this as the accepted cost of category being DB-only).
+  `conversations`/`messages` start empty either way.
+- **An existing pre-phase database (the schema from before 2026-10-04, e.g. a
+  Pi that already ran the previous revision): `git pull`, then one full sync.**
+  `ensure_gestures_columns()` upgrades the table in place on the first request
+  (enum widened to `BOTH`, `text_en`/`text_fil` added, `uq_gestures_label_language`
+  swapped for `uq_gestures_label` when no label is duplicated — see "Upgrade of
+  a pre-phase database" above) and the sync fills the new columns from disk. Two
+  caveats: **the CHECK `chk_gestures_texts` is not added** by this route (apply
+  `database_setup.sql`'s `gestures` block or the migration if you want it; PHP
+  writes the required texts regardless), and a pre-phase **dataset** that still
+  has the duplicate FSL copies in `saved_gestures_fsl/` is not merged by it —
+  the sync only keeps the first folder's sign for a label (`save_gesture.php:168-169`)
+  and registers the legacy folder's samples under the same label; merging the 89
+  duplicates into Both signs was the one-time migration, run on this machine's
+  data only. Everything the upgrade route cannot know (Filipino texts of such
+  duplicates) shows as a draft text derived from the key
+  (`docs/system/DEBT.md` draft-text item).
 
 **If instead you run `db-schema/migrations/2026-09-24-normalize.php` itself**
 (e.g. against a fresh import of the pre-normalization backup, for a reason
-other than the two routes above): that script's own end state, unchanged by
+other than the routes above): that script's own end state, unchanged by
 this phase, is the 2026-09-24 **4-table** shape (`gestures`,
-`gesture_recordings`, `translations`, `users`) — it predates both the
-saved-conversations phase and the translations drop, and per the brief for
-this phase it was deliberately left alone (its step-7 snapshot comparison is
-exact only against that older shape; adding new tables to it would be
-scope creep on a one-time script that already ran on live). A database
-brought up this way needs one manual post-migration step to reach the
-current 5-table shape: apply `database_setup.sql`'s "SAVED CONVERSATIONS"
-section (the `conversations`/`messages` `CREATE TABLE IF NOT EXISTS`
-statements — safe to run standalone, they don't touch anything else) and then
-`DROP TABLE translations` (after confirming it's empty, the same guard Task 1
-used on live). This is a manual note, not a change to the migration script
-itself.
+`gesture_recordings`, `translations`, `users`) — it predates the
+saved-conversations phase, the translations drop **and the sign-texts phase**,
+and per the brief for those phases it was deliberately left alone (its step-7
+snapshot comparison is exact only against that older shape; adding to it would
+be scope creep on a one-time script that already ran on live). A database
+brought up this way needs two manual post-migration steps to reach the current
+5-table shape: apply `database_setup.sql`'s "SAVED CONVERSATIONS" section (the
+`conversations`/`messages` `CREATE TABLE IF NOT EXISTS` statements — safe to
+run standalone) and then `DROP TABLE translations` (after confirming it's
+empty, the same guard Task 1 used on live) — **and since 2026-10-04 a third**:
+the `gestures` table it leaves has `ENUM('ESL','FSL')`, no text columns and
+`uq_gestures_label_language`, so it also needs the sign-texts upgrade
+(the third route above: any request to `save_gesture.php` or `signs.php` runs
+`ensure_gestures_columns()` and upgrades it, then one full sync). This is a
+manual note, not a change to the migration script itself.
 
 **Tests:** `tests/normalization/migration.test.mjs` clones from the
 pre-normalization backup, not the live DB — env var
@@ -647,3 +728,100 @@ not in the clone-based `tests/normalization/migration.test.mjs` run:
 ```
 node --test --test-concurrency=1 tests/categorization/*.test.mjs tests/multi-sample/save-endpoint.test.mjs tests/normalization/schema-guard.test.mjs
 ```
+
+The full serial suite as of the sign-texts phase (the `tests/sign-texts/*.test.mjs` files added, and
+the conversations/video-capture/normalization-migration tests of the intervening phases):
+
+```
+node --test --test-concurrency=1 tests/categorization/*.test.mjs tests/multi-sample/save-endpoint.test.mjs tests/normalization/schema-guard.test.mjs tests/conversations/*.test.mjs tests/video-capture/*.test.mjs tests/normalization/migration.test.mjs tests/sign-texts/*.test.mjs
+```
+
+Measured result after the whole-phase fixes (commit `16c15ce`): **188 tests, 187 pass, 0 fail, 1 skip**
+(`.git/sdd/st-final-fix-report.md`); the baseline before the phase was 141 tests, 140 pass, 0 fail, 1 skip
+(`.git/sdd/st-baseline-tests.txt`, `progress.md` Task 0). The CDP/browser check scripts under
+`tests/sign-texts/` (`*-check.mjs`, `verify-e2e.mjs`) are not part of `node --test`; run them by hand
+(`docs/system/INVENTORY.md`).
+
+## The 2026-10-04 sign-texts migration
+
+Owner-approved ("one sign, two texts"; decisions in `docs/system/DECISIONS.md`). Merges the 89 FSL
+signs that copy an ESL recording into that ESL sign as `BOTH`, adds the `BOTH` enum value and the
+`text_en`/`text_fil` columns, writes a `sign.json` into every `saved_gestures/<key>/`, moves the
+duplicate FSL sample files into a backup folder (never deleted without a verified copy) and finally
+tightens `gestures` (unique label, texts CHECK). One-time, run on live by the controller **before** the
+server code of this phase (so the server tests hit the migrated schema); it is not a general upgrade
+route (see "FRESH MACHINE / PI SETUP" above).
+
+**Files:** `db-schema/migrations/2026-10-04-sign-texts.php` (493 lines) and
+`db-schema/migrations/2026-10-04-sign-texts-pairs.json` (723 lines: `generated`, `pairs` = 89 entries
+`{fsl, fslFile, esl, eslFile, ...}`, `stray` = `{file: sample_1784112605537_bec003.json, esl: my_name,
+eslFile: sample_1784112605409_7920b5.json, ...}`; the pairs were found by deep equality of frames, not by
+name). The 89 pairs plus the stray make the 90 "moves" (`:191-213`).
+
+**Run:** CLI-only (`if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }`, line 2); run with
+`C:\xampp\php\php.exe db-schema/migrations/2026-10-04-sign-texts.php [options]`; requires MariaDB
+(`:176-178`). Options (`:19-26`, parsed `:31-45`): `--db=<name>` (default `sining_kamay_db`),
+`--root=<dir>` (dataset root containing `saved_gestures/` and `saved_gestures_fsl/`; default the repo root,
+`dirname(__DIR__, 2)`, `:33`), `--backup-dir=<dir>` (default
+`E:\ACADSS\IOT\backups\2026-10-04-sign-texts`, `:34`), `--stop-after=<N>` (exit 0 after step N, used by
+the tests), `--verify-only` (run only step 8; **needs `snapshot.json`** — `$requireSnapshot = true`,
+`:296-299`; without it it reports "no snapshot"), `--no-dump-check` (skip the "a non-empty `*.sql` in the
+backup dir" check, tests only). **The defaults point at the live DB and the real repo folders**: a bare run
+touches real data, so always pass explicit `--db`/`--root`/`--backup-dir` anywhere but the real cutover.
+`php/connect.php` opens a connection to the live DB before `--db` is selected (only a connection, no queries
+on live; pattern inherited from `normalize.php`).
+
+**Eight ordered steps, each idempotent** (each inspects DB/disk state before acting, so a re-run or a
+resume after `--stop-after`/a crash converges on the same end state; MariaDB commits DDL implicitly so there
+is no single transaction — the safety net is the proof-before-move order and the backups):
+1. **preconditions + snapshot** (`:302-340`): backup/dataset dirs exist, a non-empty `*.sql` dump exists in
+   the backup dir (`:305-309`), `<backup>/saved_gestures_fsl/` is created; `snapshot.json` (generated time,
+   counts, every `gestures` row, every recording with the sha256 of its file) is written once, only while
+   the DB is still pre-migration (no `text_en` column).
+2. **prove the pairs** (`:342-370`): every FSL sample file on disk must be in the fixture (else abort); each
+   of the 90 moves is compared with its ESL twin by `sampleMismatch()` (`:138`): frames identical and every
+   other field identical except `label`/`signLanguage`/`createdAt`, strict recursive `===` (floats
+   exactly, no JSON re-encoding). Any mismatch aborts before anything changes. Already-moved pairs are
+   validated against their backup copy.
+3. **schema part 1** (`:371-381`): one `ALTER TABLE gestures MODIFY sign_language ENUM('ESL','FSL','BOTH') ...,
+   ADD COLUMN text_en VARCHAR(255) NULL AFTER sign_language, ADD COLUMN text_fil VARCHAR(255) NULL AFTER text_en`.
+4. **`sign.json` + DB texts** (`:382-408`): a `sign.json` is written into every `saved_gestures/<key>/` that
+   lacks one — `BOTH` for an ESL folder that is the twin of an FSL sign (English text = the draft of the ESL
+   key, **Filipino text = the draft of the FSL sign's Tagalog label**), else `ESL` with `textFil` null. The
+   DB row is only updated when both texts are still NULL (a re-run cannot clobber later edits).
+5. **move duplicates** (`:409-444`): for each move the FSL file is copied to
+   `<backup>/saved_gestures_fsl/...`, the copy's sha256 must equal the original's, the twin is re-proven, only
+   then is the original deleted; an emptied FSL folder is removed; every move is recorded in
+   `moved-manifest.json` (`{source, backup, sha256, twin}`, sorted by source; a missing entry from a crashed
+   earlier run is re-created).
+6. **DB cleanup** (`:445-457`): for each moved pair, `DELETE FROM gesture_recordings WHERE sample_path = ?` and
+   the FSL `gestures` row when it has no recordings left.
+7. **schema part 2** (`:458-485`): drop `uq_gestures_label_language` and add `uq_gestures_label (label)`
+   (refuses if a label is duplicated), draft any still-missing required text, then `ADD CONSTRAINT
+   chk_gestures_texts CHECK (...)`.
+8. **verify** (`:231-295`, called `:487-489`; also `--verify-only`): prints counts per set, totals, checks that
+   every recording's sample file exists, that every snapshot recording is reachable (file in place with the
+   same sha256, or in the manifest with a matching backup sha256), that no `saved_gestures/` folder lacks a
+   `sign.json`, and `SHOW CREATE TABLE gestures`; exit 1 with the problem list on failure.
+
+**Backups (kept, outside the repo, at `E:\ACADSS\IOT\backups\2026-10-04-sign-texts\`):**
+`sining_kamay_db_before-sign-texts.sql` (`mysqldump`, **10,132,052 bytes**, measured), `dataset-copy/`
+(**217 files**: a copy of the dataset's 122 ESL and 89 FSL label folders before the
+migration, `.git/sdd/progress.md` Task 0), `snapshot.json`, `moved-manifest.json` (**90 entries**), `saved_gestures_fsl/` (the moved FSL files,
+byte-identical copies). The moved files are the only record of the FSL Tagalog sample files and of their
+folder names (the Filipino draft texts derive from them); do not delete.
+
+**Live result** (`.git/sdd/st-task-3-migration-output.txt`): step 2 "90 proven, 0 already moved"; step 4
+"122 sign.json written, 122 DB rows updated"; step 5 "90 moved, 90 manifest entries added"; step 6 "89
+recordings, 89 gestures deleted"; step 8: ESL 33, BOTH 89, gestures 122, recordings 127, 0 recordings with a
+missing sample file, "snapshot recordings checked: 216, unreachable: 0", 0 folders without `sign.json`,
+"verify: all checks passed". The 90th moved file is the stray; step 6 loops over the 89 pairs only (`:446-453`), so
+89 recordings and 89 gestures were deleted. Task 8 re-ran `--verify-only` (exit 0) and re-hashed the manifest: 90/90 backup files
+exist, 90 sha256 match, 0 moved sources back in the active dataset (`.git/sdd/st-task-8-report.md` item 1).
+
+**Tests:** `tests/sign-texts/migration.test.mjs` — 10 tests, 10 pass, 118 s (`.git/sdd/st-task-1-report.md`):
+full run + no-op re-run + `--verify-only`; stop after each of steps 1..7 then resume, each compared with the
+full run's end state; a crash simulation (file copied and deleted, no manifest entry); a tampered pair aborts
+at step 2 with nothing moved and no `text_en` column. It clones a scratch database from the pre-phase dump
+(`tests/sign-texts/helper.mjs`) and never touches live.
+

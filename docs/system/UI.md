@@ -467,6 +467,14 @@ below. None of that ran.
   (gesture-training-ui.js:502-505) when nothing new needs compiling. The 50-epoch
   label is not reflected in the actual training logic — reason not documented in
   code.
+> **Update 2026-10-04 (sign-texts phase, "one sign, two texts"):** the "Gesture Name" field described in
+> the Step 1 bullets below no longer exists. Step 1's Sign Set has three options (ESL | FSL | Both) and two
+> text fields replace Gesture Name (English text, Filipino text; each shown field required); the key
+> (folder/label slug) is derived from the text, never typed. The View Active Gesture Dataset modal gained
+> columns for both texts and the set, a search over key and both texts, and an edit panel. Wherever the
+> text below says "Gesture Name", "label" in the form, or describes the modal's old columns/search, read
+> the current behavior in "Sign texts: Step 1 form, model toggle, dataset editing" below. The recording
+> flow itself (Ready → Countdown → Recording → Review → Processing → Saving → Done) is unchanged.
 - **Step 1 (Add Data) recording flow — replaced 2026-09-26 (video-based
   gesture capture phase).** Below describes the flow as it now is; the older
   countdown-then-frame-sampling flow this replaced is described afterward,
@@ -666,6 +674,129 @@ below. None of that ran.
     from "N categories" to "N gestures" (gesture-training-ui.js:342).
     "Categories" now means word/letter/number/phrase, so the old wording
     would have been ambiguous.
+- **Sign texts: Step 1 form, model toggle, dataset editing (sign-texts phase, 2026-10-04; plan
+  `docs/reports/2026-10-04-sign-texts-step1.md`; storage and endpoints `docs/system/BACKEND.md` "One sign, two
+  texts").** All measurements below are real Chrome at 1024×600 driven over CDP by the scripts in
+  `tests/sign-texts/` (`.git/sdd/st-task-4-report.md`, `st-task-5-report.md`, `st-task-7-report.md`).
+  - **Step 1 form** (`gesture-training.html:198-250`, `css/gesture-training.css?v=1.0.10`, `gesture-training.html:8`).
+    Left column: **Sign Set** — a 3-way toggle ESL | FSL | Both (`.tr-sign-toggle-3`, `css/gesture-training.css:160`;
+    radio values `ESL`/`FSL`/`BOTH`, `name="gestureDatasetType"`, `gesture-training.html:202-206`); **English text**
+    (`#signTextEn`) and **Filipino text** (`#signTextFil`), each in its own wrapper (`#signTextEnGroup`,
+    `#signTextFilGroup`, `:208-215`) and each `maxlength="255"` (matching the server's 255 cap); then **Type**
+    (unchanged). ESL shows the English field only, FSL the Filipino field only, Both both
+    (`updateTextFieldVisibility()`, `js/gesture-training-ui.js:426-431`: only the wrapper hides). The old Gesture Name
+    field and `currentLabelClean()` are gone; `currentKey()` (`:421-425`) derives the key from the shown text with
+    the same rule as the server (`GestureDataRecorder.cleanLabel`, = `clean_label`; English for ESL/Both, Filipino
+    for FSL). Texts keep their casing and punctuation. Measured keys: "How are you?" → `how_are_you`; FSL "Kumusta
+    ka?" → `kumusta_ka`.
+  - **Measured layout (Step 1)**, group y / height: ESL — Sign Set 68/69, English text 151/69, Type 234/69; FSL —
+    Sign Set 68/69, Filipino text 151/69, Type 234/69; Both — Sign Set 68, English 151, Filipino 234, Type 317 (all
+    69 tall). The text inputs are 48 px tall; the lowest text-input bottom is **220** (ESL/FSL) and **303** (Both),
+    both ≤ 320, the top of the 280 px on-screen keyboard at 600 − 280 (so a focused input is not covered). Back to
+    Instructions at y=548. `scrollWidth × scrollHeight` 1024×600 in all three; every control ≥ 44 px (14 controls
+    in ESL/FSL, 15 in Both). 48 PASS lines, 0 console errors (`tests/sign-texts/step1-check.mjs`).
+  - **Validation and collision.** Record with an empty shown field does not open recording mode and toasts "Enter
+    the English text first." (ESL, and Both when English is empty) or "Enter the Filipino text first." (FSL, and
+    Both when only Filipino is empty) (`openRecordingMode()`, `:1553-1558`; a key that cleans to empty toasts
+    "Enter the English|Filipino text with at least one letter or number."). The status line under the form
+    (`refreshSampleCountLine()`, `:474-495`) follows the key: new key → "“key” is a new word — no samples yet. Aim
+    for 3."; existing key of the **same** set → its sample/frame count; existing key of a **different** set
+    (`conflictingSign()`, `:469-473`) → "“key” already exists as <ESL|FSL|Both> — change it in View Active Gesture
+    Dataset first." and **Record is disabled** (`:479-482`; `.tr-record-btn:disabled`, `css/gesture-training.css:179-180`).
+    This mirrors the server's HTTP 409 (`save_gesture.php:497-505`), which is the backstop. Measured against live
+    data: ESL "Hello" (live `hello` is a Both sign) → "already exists as Both", Record disabled; Both "Hello" +
+    "Kumusta" → sample line, Record enabled; switching the set to ESL clears the line.
+  - **Type** auto-selection looks up the stored category by key — ESL map then FSL map, FSL first for an FSL form
+    (`storedCategoryFor()`, `:434-441`) — else the heuristic on the key (`autoSelectCategory()`, `:445-452`). A Both
+    sign has one category (BACKEND: category stays DB-only). A manual Type tap survives until a text or the set
+    changes (measured: `how_are_you` stored `phrase`).
+  - **Recording** passes `{label: key, signSet, textEn, textFil, category}` into `GestureCaptureUI.open()` (hidden
+    field's text is passed as `null`, `:1569-1577`). `js/gesture-capture-ui.js` stores the texts in its session, the
+    chip reads `<text> · <ESL|FSL|Both> · <Type>` (text = English for ESL/Both, Filipino for FSL, label fallback),
+    the texts travel in `saveGestureSample`'s `meta` (`textEn`/`textFil` → `text_en`/`text_fil`), and after a save
+    the cached models of every language the set belongs to are invalidated (Both → ESL **and** FSL). A 409 shows the
+    server's message in the capture UI's error state (see DEBT: its Retry save offers the same failing save).
+    **Measured end to end** (`tests/sign-texts/verify-e2e.mjs`, 80 PASS; fake camera): a Both sign "Zz Both Probe?" /
+    "Zz Pareho Probe?" Type Phrase, 3 samples → chip "Zz Both Probe? · Both · Phrase", Ready in 1250 ms, Review
+    "3 signs found", exactly one folder `saved_gestures/zz_both_probe` with 3 samples and a `sign.json` (BOTH),
+    nothing in `saved_gestures_fsl/`, sample `signLanguage` ESL ×3, DB row BOTH with both texts, category `phrase` under
+    both `categories` maps. (Probe signs were deleted afterwards.)
+  - **Step 2 — "AI model" toggle** (`#trainModelGroup`, ESL | FSL radios `name="trainModelLang"`,
+    `gesture-training.html:260-265`; buttons 48 px, `#leftStep2 .tr-sign-opt`, `css/gesture-training.css:1123`).
+    Training uses `modelLanguage()` (`js/gesture-training-ui.js:629-633`) instead of Step 4's chip: ESL trains on ESL
+    and Both signs, FSL on FSL and Both signs (`:728`). Each time Step 2 is shown the toggle starts from Step 1's set
+    (FSL → FSL; ESL and Both → ESL; `syncModelToggleToStep1()`, `:669-677`). Switching to a language with no cached
+    model marks the model untrained: Next is hidden and the Train button resets (`onModelLanguageChanged()`,
+    `:653-667`). The toggle is **locked while training runs** (`#trainBtn` calls `trainModelGuarded()`, `:636-644`,
+    which disables the radios and always re-enables them in `finally`). Measured: toggle group y=80, 67 tall, buttons
+    48 px; summary card y 153–393 (240 tall); Train button y 511–551; Back y 557–580; scroll 1024×600. ML side of this:
+    `docs/system/ML.md`.
+  - **Step 3 — Predict text.** A detected key is shown as its text in the model's language
+    (`predictDisplayText()`, `:647-649`, used at the four display sites `:1003`, `:1010`, `:1020`, `:1037`): ESL model →
+    English text, FSL model → Filipino text, never the slug. The "Gets:" indicator now shows "Start"/"Stop" capitalised
+    (it previously showed lowercase). Measured with a fake camera: ESL model `zz_both_probe` → "Zz Both Probe?",
+    `zz_esl_only` → "Zz Esl Only"; FSL model `zz_both_probe` → "Zz Pareho Probe?", `zz_fsl_lamang` → "Zz Fsl Lamang"
+    (96 and 76 calls hooked over 12 s each). The ESL model contained 124 labels and the FSL model 91 after training
+    with the probes; the ESL-only probe appears only in the ESL model and the FSL-only probe only in the FSL model.
+  - **Step 4 (Translate) still uses its own Output Language chip** (`signLang`, `'en'`/`'fil'`, `js/gesture-training-ui.js:9`,
+    `:1104`), independent of the model toggle. Known gap: an FSL-only sign shown with the English chip has no English
+    text, so `translateGestureLabel()` falls through to the title-cased key (`:326-338`) — `docs/system/DEBT.md`. Every
+    text shown through `innerHTML` in Step 4 is escaped (`escapeHtml()`, `:625`: the sentence history/big output, the
+    current-sentence word spans, `renderTranslation` words and `renderWordChips` custom words), and the same helper
+    in `js/sign-to-text-ui.js:4` covers its output box and final sentence — a text such as `<img src=x onerror=...>`
+    renders literally (`tests/sign-texts/xss-check.mjs`; the live camera loop's sentence sites were verified by code and
+    by the helper, not by driving a camera).
+  - **View Active Gesture Dataset modal.** Card width `min(960px, calc(100vw - 32px))`
+    (`css/gesture-training.css:722`; measured 960 at 1024, x=32, y=48, height 504, no page scroll). Columns:
+    **English text | Filipino text | Set | Samples | Edit | Delete** (`trRenderDatasetView()`,
+    `js/gesture-training-ui.js:127-186`); Set shows ESL / FSL / Both; a text the set does not use shows "—" even if a
+    hidden text is stored (`datasetShownText()`, `:111-117`). The table is built with DOM + `textContent` (no
+    `innerHTML` for user text, no inline `onclick` with text). Tabs and their counts are unchanged (Words/Letters/
+    Numbers/Phrases, `:88`). **Search** matches case-insensitively over the key, the English text and the Filipino text
+    (`:148-152`), including a hidden stored text. Rows are ≥ 44.5 px, Edit/Delete buttons 80.6×44. The delete confirm
+    names the sign by English text, else Filipino text, else key, plus " (ESL and FSL)" for a Both sign
+    (`deleteGesture()`, `:538`).
+  - **Edit panel** (inside the same card; tabs, search and table hide, `trShowDatasetEditPanel()`, `:188-196`;
+    markup `gesture-training.html:364-392`): header "Edit sign — key: <key> · N sample(s)"; left column Sign Set
+    (ESL | FSL | Both) plus a "Type: <Category>" line, right column the English and Filipino inputs shown per set and
+    prefilled with the stored texts (`trOpenDatasetEdit()`, `:212`; a stored-null text prefills empty); bottom row
+    message | Cancel | Save (`css/gesture-training.css:749-759`). Save (`trDatasetEditSave()`, `:234-275`) validates
+    on the client ("Enter the English text." / "Enter the Filipino text."), POSTs `signs.php`
+    `{action:"update", key, set, textEn, textFil}` with the hidden field sent as `null` (so the stored hidden text is
+    kept — narrowing a set keeps it), and on success toasts "Saved.", clears `sining_kamay_labels_<LANG>` **only for
+    languages whose membership changed** (ESL = ESL|Both, FSL = FSL|Both; a text-only edit clears nothing),
+    `await window.reloadDataset()` and returns to the table on the same tab and search. A failed save shows the
+    server's `error` (or "Save failed (HTTP n).") in the panel and stays in edit mode. Cancel sends nothing. Opening
+    or closing the modal resets to table mode; the modal ✕ in edit mode closes the whole modal with no unsaved-change
+    prompt. No samples are touched: sample files were byte-identical (sha256) before and after an ESL → Both edit
+    (`verify-e2e.mjs` item 6; `dataset-check.mjs`).
+  - **Measured edit-panel fit** (Both, focus in either text input, keyboard open): card x=32 y=8 w=960 h=289 (bottom
+    297, keyboard top 320); header 41; panel y=73 h=208 (bottom 281); English input y=94 h=48, Filipino input
+    y=177 h=48; Cancel/Save y=233 h=48, 120 wide; neither panel nor card scrolls (`scrollHeight ≤ clientHeight`) and
+    Save is reachable (`elementFromPoint` hits it). Keyboard closed: card h=289 (y=156), panel h=208. The table-mode
+    keyboard-open rule (card capped at `100vh − 280px − 16px`, above) is unchanged. All of it from
+    `tests/sign-texts/dataset-check.mjs` (ALL CHECKS PASSED, 0 console errors).
+  - **On-screen keyboard punctuation** (`js/virtual-keyboard.js`). The last row is now `clear, -, ', ",", space, ., ?, !,
+    hide` (`:21`; the old row was `clear, space, hide`) so a text like "How are you?" can be typed. The punctuation
+    keys are ordinary `data-char` keys; Caps uppercases only `a-z` (`/[a-z]/` guard, `:180`), so `?`, `.`, digits are
+    unaffected. Measured on `gesture-training.html`: 5 rows with 10/10/9/9/9 keys, keyboard height **280 px**,
+    smallest key 48 tall × 66.1 wide, Space 323 px (about 4.9 key widths), no row overflows, `scrollWidth` 1024; typing
+    H (caps) then "ow are you" then "?" gives exactly "How are you?" and `- ' , . !` insert correctly
+    (`tests/sign-texts/reports-keyboard-check.mjs`, 27 PASS). On `talk.html` (Speak or Type) the same rows render at
+    **240 px**, because `talk.html`'s own `.sk-keyboard-wrap{height:240px}` override (`talk.html:928-929`) predates
+    this phase; compared against the parent commit's keyboard served through a temporary page, the only differences
+    are the last row (3 → 9 keys), Space (400 → 323 px) and the smallest key width (68 → 66.1); heights (240), the
+    smallest key height (44), the input/Translate row (y 106–170) and the keyboard top (y 360) are identical, and
+    talk.html's rows slightly overhang the 240 px box, as before. `index.html` and `reports.html` do not load
+    `js/virtual-keyboard.js` (grep).
+  - **Reports** (`reports.html`, ESL Signs and FSL Signs tabs). Both tables' header is now **ID | Key | Set | Text |
+    Asset | Created** (`reports.html:471`, `:474`); Set is ESL / FSL / Both (`setName()`, `:669`), Text is the tab's text
+    (escaped). A Both sign is listed in **both** tabs, each with its own text (server: `reports.php` IN ('ESL','BOTH') /
+    ('FSL','BOTH'), BACKEND). View Asset's inline handler now passes `esc(JSON.stringify(path))` and
+    `esc(JSON.stringify(text))` (`:680`) instead of single-quoted strings, because a text can now contain an
+    apostrophe. Measured: summary esl=122 / fsl=89 and the same number of rendered rows (ESL tab = 33 ESL + 89 Both,
+    FSL tab = 89 Both, 0 FSL-only); `how_are_you` row: ESL tab "How are you", FSL tab "Kamusta ka", Set "Both";
+    `scrollWidth` 1024 on both tabs, 0 console errors.
 - **The soft target of 5 is not arbitrary.** `knnPredict` scores a label as
   the mean of its top `min(5, N)` cosine similarities across *all* of that
   label's saved frames, i.e. K=5 (gesture-training-ui.js:310, same K cited
@@ -1005,7 +1136,7 @@ Reused, not copied: `js/sign-to-text-ui.js` (`knnPredict`,
 another: sign-libs (`tf.min.js`, `hands.js`, `camera-helper.js`,
 `gesture-data.js`, `sign-to-text-ui.js`), MediaPipe (`Hands` constructed on the
 hidden `#signing-video` and `initialize()`d), gesture set (`autoTrainForTranslate()`
-— localStorage cache or database), then Vosk library (`js/vosk.js`), Vosk model
+— localStorage cache or database; since 2026-10-04 run together with `loadSigns()`, see 3d), then Vosk library (`js/vosk.js`), Vosk model
 (`Vosk.createModel(models/vosk-model-small-en-us-0.15.tar.gz.zip)`). Each item
 is `queued | loading | done | failed`; a failed item marks its dependents
 "skipped" and the other stack still runs. API: `TalkLoader.start/isSettled/
@@ -1215,6 +1346,46 @@ verified by code review, `node --check`, and a temporary debug hook driving
 the exact same downstream code, then fully reverted
 (`.git/sdd/conv-task-4-report.md`); a real signed turn is flagged for the
 owner to verify on real hardware (`docs/system/DEBT.md` item 85).
+
+### 3d. Sign texts in Let's Talk (sign-texts phase, 2026-10-04)
+
+`talk.html` reads the same sign set/texts as the training page; no `talk.html` markup or `js/talk-signing.js` /
+`js/talk-speaking.js` / `js/talk-history.js` code changed (`.git/sdd/st-task-6-report.md`). Models and display text:
+`docs/system/ML.md`; storage: `docs/system/BACKEND.md`.
+- **Captions come from the texts.** `translateGestureLabel()` (`js/sign-to-text-ui.js:65`) first asks
+  `GestureDataRecorder.getSignText(key, lang)` (ESL chip → English text, FSL chip → Filipino text) and only then falls
+  back to the old table/title-cased key. So the live caption pill, the draft and the confirm card show the text of
+  the active language, never the slug. Measured over 20 s with a fake camera: every shown caption was a sign text of
+  that language and none contained an underscore (EN: "Show your sign", "Stabilizing…", "Zz Both Probe?", "Zz Esl
+  Only"; FIL: "Zz Pareho Probe?", "Zz Pareho Na", "Zz Fsl Lamang"; `.git/sdd/st-task-8-report.md` item 8).
+- **Loading queue.** The `gestures` item is still one item (`js/talk-loader.js:48-60`) and now runs
+  `Promise.all([autoTrainForTranslate(), GestureDataRecorder.loadSigns()])`. A failed or rejected `loadSigns()` only
+  `console.warn`s (captions fall back to the labels); the item fails only if `autoTrainForTranslate()` fails. Measured
+  (`tests/sign-texts/talk-check.mjs`, headless Chrome 1024×600, real Apache/MariaDB): queue settled in 8094 ms, all 5
+  items done (sign-libs 651, mediapipe 874, gestures 2087, vosk-lib 272, vosk-model 5258 ms), overlay present, 0
+  console errors. Models: ESL 122 labels (includes `how_are_you` and `a`); FSL 90 labels (includes `how_are_you`; no
+  ESL-only sign, only the shared `start`).
+- **Text-to-sign registers sign texts** (`js/sign-player.js:245-281`, `fetchAndRegisterCustomGestures()` now reads
+  `php/api/signs.php` instead of `save_gesture.php?no_sync=1`). For each sign: an ESL/Both sign registers its
+  `normalizeSpeechText(textEn)` in the English asset map, an FSL/Both sign its `normalizeSpeechText(textFil)` in the
+  Filipino map; the value is the sign's `assetPath` (else `<key>.webm`). **Both with and without "?"**:
+  `normalizeSpeechText` keeps "?", but speech never produces it while typed text may, so the text is registered as
+  normalized and again with `[?¿]` removed (whitespace collapsed; skipped if empty or identical). The key and the
+  key with spaces are registered per language map too. Existing entries are never overwritten (`!map[k]`), and
+  `rebuildKnownPhrases()` runs after. `displaySignWithFallback` uses an asset-map value that starts with `assets/` as
+  the path as-is (`js/sign-player.js:413`) instead of prefixing the language base. The first-step probe
+  `assets/signs/<lang>/<word>.webm` still runs before the map. A **Both sign's `assetPath` is its `en/` clip**, so
+  the Filipino map entries of a Both sign point to the `en/` clip; the Filipino probe wins first when a `fil/` clip with
+  the same name exists.
+  Measured (`talk-check.mjs`, `verify-e2e.mjs`): EN "how are you" → `assets/signs/en/how_are_you.webm` (200), FIL "kamusta
+  ka" → `assets/signs/fil/kamusta_ka.webm` (200), one clip each and no fingerspelling; EN "Zz Both Probe" (no clip)
+  → `en/zz_both_probe.webm` 404, then fingerspelled z, b, o (200); FIL with no clip → every probe 404 and **nothing
+  plays** (no Filipino letter clips exist, `docs/system/DEBT.md`). The earlier statement above ("`registerCustomGestures()`
+  adds one `save_gesture.php?no_sync=1` fetch ... measured 2") predates this: the fetch is now `signs.php`, and the
+  count was not re-measured.
+- **Signing flow.** The Translate-button flow with the fake camera is timing dependent (a "Didn't catch that" card
+  in 2 earlier runs, a confirm card "You signed Zz Pareho Na." in the run that was checked); the start → sign → stop
+  gesture flow was not driven (the fake camera shows only `hello`). A real-camera check is still open (DEBT).
 
 ### 1. Owns these files
 

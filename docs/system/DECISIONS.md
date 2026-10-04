@@ -1479,3 +1479,129 @@ section there has every measured number).
   after it loads (taps are queued). On the Pi this is expected to be longer (not measured).
   Before the warm-up, the same block happened after tapping Record 3 samples, while
   "Starting camera…" was showing.
+
+
+
+## Decisions made during the sign-texts phase (2026-10-04)
+
+Phase "one sign, two texts (ESL / FSL / Both)". Source: the approved proposal
+`docs/reports/2026-10-04-sign-texts-step1.md` (owner decisions 1-7 given in the task; Q1-Q15 there were all approved at
+their recommended default), the task reports `.git/sdd/st-task-{1,2,4,5,6,7,8}-report.md`,
+`st-final-fix-report.md`, and the ledger `.git/sdd/progress.md`. Where the numbers come from is cited in
+`docs/system/BACKEND.md` ("One sign, two texts", "The 2026-10-04 sign-texts migration"), `docs/system/UI.md` Part 2
+("Sign texts") and Part 3d, and `docs/system/ML.md`.
+
+### Owner decisions (task prompt)
+
+1. **Step 1 (Add Data) Sign Set has three options: ESL | FSL | Both.**
+2. **Two text fields replace Gesture Name: "English text" and "Filipino text".** ESL shows English only, FSL shows
+   Filipino only, Both shows both; each shown field is required. Texts keep their casing and punctuation ("How are
+   you?" / "Kumusta ka?"). The internal key (folder/label slug) is derived, never typed.
+3. **Samples are stored once per sign.** No copying between folders.
+4. **Recognition:** the ESL model uses signs whose set is ESL or Both and outputs the English text; the FSL model uses
+   FSL or Both and outputs the Filipino text. Text-to-sign looks a sign up by the text of the active language.
+5. **View Active Gesture Dataset can edit a sign's set and both texts without re-recording**, and shows both texts.
+6. **Existing FSL signs that copy an ESL recording merge into that ESL sign as Both** (the Tagalog label becomes the
+   draft Filipino text). Duplicate files leave the active dataset only after file-by-file proof of identical landmark
+   data; they are moved to a backup folder, never deleted.
+7. **Demo system: no security work** (`docs/system/DEBT.md` item 72 stays open). This is why `signs.php` has no auth.
+
+### Q1-Q15 (all approved at the recommended default)
+
+| Q | Decision | Reason given in the proposal |
+|---|---|---|
+| 1 | Keep the column name `gestures.sign_language`, widen it to `ENUM('ESL','FSL','BOTH')` (no rename to `sign_set`). | No test churn. |
+| 2 | One folder `saved_gestures/<key>/` for every set; `saved_gestures_fsl/` is never written again but still read (legacy). | Samples stored once (decision 3). |
+| 3 | Set and texts live on disk in a per-sign `saved_gestures/<key>/sign.json` (disk is the truth); `category` stays DB-only, unchanged rules. | Disk is already the source of truth (BACKEND "sync_db_to_disk explicitly disabled"). |
+| 4 | Key collision: same set adds samples and updates the texts; a different set is blocked with HTTP 409 `{success:false, error, existingSet}` and a message in the UI, and the user edits it in the dataset view first. | Proposal: edit the set in the dataset view first. |
+| 5 | New sample files keep the v2/v3 formats; their `signLanguage` field is `ESL` for ESL and Both signs, `FSL` for FSL signs; `sign.json`, not the sample, decides the set. | Format stays unchanged. |
+| 6 | Draft text rule: label with `_` → space, first character upper-cased (`kamusta_ka` → `Kamusta ka`). The owner corrects drafts afterwards, including apostrophes ("Don't"). | Decision 6: the Tagalog label becomes the draft Filipino text. |
+| 7 | The 18 category conflicts between an FSL copy and its ESL twin are resolved by keeping the **ESL sign's** category. | Merged Both signs keep the ESL row's category. |
+| 8 | `makita` / `see` merge as Both on the landmark proof, keeping `asset_path` `assets/signs/en/see.webm`; `assets/signs/fil/makita.webm` stays on disk and still plays for FSL "Makita". | Proposal: the first-step probe `assets/signs/fil/<normalized_text>.webm` runs before the asset map (`js/sign-player.js:378` at the time of the proposal). The alternative, leaving it FSL-only, would contradict the data proof. |
+| 9 | The stray `saved_gestures_fsl/sample_1784112605537_bec003.json` (label `""`, 20 frames, identical to `saved_gestures/my_name/sample_1784112605409_7920b5.json`) moves to the backup as a proven duplicate. | No code read it (sync/list scan subfolders only). |
+| 10 | Narrowing a sign's set (Both → ESL) keeps the now-hidden text stored, unused. | Switching back restores it. Implemented in `signs.php:115-119` and by sending the hidden field as `null` from the UI. |
+| 11 | Add `- ' , . ? !` to the last row of `js/virtual-keyboard.js` (5 rows, height unchanged at 280 px). This also changes `talk.html`'s keyboard. | Without it "How are you?" cannot be typed on the kiosk. |
+| 12 | Step 2 gets an "AI model: ESL \| FSL" toggle that defaults from Step 1 (Both → ESL). | Train AI and Predict must know which model. |
+| 13 | One-time `localStorage` model reset (`sining_kamay_model_schema` = `"2"`). | No stale Tagalog-keyed model may survive in `talk.html`. |
+| 14 | Reports columns become ID \| Key \| Set \| Text \| Asset \| Created. | Both signs appear in both tabs. |
+| 15 | Three commits: code / data / docs. | Keeps the 90 file removals and 120 `sign.json` adds out of the code diff. |
+
+**Addition during execution (owner):** the owner's untracked `saved_gestures/hi/` and `saved_gestures/yow/`
+(3 samples each) are real data, so they get a `sign.json` (set ESL) like the rest and go into the data commit
+(`5ec84dd`: 122 `sign.json`, `hi`/`yow` samples added, 90 `saved_gestures_fsl` files removed).
+
+### Decisions made during execution (controller / implementation)
+
+- **The live migration ran before the server task (Task 3 before Task 2).** Reason: so the server code and its tests ran
+  against the migrated schema and data (`.git/sdd/progress.md`). The old `save_gesture.php` was then used for one full GET
+  (122 / 127 unchanged) before being replaced.
+- **Backups before anything moved:** a `mysqldump` of 10,132,052 bytes, a copy of the dataset (217 files), a
+  `snapshot.json` and a `moved-manifest.json` of 90 entries, in `E:\ACADSS\IOT\backups\2026-10-04-sign-texts\`. The script
+  repeats the identical-frames proof file by file before it moves and re-proves against the twin right before each delete
+  (`BACKEND.md` migration steps 2 and 5).
+- **Migration step 4 only fills rows whose texts are both NULL.** Reason (Task 1): a re-run or a resume must never
+  clobber a later edit made in the dataset view.
+- **Migration step 7 refuses if a label is duplicated and drafts any still-missing required text before adding the
+  CHECK** (`db-schema/migrations/2026-10-04-sign-texts.php:458-485`; Task 1 report).
+- **The migration carries its own helper copies** (`draftText`, JSON writer) instead of requiring `sign_meta.php`
+  (`db-schema/migrations/2026-10-04-sign-texts.php:108-113`, `:167`); the task report does not state a reason.
+- **`derive_sign` always fills a text the set requires with the draft** (`php/api/sign_meta.php:93-98`). Reason (Task 2): the
+  sync can then never violate `chk_gestures_texts`, even for a hand-edited `sign.json` with a missing text.
+- **`signs.php` update requires the *shown* texts to be sent non-empty, even if a stored value exists; only the *hidden* text
+  falls back to the stored one** (`php/api/signs.php:100-119`). Brief ambiguity resolved in Task 2; the UI therefore always
+  sends the shown fields and `null` for the hidden one.
+- **Collision check order:** `saved_gestures/` sign.json or samples, then the legacy `saved_gestures_fsl/`, then the DB row
+  (`save_gesture.php:475-496`); an empty folder with neither is not an existing sign. A legacy-FSL-folder sign saved again
+  goes to `saved_gestures/<key>` and never writes the legacy folder.
+- **The ESL / FSL model membership is decided purely by `signs[key].set`** (a Both sign trains both models, and the
+  hidden-field text is not part of any model). `trainModel()` / `mergeSavedGestureSamples()` changed only in the source of
+  `targetLang` and the filter `itemLang === targetLang || itemLang === 'BOTH'`; `knnPredict` and `cosineSimilarity` are
+  untouched (`docs/system/ML.md`).
+- **Step 4 keeps its own Output Language chip** (not the Step 2 model toggle): per the brief, Step 4's own toggle is independent of
+  the model (`.git/sdd/st-task-4-report.md` concern 3). Its known gap is in `DEBT.md`.
+- **Dataset-modal edit uses a panel inside the same card, not a second modal** (the task report gives no further reason); it was
+  measured to fit with the keyboard open (card h=289, bottom 297, keyboard top 320). A text the set does not use shows "—" in
+  the table even if stored.
+- **Table and search:** search matches the key, both texts and also a stored hidden text (a Task 5 minor, left as is); the Delete
+  confirm names the sign by English text, else Filipino text, else key.
+- **Full-sync performance fix (Task 2 fix round 1, commit `78df63d`).** The first sync called `save_gesture_word_to_db()` per
+  label (four `SHOW COLUMNS` + upsert + category read-back each): a full GET measured **12.2-14.5 s** against 1.75-2.30 s for
+  the pre-phase code. Decision: one column check per request, load all `gestures` rows and all recorded `sample_path`s once,
+  upsert a label only when it differs from `derive_sign()`, skip the category read-back (sync passes no category, so a manual
+  re-tag is still never overwritten). After the fix and the whole-phase fix: 0.76 / 0.77 / 0.83 s (`BACKEND.md`).
+- **Text-to-sign "?" registration fix (Task 6 fix round 1, commit `0fc2c56`).** `normalizeSpeechText` keeps "?", but speech never
+  produces it and typed text may. Decision: register both the normalized text and the same text with `[?¿]` removed, with the
+  no-overwrite rule unchanged (`js/sign-player.js:246-275`). The Task 6 review had found "'?' not normalized in text-to-sign
+  registration" (`.git/sdd/progress.md`).
+- **A Both sign's English clip serves the Filipino map too** (its `assetPath` is an `en/` path). By design per the proposal;
+  the first-step probe `assets/signs/fil/<text>.webm` wins first when it exists (live check: FIL "kamusta ka" played
+  `fil/kamusta_ka.webm`, not the map value).
+- **`escapeHtml` fix (whole-phase review Imp1, commit `16c15ce`).** User-entered sign texts reached `innerHTML` in Step 4 and,
+  latently, in `js/sign-to-text-ui.js`. Decision: add `escapeHtml()` (`js/gesture-training-ui.js:625`,
+  `js/sign-to-text-ui.js:4`) at every `innerHTML` site that carries a sign text (same spans and classes); sites carrying only
+  slug keys, static strings or `err.message` were left alone. The dataset modal and Reports were already text-safe (DOM +
+  `textContent`; Reports' View Asset handler switched to `JSON.stringify`).
+- **Upgrade path for a pre-phase database (whole-phase review, commit `16c15ce`).** `ensure_gestures_columns()` widens the enum to
+  include `BOTH`, swaps `uq_gestures_label_language` for `uq_gestures_label` **only when no label is duplicated**, adds
+  `text_en`/`text_fil`, and **never adds the CHECK** (the setup SQL and the migration own it, per the comments at
+  `php/api/gesture_category.php:73` and `:118-119`; PHP writes the required texts regardless). With duplicate labels the old key is kept and the swap retries on a
+  later request. `BACKEND.md` "Upgrade of a pre-phase database".
+- **`maxlength="255"` on all four text inputs and the Step 2 toggle lock while training (commit `16c15ce`).** The server caps
+  texts at 255 characters (400 above); the lock exists because `trainModel()` reads the language at the start and saves
+  per-language state at the end.
+- **The check scripts were adapted to the removed `#gestureLabelInput`** (`e2e.mjs`, `screenshots.mjs`, `startup-check.mjs`,
+  `capture-ui-check.mjs` fill `#signTextEn`); `screenshots.mjs` now reads START before the screenshot (a race with the faster
+  camera start) and `startup-check.mjs` retries `rmSync` (a Windows file lock). Task 8 reverted the `docs/reports/img/*.png` that
+  `screenshots.mjs` rewrites so no image was committed.
+
+### Measured results (cited, not estimated)
+
+- Migration live result: 90 proven, 122 `sign.json` written, 90 moved (manifest 90), 89 recordings + 89 gestures deleted; ESL 33 /
+  BOTH 89 = 122 gestures, 127 recordings, 216/216 snapshot recordings reachable, 0 missing, 0 folders without `sign.json`
+  (`.git/sdd/st-task-3-migration-output.txt`; re-confirmed by Task 8, 90/90 sha256 match).
+- Whole-phase suite: **188 tests, 187 pass, 0 fail, 1 skip** (baseline 141 / 140 / 0 / 1); `verify-e2e.mjs` 80 PASS; the
+  capture-ui, step1, dataset, talk, reports-keyboard and xss check scripts pass (`st-task-8-report.md`, `st-final-fix-report.md`).
+- `startup-check.mjs`: first open START enabled in 1,027 ms (the previous `UI.md` figure was 1,858 / 1,505 ms for the first open,
+  `.git/sdd/st-task-8-report.md` item 9); camera-to-first-result 153 ms, `trainMs` 1,694.
+- `e2e.mjs`: ready 1,016 ms, recording auto-stopped after 15,753 ms, processing 13,623 ms, per-rep frames [18, 17, 17], Train
+  "Complete! — 123 gestures ready" in 2,109 ms.

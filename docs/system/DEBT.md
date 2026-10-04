@@ -755,6 +755,14 @@ so a later session does not re-litigate them:
     left as the original pipeline behaves rather than falling back to the English
     alphabet.
 
+    **Update 2026-10-04 (sign-texts phase).** Still true, and measured again: Filipino
+    text-to-sign for a text with no clip (e.g. "Zz Pareho Probe") requests the `fil/` clip and
+    every `fil/` letter, all 404, and plays nothing (`.git/sdd/st-task-8-report.md` item 8,
+    concern B). A Both sign with an `assetPath` has its Filipino text registered against that `en/`
+    clip (`js/sign-player.js:245-275`), so it still plays in Filipino; a Filipino text with no clip at
+    all (a typed word that is not a sign, or a sign recorded without a video) plays nothing. The stored
+    Filipino text is "Kamusta ka"; the spelling "kumusta ka" is not a stored text and plays nothing.
+
 57. **Low severity, open: the sign clips are small.** Words are 360×202,
     letters 360×640 (measured with `ffmpeg -i`), displayed inside a 560×260 frame
     with `object-fit: contain`. Legibility at kiosk viewing distance is a manual
@@ -845,6 +853,12 @@ so a later session does not re-litigate them:
     in that case; it just isn't removed by the delete itself.) Not fixed in
     this phase.
 
+    **Update 2026-10-04.** `delete_gesture` is now `php/api/save_gesture.php:376-419` (was cited
+    as `:401-438`). It deletes every `*.json` including `sign.json` and the folder from both
+    `saved_gestures/` and the legacy `saved_gestures_fsl/` (`:380-392`) and uses prepared statements
+    (`:395-414`), but still never removes `assets/signs/<en|fil>/<label>.mp4`/`.webm`: for a Both sign
+    that is one clip under `assets/signs/en/` (`:614`). Still open.
+
 65. **Low severity, open: category is DB-only, so a DB wipe/re-import loses
     manual re-tags.** `gestures.category` (`db-schema/database_setup.sql:89`)
     has no on-disk counterpart; a fresh import or a full `gestures` table
@@ -853,6 +867,13 @@ so a later session does not re-litigate them:
     for every label — never to `NULL`, since the column has `DEFAULT 'word'`
     and the heuristic itself never returns null. Owner decision, 2026-09-23
     (see `DECISIONS.md`, "Category is stored in the DB only").
+
+    **Update 2026-10-04.** Still true after the sign-texts phase: the category stays DB-only
+    (`gestures.category`, `db-schema/database_setup.sql:39`, was cited as `:89`), unchanged rules; a
+    merged Both sign keeps the **ESL row's** category (18 FSL/ESL category conflicts were resolved that way,
+    `docs/system/DECISIONS.md`, sign-texts phase). Sync passes no category, so a manual re-tag is not
+    overwritten by a full GET (`php/api/save_gesture.php:211`, `:117-119`). The sets and both texts are
+    **not** lost on a DB wipe — they come back from each sign's `sign.json` on the next full sync.
 
 66. **Low severity, open: the categorization and multi-sample test suites
     run against the live DB and disk and must run serially.**
@@ -867,6 +888,15 @@ so a later session does not re-litigate them:
     `save-category.test.mjs` asserts every non-`zz` row's category is
     unchanged across the run (a guard against a repeat of the column-drop
     found by the final review).
+
+    **Update 2026-10-04 (sign-texts phase).** The serial suite now also includes
+    `tests/conversations/*.test.mjs`, `tests/video-capture/*.test.mjs`,
+    `tests/normalization/migration.test.mjs` and `tests/sign-texts/*.test.mjs`; measured result
+    188 tests, 187 pass, 0 fail, 1 skip (baseline before the phase 141 / 140 / 0 / 1;
+    `docs/system/BACKEND.md`, "Tests"). `tests/sign-texts/save-sign.test.mjs`,
+    `signs-endpoint.test.mjs`, `talk-texts.test.mjs` (vm-based, no DB) and the CDP check scripts
+    use `zz`-prefixed probe signs and clean up; the full-sync GET inside `signs-endpoint.test.mjs`
+    upserts real rows from disk (item 102).
 
 67. **Low severity, open, pre-existing (not introduced by this phase):
     `deleteGesture()` does not await `renderSavedDataset()`.** Several
@@ -966,6 +996,14 @@ so a later session does not re-litigate them:
     picks one" shape is unchanged — the ESL/FSL-same-label part of this item
     is still open.
 
+    **RESOLVED for the ESL/FSL-same-label part (2026-10-04, sign-texts phase).** A label is now
+    unique (`uq_gestures_label (label)`) and a sign is one folder with one set (`ESL`/`FSL`/`BOTH`),
+    so a label can no longer exist twice. The same key with a different set is HTTP 409 and nothing is
+    written (`php/api/save_gesture.php:497-505`); a Both sign is one `gestures` row with one category
+    (shown under both `categories` maps, `:291-296`); `delete_gesture` deletes by label from both folders
+    and removes the single row (`:376-414`). 0 labels overlap across sets (the migration merged the 89
+    that did, `docs/system/BACKEND.md`).
+
 72. **High severity, open (report only, 2026-09-24): `admin_api.php` and
     `core_api.php` run destructive actions with no real authentication.**
     Both answer any request that reaches them. Both send
@@ -1040,6 +1078,14 @@ so a later session does not re-litigate them:
     before the Pi is updated** — importing either tracked dump there as-is
     will not work with the current code.
 
+    **Update 2026-10-04 (sign-texts phase).** The dumps also lack `gestures.text_en`/`text_fil`,
+    the `BOTH` enum value, `uq_gestures_label` and `chk_gestures_texts`. There are now **three**
+    supported routes (dump the migrated DB; `database_setup.sql` + one full sync + backfill; or,
+    for an existing pre-phase DB, `git pull` + one full sync, which upgrades the table in place
+    but does not add the CHECK — item 103). See `docs/system/BACKEND.md`, "Schema migration and
+    fresh-machine setup (2026-09-24)", "FRESH MACHINE / PI SETUP". **Must still be followed
+    before the Pi is updated.**
+
 74. **Low, open: `gesture_recordings.landmark_json` duplicates each sample's
     JSON file on disk.** Measured 2026-09-24 (Step 1 proposal): ~9.46 MB
     across 210 rows, the bulk of a full DB dump. Kept by owner decision
@@ -1058,6 +1104,11 @@ so a later session does not re-litigate them:
     `db-schema/migrations/2026-09-24-backfill-asset-path.php`'s check. That
     backfill script is one-time, not run automatically on sync, so this gap
     reopens for every gesture recorded after it last ran.
+
+    **Update 2026-10-04.** `fetch_gestures()` now spans `php/api/reports.php:22-64`, the
+    `.mp4` backfill is `:45-57`, and a Both sign on the FSL tab is looked up under
+    `assets/signs/fil/<label>.mp4` (the Both sign's clip is saved under `assets/signs/en/`,
+    `php/api/save_gesture.php:614`), so the backfill misses it there as well. Unchanged otherwise.
 
 76. **Low, open, pre-existing (not introduced by this phase): `save_gesture.php`'s
     POST response reports `dbGestureCreated: true` even when the `gestures`
@@ -1307,6 +1358,14 @@ so a later session does not re-litigate them:
     `saved_gestures_fsl/<label>/sample_*.json`, so this file is never listed,
     synced, or served — dead weight, not a functional problem.
 
+    **RESOLVED (2026-10-04, sign-texts migration).** The file was one of the 90
+    proven duplicates the one-time migration moved out of the active dataset: step 2
+    proved its frames identical to `saved_gestures/my_name/sample_1784112605409_7920b5.json`,
+    step 5 copied it to the backup with a matching sha256 and deleted the original
+    (`docs/system/BACKEND.md`, "The 2026-10-04 sign-texts migration"; backup
+    `E:\ACADSS\IOT\backups\2026-10-04-sign-texts\saved_gestures_fsl\`). `saved_gestures_fsl/`
+    now holds 0 sample files.
+
 93. **Low severity, open (video-based gesture capture, 2026-09-26): the Step
     1 sample line's "(N frames)" count is raw v3 frames, not training rows,
     and its Save-disabled check is currently unreachable.** The count comes
@@ -1321,6 +1380,130 @@ so a later session does not re-litigate them:
     REQUIRED_REPS` (`js/capture-core.js:223-231`) — so the `n !==
     C().REQUIRED_REPS` disabled-check at `:455` is a defensive branch that
     can't currently be hit, not a live gate.
+
+94. **Low severity, open (sign-texts phase, 2026-10-04; pre-existing by size, not caused by this
+    phase): the localStorage quota cannot hold both language models.** Measured in Task 8: the ESL
+    k-NN cache is about 3.59M characters of an origin quota of roughly 5.2M, and the FSL model (91
+    labels, about 2.5M) cannot also be cached. `trainModel()` still reports "Complete" and only
+    `console.warn`s plus a training-log line `// Warning: could not cache model`
+    (`js/gesture-training-ui.js:898-904`); in an unmodified run `sining_kamay_knn_FSL` was `null`
+    after FSL training. On the kiosk the FSL model is rebuilt each session instead of cached
+    (`talk.html`'s `autoTrainForTranslate()` trains from the database when no cache exists).
+    No pre-phase measurement exists. Membership counts, from the migration output: the ESL model has
+    122 signs before and after (122 ESL rows before; ESL + Both now), the FSL model 89 signs before
+    and 89 Both + the shared `start` now. The Pi's quota is not measured. Not fixed.
+
+95. **Low severity, open (sign-texts phase): deleting a sign does not invalidate the cached model
+    label lists.** `deleteGesture()` (`js/gesture-training-ui.js:538-566`) removes the sign from
+    `trainData` and re-renders, but never touches `sining_kamay_labels_<ESL|FSL>` or the knn
+    caches; the dataset-modal Edit does clear the labels cache of every language whose membership
+    changed (`:259-263`). `mergeSavedGestureSamples()` already filters cached labels against the
+    current rows (`:736-757`), which limits the effect, so this is a stale-cache risk until the next
+    Train, not a confirmed wrong result.
+
+96. **Low severity, open (sign-texts phase): Step 4 uses its own Output Language chip, not the Step 2
+    model language.** `signLang` (`'en'`/`'fil'`, `js/gesture-training-ui.js:9`, `:1104`) is independent
+    of `modelLanguage()`. An FSL-only sign recognised with the English chip has no English text, so
+    `translateGestureLabel()` falls through to the title-cased key (`:326-338`), e.g. "Zz Fsl Lamang"
+    style output rather than a real English text. Documented gap, per the brief
+    (`.git/sdd/st-task-4-report.md` concern 3); Step 3 is correct (it follows the model toggle).
+
+97. **Low severity, open (sign-texts phase): a 409 during a save offers "Retry save", which retries the
+    same failing request.** The capture UI's save-error state shows Retry save alone
+    (`js/gesture-capture-ui.js:669-676`, `:130`); a 409 ("A sign with this key already exists as <SET>.",
+    `php/api/save_gesture.php:497-505`) cannot succeed on retry because nothing changed. The Step 1 form
+    disables Record when the key clashes (`js/gesture-training-ui.js:469-482`), so this is reachable
+    only if the dataset changed between the form check and the save (e.g. another tab).
+
+98. **Low severity, open (sign-texts phase): a failed dataset reload after a successful edit reports "Save
+    failed" in a hidden panel.** `trDatasetEditSave()` hides the edit panel before
+    `await window.reloadDataset()` (`js/gesture-training-ui.js:265-268`); if the reload throws, the `catch`
+    writes `Save failed: ...` into `#dsEditMsg` (`:270-271`), which is no longer visible, although the
+    POST already succeeded. The user sees the table with the previous values and the "Saved." toast. Also:
+    the modal's ✕ in edit mode closes the whole modal with no unsaved-change prompt, and Cancel while a
+    save is in flight is not guarded.
+
+99. **Low severity, open (sign-texts phase): the dataset edit panel's error message is clipped at 32 px.**
+    `.tr-ds-edit-msg` has `max-height: 32px; overflow: hidden` (`css/gesture-training.css:759`), so a long
+    server `error` (up to the 255-character text limits it can echo) shows only about two lines.
+
+100. **Low severity, open (sign-texts phase, by design): a Both sign's English key also resolves in the
+     Filipino map.** `fetchAndRegisterCustomGestures()` registers the key and the key with spaces in
+     each language map the sign belongs to, valued by the sign's `assetPath`, which is its `en/` clip
+     (`js/sign-player.js:246-275`). Typing "how are you" in Filipino mode therefore plays the English
+     clip as well, and a Both sign's Filipino entries point at an `en/` path (the first-step probe
+     `assets/signs/fil/<text>.webm` still wins when such a file exists).
+
+101. **Low severity, open (sign-texts phase): the legacy `saved_gestures_fsl/` read path is untested, and
+     `signs.php` update 404s for a legacy-only FSL folder.** The folder is empty after the migration, so
+     no test exercises sync/list/collision/delete of a legacy folder without `sign.json` (derivation as
+     FSL, `php/api/sign_meta.php:79`). `signs.php` update only looks in `saved_gestures/`
+     (`php/api/signs.php:84-89`), so such a folder cannot be edited from the dataset modal until its samples
+     are moved. Also, `js/talk-loader.js:50` calls `window.GestureDataRecorder.loadSigns()` with no existence
+     guard (it assumes the `sign-libs` item loaded `gesture-data.js`).
+
+102. **Low severity, open (sign-texts phase): `tests/sign-texts/signs-endpoint.test.mjs` runs a full-sync GET
+     that upserts real rows.** A full GET of `save_gesture.php` reconciles disk to DB for every real sign
+     (rewrites `sign_language`/`text_en`/`text_fil` from disk when they differ). It is idempotent — measured
+     on live: 89 BOTH / 33 ESL, 127 recordings and the md5 of all 122 real `sign.json` unchanged before and
+     after (`.git/sdd/st-task-2-report.md`) — but it is the one test in the folder that is not confined to
+     `zz` probe rows.
+
+103. **Low severity, open (sign-texts phase): an upgraded database lacks `chk_gestures_texts`.**
+     `ensure_gestures_columns()` upgrades a pre-phase DB in place (enum widened, key swapped when no label
+     is duplicated, text columns added) but never adds the CHECK (`php/api/gesture_category.php:71-73`,
+     `:118-119`). Only `database_setup.sql` (a fresh DB) and the live migration carry it. PHP always writes
+     the required texts (`php/api/save_gesture.php:522-523`, `php/api/sign_meta.php:93-98`,
+     `php/api/signs.php:100-106`), so the CHECK is a backstop; but a manual SQL edit on an upgraded DB can
+     now store an FSL/BOTH row with an empty text. With duplicate labels the old unique key
+     `uq_gestures_label_language` also stays until they are removed.
+
+104. **Medium, open (sign-texts phase): the draft Filipino (and English) texts need the owner's correction.**
+     The migration filled `textFil` from each FSL folder's Tagalog label and `textEn` from the ESL key (rule:
+     `_` → space, first letter upper-cased), so every text is a draft: no apostrophes ("Dont know" for
+     "Don't know"), no punctuation, and 18 Filipino drafts are probably wrong (not Filipino at all, or a
+     different meaning from the ESL sign): `hibaru`, `host_dad`, `im_so_sick`, `boso`, `ganon_din`,
+     `matalusan`, `bigyan_mo_pa_ako_ng_isang_pagkakataon`, `hinihintay_ang_kanan`, `ipadala_ito`,
+     `amin_ng_dati`, `malalim_na_tagalog`, `magkasingkahulugan_ng_galit`, `paggawa_ng_kahulugan`,
+     `sana_basahin_mo_chat_ko_sa_u`, `wala_akong_nahanap`, `wala_naman_mangyayari_kung_hindi_ko_susubukan`,
+     `kaya`, `nakakaintindi_ba_sila_ng_english` (list and the ESL meaning of each: the step 1 report,
+     `docs/reports/2026-10-04-sign-texts-step1.md`, "Drafts that are probably wrong" — the author's
+     reading, not verified). The owner edits them in View Active Gesture Dataset; the drafts of all 122 signs also
+     show on the kiosk (captions, text-to-sign registration) until corrected. Not fixed — owner data.
+
+105. **Low severity, open (sign-texts phase): the Let's Talk "Translate" button flow with a fake camera is
+     timing dependent; a real-camera check is still needed.** In Task 8 the flow gave a confirm card
+     ("You signed Zz Pareho Na.") once, "Didn't catch that" in two earlier runs, and passed in one run of four
+     attempts; three probes copy the same `hello` clip and fight with `hello` for the stable label. The caption
+     check (every caption is a sign text of that language, none contains an underscore) was verified instead,
+     and the start gesture → sign → stop gesture flow was not driven at all (the fake camera shows only
+     `hello`). Needs a real signer on the kiosk (`.git/sdd/st-task-8-report.md` item 8, concern C).
+
+106. **Low severity, open (sign-texts phase): small `save_gesture.php` / `signs.php` / modal gaps found in
+     review.** `save_gesture.php` mysqli calls are only `false`-checked, never wrapped for PHP 8.1+
+     exceptions, and the delete path never calls `ensure_gestures_columns()` (both the pre-existing
+     pattern); `$dbRows`/`$knownPaths` in the sync are case-sensitive PHP array keys against a
+     `utf8mb4_general_ci` DB (`php/api/save_gesture.php:177-187`); a sync-time `readBackCategory = false`
+     returns the heuristic category, not the stored one (`:117-119`, commented); `reports.php` ignores
+     `execute` failures (`php/api/reports.php:36`); the "set → visible fields" rule is duplicated between
+     Step 1 and the edit panel (`js/gesture-training-ui.js:426-431`, `:203-207`); the dataset search matches
+     a stored hidden text; `tests/sign-texts` has no test for a failed `signs.php` POST, a 409 through the
+     DB or legacy folder, an explicit category kept by sync, the `:disabled` Record style, the Step 2 toggle
+     lock (`trainModelGuarded()`, a 3-line wrapper) or a hostile text in Reports' View Asset handler
+     (`.git/sdd/progress.md` minors, `st-final-fix-report.md` concerns).
+
+107. **Low severity, open (sign-texts phase): the migration script's own minors.** Snapshot and manifest
+     writes are not atomic; a truncated backup copy blocks a resume (safe: it fails instead of moving);
+     the fixture's `frames`/sha fields are unused by the PHP (it re-proves by deep equality); `--verify-only`
+     needs `snapshot.json`; the defaults point at the live DB and the real repo folders, so a bare run
+     touches real data (always pass `--db`/`--root`/`--backup-dir`); the tamper test only perturbs a frame
+     float (`.git/sdd/progress.md` Task 1, `st-task-1-report.md`).
+
+108. **Low severity, open, test scripts (sign-texts phase): CDP checks drive events programmatically.** The
+     `*-check.mjs` scripts (headless Chrome, no real touch or focus) dispatch `focusin` and `pointerdown`
+     for the on-screen keyboard (`.git/sdd/st-task-7-report.md`) and the live Step 4 prediction loop's
+     sentence sites were verified by code and by the escape helper, not by driving a camera
+     (`st-final-fix-report.md`). Typing on the real touchscreen and on-Pi timings are not measured.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead
