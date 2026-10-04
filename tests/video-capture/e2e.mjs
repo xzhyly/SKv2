@@ -170,7 +170,7 @@ async function main() {
     };
     const setLabel = (v) =>
       ev(
-        `(() => { const i = document.getElementById('gestureLabelInput'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`
+        `(() => { const i = document.getElementById('signTextEn'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`
       );
 
     await chrome.navigate(PAGE_URL);

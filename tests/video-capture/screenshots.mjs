@@ -126,7 +126,7 @@ async function runSize(width, height, y4m) {
     await ev(`showStepContent(1); true`);
     await sleep(800);
     await ev(PAGE_HELPERS);
-    await ev(`(() => { const i = document.getElementById('gestureLabelInput'); i.value = ${JSON.stringify(LABEL)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    await ev(`(() => { const i = document.getElementById('signTextEn'); i.value = ${JSON.stringify(LABEL)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     await waitFor(`!/^0 gestures/.test(document.getElementById('datasetCount').textContent)`, 20000, 200);
     await waitFor(`getComputedStyle(document.getElementById('sk-toast')).opacity === '0'`, 10000, 200); // no toast over the form
     await sleep(300);
@@ -142,8 +142,10 @@ async function runSize(width, height, y4m) {
     // Starting camera: capture right after opening, before the first live result.
     await ev(`document.getElementById('startGestureDataBtn').click(); true`);
     await waitFor(`${state} === 'starting'`, 3000, 20);
-    const starting = await shot('starting-camera');
+    // Read the button BEFORE the screenshot: taking the screenshot takes longer than the (warmed-up) camera start, so
+    // reading it afterwards races with START becoming enabled.
     const startBtn = await ev(`({ d: document.getElementById('gcStart').disabled, t: document.getElementById('gcStart').textContent })`);
+    const starting = await shot('starting-camera');
     check(`${width}x${height} Starting camera: START disabled with "Starting camera…"`, starting.state === 'starting' && startBtn.d && startBtn.t === 'Starting camera…', JSON.stringify(startBtn));
     const readyMs = await waitFor(`${state} === 'ready'`, 60000, 100);
     check(`${width}x${height} START enabled once camera + detector are ready`, readyMs >= 0 && (await ev(`!document.getElementById('gcStart').disabled`)), `${readyMs} ms`);

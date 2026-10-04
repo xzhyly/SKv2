@@ -45,7 +45,7 @@ try {
   await ev(`pinInput = '2026'; trVerifyPin(); showStepContent(1); true`);
   const dsMs = await waitFor(`!/^0 gestures/.test(document.getElementById('datasetCount').textContent)`, 60000, 50);
   out.datasetLoadedMsAfterNavigate = dsMs < 0 ? -1 : Date.now() - tNav;
-  await ev(`(() => { const i = document.getElementById('gestureLabelInput'); i.value = 'zz_startup_check'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+  await ev(`(() => { const i = document.getElementById('signTextEn'); i.value = 'zz_startup_check'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
   await sleep(2000);
   // Page-load warm-up (window.handTrackingWarmUp -> { ok, ms }; absent before the owner follow-up).
   await ev(`window.__warmDone = false; if (window.handTrackingWarmUp) window.handTrackingWarmUp.then(() => { window.__warmDone = true; }); true`);
@@ -88,7 +88,7 @@ try {
   out.error = e && e.stack ? e.stack : String(e);
 } finally {
   if (chrome) await chrome.close();
-  rmSync(tmp, { recursive: true, force: true });
+  rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 }
 console.log(JSON.stringify(out));
 process.exit(out.error ? 1 : 0);
