@@ -258,7 +258,13 @@ async function fetchAndRegisterCustomGestures() {
                 const spaceKey = key.replace(/_/g, ' ');
                 const register = (map, text) => {
                     const names = [key, spaceKey];
-                    if (typeof text === 'string' && text) names.unshift(normalizeSpeechText(text));
+                    if (typeof text === 'string' && text) {
+                        // normalizeSpeechText keeps "?"; speech never has it, typed text may. Register both.
+                        const norm = normalizeSpeechText(text);
+                        const bare = norm.replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim();
+                        if (bare && bare !== norm) names.unshift(bare);
+                        names.unshift(norm);
+                    }
                     names.forEach(name => { if (name && !map[name]) map[name] = value; });
                 };
                 if (inEn) register(signAssetMapEn, sign.textEn);

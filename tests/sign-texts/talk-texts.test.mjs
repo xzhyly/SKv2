@@ -167,3 +167,18 @@ test('stock entries are never overwritten by a sign text', async () => {
   assert.ok(en.includes('assets/signs/en/hello.webm'), JSON.stringify(en));
   assert.ok(!en.includes('assets/signs/en/zz_override.webm'), JSON.stringify(en));
 });
+
+test('texts with "?" resolve with and without the "?" in the right maps', async () => {
+  const payload = { success: true, signs: { zz_q_key: { set: 'BOTH', textEn: 'Zz How are you?', textFil: 'Zz Kumusta ka?', assetPath: 'assets/signs/en/zz_q_key.webm', samples: 1 } } };
+  for (const t of ['zz how are you', 'zz how are you?']) {
+    const en = await playOne(payload, 'en-US', t);
+    assert.ok(en.includes('assets/signs/en/zz_q_key.webm'), t + ' ' + JSON.stringify(en));
+  }
+  for (const t of ['zz kumusta ka', 'zz kumusta ka?']) {
+    const fil = await playOne(payload, 'fil-PH', t);
+    assert.ok(fil.includes('assets/signs/en/zz_q_key.webm'), t + ' ' + JSON.stringify(fil));
+  }
+  const esl = { success: true, signs: { zz_q_esl: { set: 'ESL', textEn: 'Zz Only En?', textFil: 'Zz Hidden Fil?', assetPath: 'assets/signs/en/zz_q_esl.webm', samples: 1 } } };
+  const fil = await playOne(esl, 'fil-PH', 'zz hidden fil');
+  assert.ok(!fil.includes('assets/signs/en/zz_q_esl.webm'), JSON.stringify(fil));
+});
