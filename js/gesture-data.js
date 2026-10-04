@@ -5,6 +5,23 @@
   const SAVE_ENDPOINT = (location.protocol === "file:")
     ? "http://localhost/Sining_kamay/php/api/save_gesture.php"
     : "php/api/save_gesture.php";
+  const SIGNS_ENDPOINT = (location.protocol === "file:")
+    ? "http://localhost/Sining_kamay/php/api/signs.php"
+    : "php/api/signs.php";
+
+  // One-time model-schema reset (sign-texts phase): a model cached under the old schema was built
+  // from per-language sign folders; ESL/FSL models now include BOTH signs and key off the sign's
+  // set, so every cached model and label list is dropped once and rebuilt by pressing Train.
+  (function resetModelSchemaOnce() {
+    try {
+      if (localStorage.getItem("sining_kamay_model_schema") === "2") return;
+      ["sining_kamay_knn_ESL", "sining_kamay_knn_FSL",
+        "sining_kamay_labels_ESL", "sining_kamay_labels_FSL",
+        "sining_kamay_trained_labels_ESL", "sining_kamay_trained_labels_FSL"
+      ].forEach((k) => { localStorage.removeItem(k); });
+      localStorage.setItem("sining_kamay_model_schema", "2");
+    } catch (e) { /* storage blocked: nothing cached to reset */ }
+  })();
 
   const state = {
     hands: null,
@@ -16,6 +33,7 @@
     video: null,
     toast: null,
     savedCategories: { ESL: {}, FSL: {} }, // last loadSavedGestureDataset()'s json.categories
+    signs: {}, // key -> { set, textEn, textFil }: last loadSavedGestureDataset()'s json.signs / loadSigns()
     // Video-based gesture capture (createVideoDetector / onHandResults, js/video-landmarks.js):
     detectorMode: false, // true while a createVideoDetector() detector "owns" onResults
     pendingDetectResolve: null, // resolves the in-flight detect(canvas) promise
@@ -616,18 +634,21 @@
   // SAVE_META_KEYS: the v3 raw-sample metadata keys an optional `meta` object may carry into
   // the payload (video-based gesture capture, js/gesture-capture-ui.js). Any other key in
   // `meta` is ignored, so it can never override label/sign_language/frames.
+  // textEn / textFil (strings) are sent as text_en / text_fil (sign-texts phase).
   const SAVE_META_KEYS = ["formatVersion", "source", "repIndex", "videoWidth", "videoHeight", "fps", "input"];
 
   async function saveGestureSample(label, frames, signLanguage = "ESL", videoBase64 = null, videoPath = null, category = null, meta = null) {
     const payload = {
       label:         cleanLabel(label),
-      sign_language: signLanguage === "FSL" ? "FSL" : "ESL",
+      sign_language: (signLanguage === "FSL" || signLanguage === "BOTH") ? signLanguage : "ESL",
       frames,
     };
     if (meta && typeof meta === "object") {
       SAVE_META_KEYS.forEach((key) => {
         if (meta[key] !== undefined) payload[key] = meta[key];
       });
+      if (typeof meta.textEn === "string") payload.text_en = meta.textEn;
+      if (typeof meta.textFil === "string") payload.text_fil = meta.textFil;
     }
     if (videoBase64) {
       payload.video_base64 = videoBase64;
@@ -654,7 +675,10 @@
     }
     
     if (!res.ok || !json.success) {
-      throw new Error(json.error || `HTTP ${res.status}`);
+      const err = new Error(json.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.existingSet = json.existingSet;
+      throw err;
     }
     return json;
   }
@@ -667,7 +691,41 @@
       throw new Error(json.error || `HTTP ${res.status}`);
     }
     state.savedCategories = json.categories || { ESL: {}, FSL: {} };
+    state.signs = json.signs || {};
     return json.gestures || {};
+  }
+
+  function getSigns() {
+    return state.signs;
+  }
+
+  // The text of sign `key` in a language: 'fil' -> Filipino text, anything else -> English text.
+  // Returns a non-empty string, or null when the sign or that text is unknown.
+  function getSignText(key, lang) {
+    const sign = state.signs && state.signs[key];
+    if (!sign) return null;
+    const t = lang === "fil" ? sign.textFil : sign.textEn;
+    return (typeof t === "string" && t !== "") ? t : null;
+  }
+
+  // GET php/api/signs.php and merge each sign's { set, textEn, textFil } into the state. Resolves
+  // true/false; never throws.
+  async function loadSigns() {
+    try {
+      const res = await fetch(SIGNS_ENDPOINT);
+      const json = await res.json();
+      if (!res.ok || !json.success || !json.signs) {
+        throw new Error((json && json.error) || `HTTP ${res.status}`);
+      }
+      Object.keys(json.signs).forEach((key) => {
+        const s = json.signs[key] || {};
+        state.signs[key] = { set: s.set, textEn: s.textEn, textFil: s.textFil };
+      });
+      return true;
+    } catch (e) {
+      console.warn("[gesture-data] loadSigns failed:", e);
+      return false;
+    }
   }
 
   function getSavedCategories() {
@@ -705,8 +763,9 @@
   function recordingsToTrainingRows(gestures) {
     const rows = [];
     Object.keys(gestures).forEach((label) => {
+      const sign = state.signs && state.signs[label];
       gestures[label].forEach((sample) => {
-        const signLanguage = sample.signLanguage || 'ESL';
+        const signLanguage = (sign && sign.set) || sample.signLanguage || 'ESL';
         recordingToFeatureRows(sample).forEach((features) => {
           rows.push({ label, features, signLanguage });
         });
@@ -742,6 +801,9 @@
     saveGestureSample,
     loadSavedGestureDataset,
     getSavedCategories,
+    getSigns,
+    getSignText,
+    loadSigns,
     loadGestureDatasetForTraining,
     recordingToFeatureRows,
     recordingsToTrainingRows,

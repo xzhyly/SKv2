@@ -208,7 +208,7 @@ async function main() {
       if (id === 'gcStart') await waitFor(`document.getElementById('gcMode').getAttribute('data-state') === 'ready'`, 60000, 50);
       return ev(`document.getElementById(${JSON.stringify(id)}).click(); true`);
     };
-    const setLabel = (v) => ev(`(() => { const i = document.getElementById('gestureLabelInput'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    const setLabel = (v) => ev(`(() => { const i = document.getElementById('signTextEn'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
 
     await chrome.navigate(PAGE_URL);
     await waitFor(`!!(window.GestureDataRecorder && window.GestureCaptureUI && window.GestureCaptureCore && window.VideoLandmarks && typeof trVerifyPin === 'function')`, 15000);
@@ -239,7 +239,7 @@ async function main() {
     await click('startGestureDataBtn');
     await sleep(150);
     const t1 = await ev(`window.__t5.toasts.join(' | ')`);
-    check('empty label -> toast', t1.split(' | ').includes('Enter a gesture name first.'), JSON.stringify(t1));
+    check('empty label -> toast', t1.split(' | ').includes('Enter the English text first.'), JSON.stringify(t1));
     await setLabel(LABEL);
     await ev(`window.__t5.toasts.length = 0; true`);
     await click('startGestureDataBtn');

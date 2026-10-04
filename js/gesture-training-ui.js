@@ -143,7 +143,7 @@ function trRenderDatasetView() {
   rows.forEach(({ label, signSet, samples }) => {
     html += `<tr style="border-bottom:1px solid var(--border);">`;
     html += `<td style="padding:6px 5px; font-weight:700;">${label}</td>`;
-    html += `<td style="padding:6px 5px; text-align:center;">${signSet}</td>`;
+    html += `<td style="padding:6px 5px; text-align:center;">${signSetName(signSet)}</td>`;
     html += `<td style="padding:6px 5px; text-align:center;">${samples}</td>`;
     html += `<td style="padding:6px 5px; text-align:center;"><button type="button" onclick="deleteGesture('${label}')" style="background:#ef4444; color:#fff; border:none; border-radius:6px; padding:3px 8px; font-size:10px; font-weight:700; cursor:pointer;">Delete</button></td>`;
     html += `</tr>`;
@@ -195,6 +195,8 @@ const SIGN_TRANSLATIONS = {
 };
 
 function translateGestureLabel(label, lang) {
+  const t = window.GestureDataRecorder && GestureDataRecorder.getSignText && GestureDataRecorder.getSignText(label, lang);
+  if (t) return t;
   const clean = String(label || "").trim().toLowerCase().replace(/\s+/g, "_");
   if (SIGN_TRANSLATIONS[clean]) {
     return SIGN_TRANSLATIONS[clean][lang === 'fil' ? 'fil' : 'en'];
@@ -240,8 +242,7 @@ function updateUI() {
   }
 
   // Detect NEW gestures not yet compiled into the KNN model
-  const langRadio = document.querySelector('input[name="gestureDatasetType"]:checked');
-  const targetLang = (langRadio ? langRadio.value : 'ESL').toUpperCase();
+  const targetLang = modelLanguage();
   let trainedLabels = [];
   try {
     const stored = localStorage.getItem(`sining_kamay_trained_labels_${targetLang}`);
@@ -265,64 +266,103 @@ function updateUI() {
 // similarities over ALL its frames (knnPredict below), so 5 takes is the smallest count at which
 // each of those 5 neighbours can come from a different take. A suggestion, not a gate.
 const SAMPLE_TARGET = 5;
-const savedSampleInfo = { ESL: {}, FSL: {} };   // sign set -> label -> { samples, frames }
+const savedSampleInfo = {};   // sign key -> { samples, frames } (one tally per sign, whatever its set)
 let justSavedNote = '';
 
+// Step 1's Sign Set radio: 'ESL' | 'FSL' | 'BOTH'.
 function selectedSignSet() {
   const r = document.querySelector('input[name="gestureDatasetType"]:checked');
-  return r && r.value.toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+  const v = r ? String(r.value).toUpperCase() : 'ESL';
+  return v === 'FSL' || v === 'BOTH' ? v : 'ESL';
 }
-function currentLabelClean() {
-  const el = document.getElementById('gestureLabelInput');
-  return el ? GestureDataRecorder.cleanLabel(el.value) : '';
+function signSetName(set) {
+  const v = String(set || 'ESL').toUpperCase();
+  return v === 'BOTH' ? 'Both' : v === 'FSL' ? 'FSL' : 'ESL';
 }
-// Sets the checked Type (gestureCategory) radio to the stored category for the current
-// (label, sign set) if one was saved, else the heuristic's guess; empty label -> 'word'.
-// Only called from the Gesture Name input / Sign Set change handlers and renderSavedDataset() --
-// a manual tap on a Type option must survive until the name or sign set changes again.
+function currentEnglishText() {
+  const el = document.getElementById('signTextEn');
+  return el ? el.value.trim() : '';
+}
+function currentFilipinoText() {
+  const el = document.getElementById('signTextFil');
+  return el ? el.value.trim() : '';
+}
+// The sign's key, derived from the shown text field (never typed): English for ESL/Both, Filipino
+// for FSL. Same rule as the server (clean_label); empty text -> ''.
+function currentKey() {
+  const text = selectedSignSet() === 'FSL' ? currentFilipinoText() : currentEnglishText();
+  return GestureDataRecorder.cleanLabel(text);
+}
+// ESL shows English only, FSL shows Filipino only, Both shows both (only the group's wrapper hides).
+function updateTextFieldVisibility() {
+  const set = selectedSignSet();
+  const en = document.getElementById('signTextEnGroup');
+  const fil = document.getElementById('signTextFilGroup');
+  if (en) en.style.display = set === 'FSL' ? 'none' : '';
+  if (fil) fil.style.display = set === 'ESL' ? 'none' : '';
+}
+// The stored category of a sign (a BOTH sign is under both ESL and FSL in the map).
+function storedCategoryFor(key, set) {
+  const saved = GestureDataRecorder.getSavedCategories();
+  if (!saved || !key) return null;
+  const order = set === 'FSL' ? ['FSL', 'ESL'] : ['ESL', 'FSL'];
+  for (const s of order) { if (saved[s] && saved[s][key]) return saved[s][key]; }
+  return null;
+}
+// Sets the checked Type (gestureCategory) radio to the stored category for the current key if one
+// was saved, else the heuristic's guess; empty key -> 'word'.
+// Only called from the text-field / Sign Set change handlers and renderSavedDataset() --
+// a manual tap on a Type option must survive until the key or sign set changes again.
 function autoSelectCategory() {
-  const label = currentLabelClean();
+  const key = currentKey();
   let category = 'word';
-  if (label) {
-    const set = selectedSignSet();
-    const saved = GestureDataRecorder.getSavedCategories();
-    const stored = saved && saved[set] && saved[set][label];
-    category = stored || GestureCategory.guess(label);
-  }
+  if (key) category = storedCategoryFor(key, selectedSignSet()) || GestureCategory.guess(key);
   const radio = document.querySelector(`input[name="gestureCategory"][value="${category}"]`);
   if (radio) radio.checked = true;
 }
-function sampleInfoFor(label, set) {
-  return (label && savedSampleInfo[set][label]) || { samples: 0, frames: 0 };
+function sampleInfoFor(key) {
+  return (key && savedSampleInfo[key]) || { samples: 0, frames: 0 };
 }
 function rebuildSampleInfo(gestures) {
-  savedSampleInfo.ESL = {}; savedSampleInfo.FSL = {};
-  Object.keys(gestures).forEach(label => gestures[label].forEach(s => {
-    const set = String(s.signLanguage || 'ESL').toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
-    const e = savedSampleInfo[set][label] || (savedSampleInfo[set][label] = { samples: 0, frames: 0 });
+  Object.keys(savedSampleInfo).forEach(k => { delete savedSampleInfo[k]; });
+  Object.keys(gestures).forEach(key => gestures[key].forEach(s => {
+    const e = savedSampleInfo[key] || (savedSampleInfo[key] = { samples: 0, frames: 0 });
     e.samples += 1; e.frames += s.frameCount || 0;
   }));
 }
 function noteSampleSaved(res) {
-  const set = String(res.signLanguage || 'ESL').toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
-  const e = savedSampleInfo[set][res.label] || (savedSampleInfo[set][res.label] = { samples: 0, frames: 0 });
+  const e = savedSampleInfo[res.label] || (savedSampleInfo[res.label] = { samples: 0, frames: 0 });
   e.samples = res.labelSampleCount || e.samples + 1;   // server count is authoritative
   e.frames += res.frameCount || 0;                     // exact again after the next dataset reload
   justSavedNote = 'Saved. Run Train AI (Step 2) again to use it.';
+}
+// The existing sign with this key if it was saved under a DIFFERENT set than the form's, else null.
+function conflictingSign(key) {
+  const signs = GestureDataRecorder.getSigns();
+  const existing = key && signs && signs[key];
+  return existing && String(existing.set).toUpperCase() !== selectedSignSet() ? existing : null;
 }
 function refreshSampleCountLine() {
   const line = document.getElementById('sampleCountLine');
   const startBtn = document.getElementById('startGestureDataBtn');
   if (!line) return;
-  const label = currentLabelClean();
-  const { samples, frames } = sampleInfoFor(label, selectedSignSet());
-  if (startBtn) startBtn.textContent = 'Record 3 samples';
-  line.classList.toggle('done', samples >= SAMPLE_TARGET);
-  if (!label) { line.textContent = ''; return; }
+  const key = currentKey();
+  const clash = conflictingSign(key);
+  if (startBtn) {
+    startBtn.textContent = 'Record 3 samples';
+    startBtn.disabled = !!clash;
+  }
+  const { samples, frames } = sampleInfoFor(key);
+  line.classList.toggle('done', !clash && samples >= SAMPLE_TARGET);
+  if (!key) { line.textContent = ''; return; }
+  if (clash) {
+    line.textContent = `“${key}” already exists as ${signSetName(clash.set)} — change it in View Active Gesture Dataset first.`;
+    return;
+  }
   let text;
-  if (samples === 0) text = `“${label}” is a new word — no samples yet. Aim for ${SAMPLE_TARGET}.`;
-  else if (samples < SAMPLE_TARGET) text = `“${label}” — ${samples} sample${samples === 1 ? '' : 's'} saved (${frames} frames). Record another — aim for ${SAMPLE_TARGET}.`;
-  else text = `“${label}” — ${samples} samples saved (${frames} frames). ✓ Target reached; more are optional.`;
+  if (samples === 0) text = `“${key}” is a new word — no samples yet. Aim for ${SAMPLE_TARGET}.`;
+  else if (samples < SAMPLE_TARGET) text = `“${key}” — ${samples} sample${samples === 1 ? '' : 's'} saved (${frames} frames). Record another — aim for ${SAMPLE_TARGET}.`;
+  else text = `“${key}” — ${samples} samples saved (${frames} frames). ✓ Target reached; more are optional.`;
   line.textContent = justSavedNote ? `${text} ${justSavedNote}` : text;
 }
 
@@ -345,13 +385,13 @@ async function renderSavedDataset(prefetchedGestures) {
       return;
     }
     // Group by category: stored category wins, else the heuristic's guess.
-    const savedCategories = GestureDataRecorder.getSavedCategories();
+    const signs = GestureDataRecorder.getSigns();
     const groups = { word: [], letter: [], number: [], phrase: [] };
     labels.forEach(label => {
       const samples = gestures[label];
-      const signSet = samples[0]?.signLanguage || 'ESL';
-      const set = String(signSet).toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
-      const stored = savedCategories && savedCategories[set] && savedCategories[set][label];
+      const sign = signs && signs[label];
+      const signSet = (sign && sign.set) || samples[0]?.signLanguage || 'ESL';
+      const stored = storedCategoryFor(label, String(signSet).toUpperCase());
       const category = stored || GestureCategory.guess(label);
       (groups[category] || groups.word).push({ label, signSet, samples: samples.length });
     });
@@ -381,7 +421,7 @@ async function deleteGesture(label) {
     if (json.success) {
       showToast(`🗑️ Deleted gesture "${label}"`);
       delete trainData[label];
-      delete savedSampleInfo.ESL[label]; delete savedSampleInfo.FSL[label]; refreshSampleCountLine();
+      delete savedSampleInfo[label]; refreshSampleCountLine();
       renderSavedDataset();
       updateUI();
     } else {
@@ -450,6 +490,44 @@ function knnPredict(features) {
   return { label: bestLabel, confidence: normalized[bestLabel], scores: normalized };
 }
 
+// Step 2's "AI model" toggle: 'ESL' (ESL + Both signs, English text) or 'FSL' (FSL + Both signs,
+// Filipino text).
+function modelLanguage() {
+  const r = document.querySelector('input[name="trainModelLang"]:checked');
+  return r && String(r.value).toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
+}
+
+// Step 3 shows the sign's text in the model's language (ESL -> English, FSL -> Filipino).
+function predictDisplayText(label) {
+  return translateGestureLabel(label, modelLanguage() === 'FSL' ? 'fil' : 'en');
+}
+
+// The model toggle changed (or was reset): load that language's cached model if there is one,
+// else mark the model untrained so Train must be pressed.
+function onModelLanguageChanged() {
+  savedGestureSamplesMerged = false;
+  if (!loadKnnFromCache(modelLanguage())) {
+    modelTrained = false;
+    knnModel = {};
+    activeLabels = ['start', 'stop'];
+    const nextBtn = document.getElementById('step2NextBtn');
+    if (nextBtn) nextBtn.style.display = 'none';
+    const trainBtn = document.getElementById('trainBtn');
+    if (trainBtn) { trainBtn.disabled = false; trainBtn.textContent = 'Train Gesture'; }
+  }
+  updateTrPills(currentStep);
+  updateUI();
+}
+
+// Each time Step 2 is shown the toggle starts from Step 1's set (Both -> ESL).
+function syncModelToggleToStep1() {
+  const want = selectedSignSet() === 'FSL' ? 'FSL' : 'ESL';
+  const r = document.querySelector(`input[name="trainModelLang"][value="${want}"]`);
+  if (!r || r.checked) return;
+  r.checked = true;
+  onModelLanguageChanged();
+}
+
 function loadKnnFromCache(targetLang) {
   try {
     const knnData   = localStorage.getItem(`sining_kamay_knn_${targetLang}`);
@@ -483,8 +561,7 @@ function loadKnnFromCache(targetLang) {
 let lastLoadedLanguage = null;
 
 async function mergeSavedGestureSamples(prefetchedGestures) {
-  const langRadio = document.querySelector('input[name="gestureDatasetType"]:checked');
-  const targetLang = (langRadio ? langRadio.value : 'ESL').toUpperCase();
+  const targetLang = modelLanguage();
 
   if (!prefetchedGestures && savedGestureSamplesMerged && lastLoadedLanguage === targetLang) return;
   if (!prefetchedGestures && typeof window.loadGestureDatasetForTraining !== 'function') return;
@@ -502,7 +579,7 @@ async function mergeSavedGestureSamples(prefetchedGestures) {
     let loadedCount = 0;
     rows.forEach(({label,features,signLanguage}) => {
       const itemLang = (signLanguage || 'ESL').toUpperCase();
-      if (itemLang === targetLang) {
+      if (itemLang === targetLang || itemLang === 'BOTH') {
         if (!trainData[label]) trainData[label] = [];
         trainData[label].push(features);
         loadedCount++;
@@ -556,8 +633,7 @@ async function trainModel() {
   const epochBar = document.getElementById('epochBar');
   const epochLabel = document.getElementById('epochLabel');
 
-  const langRadio = document.querySelector('input[name="gestureDatasetType"]:checked');
-  const targetLang = (langRadio ? langRadio.value : 'ESL').toUpperCase();
+  const targetLang = modelLanguage();
 
   // Always reload the latest dataset to detect newly added gestures
   savedGestureSamplesMerged = false;
@@ -778,14 +854,14 @@ function startLivePrediction(forTranslation=false) {
             const detected=activeLabels[bi]||'unknown';
       const confPct=Math.round(conf*100);
       document.getElementById('predEmoji').textContent=detected==='start'?'▶':detected==='stop'?'⏹':'?';
-      document.getElementById('predLabel').textContent=detected==='start'?'Start Gesture':detected==='stop'?'Stop Gesture':detected.replace(/_/g,' ');
+      document.getElementById('predLabel').textContent=detected==='start'?'Start Gesture':detected==='stop'?'Stop Gesture':predictDisplayText(detected);
       document.getElementById('predConf').textContent=`Confidence: ${confPct}%`;
       document.getElementById('predFillMini').style.width=confPct+'%';
       if(currentStep===3){
         const res=document.getElementById('livePredResult');
         const bar=document.getElementById('confBar');
         if (res) {
-          res.textContent=detected==='start'?'Start':detected==='stop'?'Stop':detected.replace(/_/g,' ');
+          res.textContent=detected==='start'?'Start':detected==='stop'?'Stop':predictDisplayText(detected);
           res.className='tr-pred-result'+(conf>.7?' detected':'');
         }
         if (bar) {
@@ -795,7 +871,7 @@ function startLivePrediction(forTranslation=false) {
         const resAlt=document.getElementById('livePredResultAlt');
         const barAlt=document.getElementById('confBarAlt');
         if (resAlt) {
-          resAlt.textContent=detected==='start'?'Start':detected==='stop'?'Stop':detected.replace(/_/g,' ');
+          resAlt.textContent=detected==='start'?'Start':detected==='stop'?'Stop':predictDisplayText(detected);
           resAlt.className='tr-pred-result'+(conf>.7?' detected':'');
         }
         if (barAlt) {
@@ -812,7 +888,7 @@ function startLivePrediction(forTranslation=false) {
           dot.className = 'status-dot active-gets'; // Turns Green
         });
         indTexts.forEach(indText => {
-          indText.textContent = `Gets: ${detected.replace(/_/g, ' ')}`;
+          indText.textContent = `Gets: ${predictDisplayText(detected)}`;
         });
         // ── 2. CONVERSATIONAL ACCUMULATION FLOW ──
         if(forTranslation && conf > .45){
@@ -1034,6 +1110,7 @@ function showStepContent(step){
     if(n!==step) el.style.display='none'; else el.style.display='';
   });
   stopLivePrediction();
+  if(step===2) syncModelToggleToStep1();
   
   // Explicitly play video stream to prevent Chromium freezes on hidden element
   if (stream && videoFeed) {
@@ -1200,21 +1277,26 @@ window.reloadDataset = async () => {
 
 // Startup triggers:
 window.addEventListener('DOMContentLoaded', async () => {
-  const lblIn = document.getElementById('gestureLabelInput');
   const clearNote = () => { justSavedNote = ''; refreshSampleCountLine(); };
-  if (lblIn) lblIn.addEventListener('input', clearNote);
-  if (lblIn) lblIn.addEventListener('input', autoSelectCategory);
-  document.querySelectorAll('input[name="gestureDatasetType"]').forEach(r => r.addEventListener('change', clearNote));
-  document.querySelectorAll('input[name="gestureDatasetType"]').forEach(r => r.addEventListener('change', autoSelectCategory));
+  ['signTextEn', 'signTextFil'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', clearNote);
+    el.addEventListener('input', autoSelectCategory);
+  });
+  document.querySelectorAll('input[name="gestureDatasetType"]').forEach(r => r.addEventListener('change', () => {
+    updateTextFieldVisibility(); clearNote(); autoSelectCategory();
+  }));
+  document.querySelectorAll('input[name="trainModelLang"]').forEach(r => r.addEventListener('change', onModelLanguageChanged));
   const startB = document.getElementById('startGestureDataBtn');
   if (startB) startB.addEventListener('click', () => { justSavedNote = ''; });
+  updateTextFieldVisibility();
   refreshSampleCountLine();
 
   showStepInstruction(1);
 
   // Try restoring cached KNN model so Step 3 works without re-training
-  const initLangRadio = document.querySelector('input[name="gestureDatasetType"]:checked');
-  const initLang = (initLangRadio ? initLangRadio.value : 'ESL').toUpperCase();
+  const initLang = modelLanguage();
   if (loadKnnFromCache(initLang)) {
     console.log(`[KNN] Restored cached model for ${initLang} — ${activeLabels.length} gestures loaded`);
     showToast(`✅ Gesture model loaded (${activeLabels.length} gestures)`, 2500);
@@ -1323,8 +1405,14 @@ function formulateSmartSentence(wordsArray, lang) {
 // the 3 saves) lives in js/gesture-capture-ui.js (window.GestureCaptureUI). This file only
 // checks the form's preconditions and opens it, and takes the "samples saved" callback back.
 function openRecordingMode() {
-  const label = currentLabelClean();
-  if (!label) { showToast('Enter a gesture name first.'); return; }
+  const set = selectedSignSet();
+  const textEn = currentEnglishText();
+  const textFil = currentFilipinoText();
+  if (set !== 'FSL' && !textEn) { showToast('Enter the English text first.'); return; }
+  if (set !== 'ESL' && !textFil) { showToast('Enter the Filipino text first.'); return; }
+  const label = currentKey();
+  if (!label) { showToast(`Enter ${set === 'FSL' ? 'the Filipino' : 'the English'} text with at least one letter or number.`); return; }
+  if (conflictingSign(label)) { refreshSampleCountLine(); return; }
   if (!window.GestureCaptureUI || typeof window.GestureCaptureUI.open !== 'function') {
     console.error('[gesture-training-ui] GestureCaptureUI is not loaded.');
     return;
@@ -1334,7 +1422,9 @@ function openRecordingMode() {
   const catRadio = document.querySelector('input[name="gestureCategory"]:checked');
   window.GestureCaptureUI.open({
     label,
-    signSet: selectedSignSet(),
+    signSet: set,
+    textEn: set === 'FSL' ? null : textEn,
+    textFil: set === 'ESL' ? null : textFil,
     category: catRadio ? catRadio.value : 'word',
     acquireCamera: acquireCaptureCamera,
     releaseCamera: releaseCaptureCamera,

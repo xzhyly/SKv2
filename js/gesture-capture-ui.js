@@ -16,12 +16,15 @@
 // Layout (capture UI layout fix, 2026-09-27): full viewport, top bar (chip | state title |
 // Cancel), media (live feed or review loop), bottom bar (the state's buttons or a status line).
 //
-// Public API: window.GestureCaptureUI = { open({ label, signSet, category, acquireCamera,
-// releaseCamera }), close(), streamIsLive }. acquireCamera() -> Promise<MediaStream> starts (or
+// Public API: window.GestureCaptureUI = { open({ label, signSet, textEn, textFil, category,
+// acquireCamera, releaseCamera }), close(), streamIsLive }. label is the sign's key; signSet is
+// 'ESL' | 'FSL' | 'BOTH' (anything else = ESL); textEn / textFil are the sign's texts, sent with each
+// save (the server derives the key and stores the texts) and shown in the chip as
+// "<text> · <ESL|FSL|Both> · <Type>" (textEn for ESL/BOTH, textFil for FSL, else the label). acquireCamera() -> Promise<MediaStream> starts (or
 // reuses) the page camera; releaseCamera() is called once on close (the page decides whether the
 // camera was started for this mode and should stop).
 // On success it calls window.onCaptureSamplesSaved({ label, signLanguage, labelSampleCount,
-// frameCount }) (set by js/gesture-training-ui.js) once, then closes and shows a toast.
+// frameCount }) (label = the key from the save response; signLanguage = the set) (set by js/gesture-training-ui.js) once, then closes and shows a toast.
 (function () {
   'use strict';
 
@@ -43,7 +46,7 @@
   var el = null; // DOM refs, resolved once by bindDom()
   var mode = 'closed'; // closed | starting | ready | countdown | recording | review | processing | saving | finishing | error
   var gen = 0; // bumped on every exit/reset; async continuations started earlier compare against it
-  var session = null; // { label, signSet, category, stream } captured at open() time
+  var session = null; // { label, signSet, textEn, textFil, category, stream } captured at open() time
   var countdownTimer = null;
   var rec = null; // the active recording (see startRecording)
   var blob = null;
@@ -189,13 +192,17 @@
     }
     session = {
       label: opts.label,
-      signSet: opts.signSet === 'FSL' ? 'FSL' : 'ESL',
+      signSet: opts.signSet === 'FSL' || opts.signSet === 'BOTH' ? opts.signSet : 'ESL',
+      textEn: typeof opts.textEn === 'string' ? opts.textEn : null,
+      textFil: typeof opts.textFil === 'string' ? opts.textFil : null,
       category: opts.category || 'word',
       stream: null,
       acquireCamera: opts.acquireCamera,
       releaseCamera: opts.releaseCamera,
     };
-    el.chip.textContent = session.label + ' · ' + session.signSet + ' · ' +
+    var shownText = (session.signSet === 'FSL' ? session.textFil : session.textEn) || session.label;
+    el.chip.textContent = shownText + ' · ' +
+      (session.signSet === 'BOTH' ? 'Both' : session.signSet) + ' · ' +
       (CATEGORY_NAMES[session.category] || session.category);
     el.root.hidden = false;
     showStarting();
@@ -591,6 +598,8 @@
     pending = {
       label: session.label,
       signSet: session.signSet,
+      textEn: session.textEn,
+      textFil: session.textFil,
       category: session.category,
       meta: {
         videoWidth: result.videoWidth,
@@ -646,6 +655,8 @@
             videoHeight: p.meta.videoHeight,
             fps: p.meta.fps,
             input: p.meta.input,
+            textEn: p.textEn,
+            textFil: p.textFil,
           }
         );
         if (myGen !== gen) return;
@@ -679,13 +690,20 @@
 
   // Invalidates the Sign-to-Text model + labels caches for a sign set (as the removed
   // confirmAndSave did). Resolves once the (guarded) IndexedDB removal settles.
-  async function invalidateCaches(lang) {
-    try { localStorage.removeItem('sining_kamay_labels_' + lang); } catch (e) { /* storage blocked */ }
-    try {
-      if (window.tf && window.tf.io && typeof window.tf.io.removeModel === 'function') {
-        await window.tf.io.removeModel('indexeddb://sining-kamay-model-' + lang);
-      }
-    } catch (e) { /* the model may not exist yet - safe to ignore */ }
+  // A BOTH sign belongs to both models, so both languages are invalidated for it.
+  async function invalidateCaches(set) {
+    var langs = set === 'BOTH' ? ['ESL', 'FSL'] : [set];
+    // Synchronous part first for every language (pagehide cannot await).
+    langs.forEach(function (lang) {
+      try { localStorage.removeItem('sining_kamay_labels_' + lang); } catch (e) { /* storage blocked */ }
+    });
+    for (var i = 0; i < langs.length; i++) {
+      try {
+        if (window.tf && window.tf.io && typeof window.tf.io.removeModel === 'function') {
+          await window.tf.io.removeModel('indexeddb://sining-kamay-model-' + langs[i]);
+        }
+      } catch (e) { /* the model may not exist yet - safe to ignore */ }
+    }
   }
 
   // Post-save steps, run once when a recording leaves the mode with at least one rep saved:
@@ -705,7 +723,7 @@
     // No frameCount here: reloadDataset() already counted the new samples' frames.
     if (typeof window.onCaptureSamplesSaved === 'function') {
       window.onCaptureSamplesSaved({
-        label: p.label,
+        label: (p.lastRes && p.lastRes.label) || p.label,
         signLanguage: p.signSet,
         labelSampleCount: p.lastRes ? p.lastRes.labelSampleCount : undefined,
       });

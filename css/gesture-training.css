@@ -157,6 +157,7 @@ a{text-decoration:none}
 .tr-input:focus{border-color:var(--navy)}
 
 .tr-sign-toggle{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.tr-sign-toggle-3{grid-template-columns:1fr 1fr 1fr}
 .tr-type-toggle{grid-template-columns:1fr 1fr 1fr 1fr}
 .tr-sign-opt{
   height:40px;display:flex;align-items:center;justify-content:center;
@@ -1075,7 +1076,8 @@ body.keyboard-active #datasetModal.show .tr-modal-card {
 .tr-s1-back{grid-column:1 / -1;min-height:44px}
 #leftStep1 .tr-flbl{font-size:14px}
 #leftStep1 .tr-input{height:48px;font-size:16px}
-#leftStep1 .tr-sign-opt{height:48px;font-size:15px}
+#leftStep1 .tr-sign-opt,
+#leftStep2 .tr-sign-opt{height:48px;font-size:15px}
 #leftStep1 .tr-record-btn{height:72px;font-size:22px;border-radius:12px;margin-top:0}
 #leftStep1 .tr-sample-line{font-size:14px}
 #leftStep1 .tr-dataset-btn{

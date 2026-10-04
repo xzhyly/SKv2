@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Train Gestures ✿ Sining Kamay</title>
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.8">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.9">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
   <script src="js/lib/tf.min.js" defer></script>
   <script src="js/lib/mediapipe/hands.js" defer></script>
@@ -96,11 +96,11 @@
   <div id="trInstrWrap">
     <div id="trInstr1" class="tr-instr-card">
       <div class="tr-step-badge">STEP 1 OF 4</div>
-      <h1>Step 1: Name and Capture / Import</h1>
-      <p class="tr-instr-desc">Enter a gesture name, choose the sign set, then capture hand samples using the camera or import a pre-recorded video clip.</p>
+      <h1>Step 1: Name and Capture</h1>
+      <p class="tr-instr-desc">Choose the sign set, type the English and/or Filipino text, then record 3 samples with the camera.</p>
       <ul class="tr-instr-bullets">
-        <li><span class="tr-bullet-num">1</span>Type a gesture name, or leave it blank to auto-label from your video's filename.</li>
-        <li><span class="tr-bullet-num">2</span>Record live using the camera, OR click **Upload & Process Video** to import a video.</li>
+        <li><span class="tr-bullet-num">1</span>Choose the sign set: ESL, FSL, or Both.</li>
+        <li><span class="tr-bullet-num">2</span>Type the English text and/or the Filipino text for the sign (the fields shown depend on the set).</li>
         <li><span class="tr-bullet-num">3</span>Press <strong>Record 3 samples</strong>, sign the gesture 3 times with a rest between, then review and save.</li>
       </ul>
       <button class="tr-next-btn" onclick="showStepContent(1)">Next →</button>
@@ -197,17 +197,21 @@
         <!-- Capture Controls -->
         <div id="step1CaptureControls" class="tr-s1-grid">
           <div class="tr-s1-col" id="gestureDatasetCard">
-            <div class="tr-section-lbl">Gesture Sample Capture</div>
-            <div class="tr-fgrp">
-              <label class="tr-flbl" for="gestureLabelInput">Gesture Name</label>
-              <input id="gestureLabelInput" type="text" class="tr-input" placeholder="Gesture name, e.g. hello" autocomplete="off">
-            </div>
             <div class="tr-fgrp">
               <span class="tr-flbl">Sign Set</span>
-              <div class="tr-sign-toggle">
+              <div class="tr-sign-toggle tr-sign-toggle-3">
                 <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="ESL" checked> ESL</label>
                 <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="FSL"> FSL</label>
+                <label class="tr-sign-opt"><input type="radio" name="gestureDatasetType" value="BOTH"> Both</label>
               </div>
+            </div>
+            <div class="tr-fgrp" id="signTextEnGroup">
+              <label class="tr-flbl" for="signTextEn">English text</label>
+              <input id="signTextEn" type="text" class="tr-input" placeholder="e.g. How are you?" autocomplete="off">
+            </div>
+            <div class="tr-fgrp" id="signTextFilGroup">
+              <label class="tr-flbl" for="signTextFil">Filipino text</label>
+              <input id="signTextFil" type="text" class="tr-input" placeholder="e.g. Kumusta ka?" autocomplete="off">
             </div>
             <div class="tr-fgrp">
               <span class="tr-flbl">Type</span>
@@ -253,6 +257,13 @@
       <!-- Step 2 -->
       <div id="leftStep2" class="tr-left-content" style="display:none">
         <div class="tr-section-lbl">Train Gesture</div>
+        <div class="tr-fgrp" id="trainModelGroup">
+          <span class="tr-flbl">AI model</span>
+          <div class="tr-sign-toggle">
+            <label class="tr-sign-opt"><input type="radio" name="trainModelLang" value="ESL" checked> ESL</label>
+            <label class="tr-sign-opt"><input type="radio" name="trainModelLang" value="FSL"> FSL</label>
+          </div>
+        </div>
         <!-- DYNAMIC SUMMARY CARD (Bago) -->
         <div class="tr-summary-card" id="step2SummaryCard">
           <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center;">No training samples loaded yet.</p>
