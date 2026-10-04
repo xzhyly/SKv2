@@ -1,0 +1,723 @@
+{
+  "generated": "2026-10-04",
+  "pairs": [
+    {
+      "fsl": "alam",
+      "fslFile": "sample_1784113599355_efa5a5.json",
+      "esl": "know",
+      "eslFile": "sample_1784113599278_3cfe99.json",
+      "frames": 13,
+      "framesSha256": "710f5a9e5cf1fe54c23858dc752abf804a00d6585f668c38828b9214aaa14f09"
+    },
+    {
+      "fsl": "alin",
+      "fslFile": "sample_1784113771244_2fa842.json",
+      "esl": "which",
+      "eslFile": "sample_1784113771185_9989ef.json",
+      "frames": 17,
+      "framesSha256": "aa381f66be627d8233443d9ce06d9b3902e26d50487075d7bc956d82d0ae0681"
+    },
+    {
+      "fsl": "amin_ng_dati",
+      "fslFile": "sample_1784112737904_c1467c.json",
+      "esl": "usual",
+      "eslFile": "sample_1784112737889_9a84de.json",
+      "frames": 12,
+      "framesSha256": "6359099eecad7e277aa095e66391cf800d3c1c448849a784c5a7276c9e0bc27c"
+    },
+    {
+      "fsl": "anim",
+      "fslFile": "sample_1784128625441_46791b.json",
+      "esl": "six",
+      "eslFile": "sample_1784128625372_7c6b24.json",
+      "frames": 20,
+      "framesSha256": "87083b1019334963e3fb9ecbf2d55b1b1f4284c967351645347f9c8a244b7756"
+    },
+    {
+      "fsl": "ano_ba_ang_sabi_mo",
+      "fslFile": "sample_1784113724767_a4a7a1.json",
+      "esl": "what_did_you_say",
+      "eslFile": "sample_1784113724649_19f56a.json",
+      "frames": 18,
+      "framesSha256": "422d06e95370193f0b5590a9b766551e93776317c742656606d37f914576e962"
+    },
+    {
+      "fsl": "anong_oras_na",
+      "fslFile": "sample_1784113732449_5672f1.json",
+      "esl": "what_time_is_it",
+      "eslFile": "sample_1784113732438_9ec74f.json",
+      "frames": 17,
+      "framesSha256": "7bea9c2164b96a38923df8583ec21521d02a3febac4d953868a6bab8a6aa539c"
+    },
+    {
+      "fsl": "apat",
+      "fslFile": "sample_1784128609622_652f8a.json",
+      "esl": "four",
+      "eslFile": "sample_1784128609595_5e61f8.json",
+      "frames": 15,
+      "framesSha256": "30f445bd662c78f422cdecbe11f004c11425e3a9dc69d24623c3e6edb80460a2"
+    },
+    {
+      "fsl": "araw",
+      "fslFile": "sample_1784113513204_6c4724.json",
+      "esl": "day",
+      "eslFile": "sample_1784113513096_ab17c9.json",
+      "frames": 17,
+      "framesSha256": "2efcf306698989f44e3dd890976784376c4521749334d41acc42a139d492f76d"
+    },
+    {
+      "fsl": "bakit",
+      "fslFile": "sample_1784113788792_ced24f.json",
+      "esl": "why",
+      "eslFile": "sample_1784113788745_37548e.json",
+      "frames": 10,
+      "framesSha256": "3b93901da05a0d2547e5adc871bbccbd26cdf39a3d657e522d55c80f6fb2ff71"
+    },
+    {
+      "fsl": "banyo",
+      "fslFile": "sample_1784113490458_3f9256.json",
+      "esl": "bathroom",
+      "eslFile": "sample_1784113490328_cb5a46.json",
+      "frames": 13,
+      "framesSha256": "eb77d34ea08deea7a5e16012d3cb7c246ffa304e0fcb8d6bcd666b66cb9be5ff"
+    },
+    {
+      "fsl": "bigyan_mo_pa_ako_ng_isang_pagkakataon",
+      "fslFile": "sample_1784112484323_cb400d.json",
+      "esl": "fine",
+      "eslFile": "sample_1784112484306_2130e1.json",
+      "frames": 9,
+      "framesSha256": "b039ab0c2374831bc28d73062f4b16c719d41970524c3a39c79364d059dbabe5"
+    },
+    {
+      "fsl": "boso",
+      "fslFile": "sample_1784112412505_f9de17.json",
+      "esl": "bored",
+      "eslFile": "sample_1784112412492_aa52b6.json",
+      "frames": 15,
+      "framesSha256": "222a03b2aaf8542661c4e9b78ef500d86db27c75a3e9845667af6bb9bf80c7d7"
+    },
+    {
+      "fsl": "bukas",
+      "fslFile": "sample_1784113698228_d08c33.json",
+      "esl": "tomorrow",
+      "eslFile": "sample_1784113698141_3c3e89.json",
+      "frames": 21,
+      "framesSha256": "56bd28d2fe21dfba9d207ef792eb29d903e142485d824cb0a065bead9db33166"
+    },
+    {
+      "fsl": "buwan",
+      "fslFile": "sample_1784113614750_778e98.json",
+      "esl": "month",
+      "eslFile": "sample_1784113614734_9866e6.json",
+      "frames": 20,
+      "framesSha256": "550af2c493952c18e045eb7e48ff6ee115b4487be610bb4746eea86f12cdee5c"
+    },
+    {
+      "fsl": "dalawa",
+      "fslFile": "sample_1784128597227_510a66.json",
+      "esl": "two",
+      "eslFile": "sample_1784128597170_b2ed86.json",
+      "frames": 14,
+      "framesSha256": "417fa75ed8b9e275e0224c4c94355f17570c4e0eea113a7d00acf8d03ab95ed7"
+    },
+    {
+      "fsl": "gabi",
+      "fslFile": "sample_1784115843165_95da6a.json",
+      "esl": "night",
+      "eslFile": "sample_1784115843075_4ce635.json",
+      "frames": 13,
+      "framesSha256": "07ebb79d9ae3b152cbd3db7fcbc5f7dafbb83fb8c9591dda9432beea284c5a12"
+    },
+    {
+      "fsl": "gagawa",
+      "fslFile": "sample_1784113798852_def70a.json",
+      "esl": "will",
+      "eslFile": "sample_1784113798811_49828b.json",
+      "frames": 14,
+      "framesSha256": "a7ad4ab6cc7c6f6c16d677a4e23ac6f5b583eed39eaeef850945a9a2d2d78662"
+    },
+    {
+      "fsl": "ganon_din",
+      "fslFile": "sample_1784112675830_bd8a4a.json",
+      "esl": "scared",
+      "eslFile": "sample_1784112675820_a3d2a1.json",
+      "frames": 8,
+      "framesSha256": "edf4a488ceed6d14babb758a52ec7043b2466f22edd93f43c5746f175f36e784"
+    },
+    {
+      "fsl": "halika",
+      "fslFile": "sample_1784113505654_3e4adb.json",
+      "esl": "come",
+      "eslFile": "sample_1784113505560_cbe054.json",
+      "frames": 8,
+      "framesSha256": "885d6564f47ac50cb69a780eb0b620321ec584b04bfbde093b4039b68c3a1353"
+    },
+    {
+      "fsl": "hapon",
+      "fslFile": "sample_1784115451542_6811d8.json",
+      "esl": "afternoon",
+      "eslFile": "sample_1784115451531_3bb453.json",
+      "frames": 11,
+      "framesSha256": "9819e3d04a465ef76cd4b8f2c57afb7d45875a22e64ac6bf85741cc1c88dfa8c"
+    },
+    {
+      "fsl": "hibaru",
+      "fslFile": "sample_1784112585551_f50d3b.json",
+      "esl": "learn",
+      "eslFile": "sample_1784112585537_ee6258.json",
+      "frames": 21,
+      "framesSha256": "5bcfaa9557e19ebe83eaff431e789eb7183952c8f245ce8d56633001e9cf3528"
+    },
+    {
+      "fsl": "higit_pa",
+      "fslFile": "sample_1784113623111_c3d27f.json",
+      "esl": "more",
+      "eslFile": "sample_1784113623031_b6c74a.json",
+      "frames": 13,
+      "framesSha256": "aa3f0c1d2bf06ca6a42735c74274df921b075cc346d284ebbe087952bb45024c"
+    },
+    {
+      "fsl": "hindi",
+      "fslFile": "sample_1784112627953_011857.json",
+      "esl": "no",
+      "eslFile": "sample_1784112627936_81502e.json",
+      "frames": 14,
+      "framesSha256": "a72602fd79bc497c5c24904e933056b0334d9123c0394e82e35eea1b69cb7235"
+    },
+    {
+      "fsl": "hindi_ko_alam",
+      "fslFile": "sample_1784113531822_feb3f8.json",
+      "esl": "dont_know",
+      "eslFile": "sample_1784113531750_0bf021.json",
+      "frames": 14,
+      "framesSha256": "3080d97a5529aebd2a1120fcd94d037780e121b7a9b8630245ad8ed4549589d8"
+    },
+    {
+      "fsl": "hinihintay_ang_kanan",
+      "fslFile": "sample_1784112473234_46370c.json",
+      "esl": "excited",
+      "eslFile": "sample_1784112473192_37c352.json",
+      "frames": 13,
+      "framesSha256": "b44620e0398b5643d72b3d399acedae01524450ab6c8b0d4d1d622edfff1dc86"
+    },
+    {
+      "fsl": "host_dad",
+      "fslFile": "sample_1784112434948_78d4b6.json",
+      "esl": "confused",
+      "eslFile": "sample_1784112434839_8c529e.json",
+      "frames": 15,
+      "framesSha256": "066070d55a743d5100e3fca30ca15b71f3ab2d54c5ad960bad3598ff489307d0"
+    },
+    {
+      "fsl": "huli",
+      "fslFile": "sample_1784113606365_c15be8.json",
+      "esl": "late",
+      "eslFile": "sample_1784113606297_3c3d91.json",
+      "frames": 13,
+      "framesSha256": "ca090542cf4c805904a3f8ea9bf70702cfa90e27001c274d85c4c4059c9fdac6"
+    },
+    {
+      "fsl": "ibigay",
+      "fslFile": "sample_1784113553361_b7b915.json",
+      "esl": "give",
+      "eslFile": "sample_1784113553269_0a6a11.json",
+      "frames": 12,
+      "framesSha256": "1827198c49ce0a9a5da025bdbcfb1a6e46e33860ca0e381fd81330ad9ac54509"
+    },
+    {
+      "fsl": "ikinagagalak_kitang_makilala",
+      "fslFile": "sample_1784115837021_6ec551.json",
+      "esl": "nice_to_meet_you",
+      "eslFile": "sample_1784115837006_f345da.json",
+      "frames": 20,
+      "framesSha256": "2eff5467daaa3988e1b7684930fbec27eccb563f2a4f6860bec7630b3a178398"
+    },
+    {
+      "fsl": "im_so_sick",
+      "fslFile": "sample_1784112686085_02e274.json",
+      "esl": "sick",
+      "eslFile": "sample_1784112686071_d93014.json",
+      "frames": 14,
+      "framesSha256": "1686151b78484143bb2c6c3610d60328c5dba644e6a284139822773c735e274b"
+    },
+    {
+      "fsl": "ingat",
+      "fslFile": "sample_1784115873715_40b087.json",
+      "esl": "take_care",
+      "eslFile": "sample_1784115873650_4f14bf.json",
+      "frames": 32,
+      "framesSha256": "f77520b5efa9cb0f34e77108796783b15b1dd0ec8fe8198b3982075d0f69385c"
+    },
+    {
+      "fsl": "ipadala_ito",
+      "fslFile": "sample_1784112423290_5922d5.json",
+      "esl": "busy",
+      "eslFile": "sample_1784112423273_a34eda.json",
+      "frames": 17,
+      "framesSha256": "cf7ab1570180f693e1dc6f3fcd6a94cab43b68345b056a797070cea5e9069f39"
+    },
+    {
+      "fsl": "isa",
+      "fslFile": "sample_1784128591439_3772be.json",
+      "esl": "one",
+      "eslFile": "sample_1784128591372_5c2868.json",
+      "frames": 15,
+      "framesSha256": "043c6bf026e8339c1c0a762fbe6743620256805e4141b39d83840a67486de1e3"
+    },
+    {
+      "fsl": "kahapon",
+      "fslFile": "sample_1784113822879_332497.json",
+      "esl": "yesterday",
+      "eslFile": "sample_1784113822867_6b0e8e.json",
+      "frames": 19,
+      "framesSha256": "d936f257d94fde4c2bbe74e6566f2a938d84426dbff5f71c30b113878d5f9d7a"
+    },
+    {
+      "fsl": "kailan",
+      "fslFile": "sample_1784113742057_fe96b7.json",
+      "esl": "when",
+      "eslFile": "sample_1784113742011_912e18.json",
+      "frames": 20,
+      "framesSha256": "b0588c4c100c534eb8853436f7fbf86e42b2b879d61d6e5753ed3d2c0915e3b1"
+    },
+    {
+      "fsl": "kailangan",
+      "fslFile": "sample_1784113633708_c846e2.json",
+      "esl": "need",
+      "eslFile": "sample_1784113633634_683896.json",
+      "frames": 16,
+      "framesSha256": "1a612d28c874c09c720386f0b6cc565d4ba255eb0cd4d9ba081d1e4e3586f822"
+    },
+    {
+      "fsl": "kainan",
+      "fslFile": "sample_1784113662992_bff3d6.json",
+      "esl": "restaurant",
+      "eslFile": "sample_1784113662956_1de22d.json",
+      "frames": 11,
+      "framesSha256": "d33d972975a6af13259857ec858e0aa35fc8d07c918917b3645a115a922ad9e1"
+    },
+    {
+      "fsl": "kamusta",
+      "fslFile": "sample_1784115800415_ffe9bc.json",
+      "esl": "hello",
+      "eslFile": "sample_1784115800362_30c6d4.json",
+      "frames": 10,
+      "framesSha256": "39d8dfd96c253d213effc426762bc4abaaa24452ccc6faae690f9a8179d0d932"
+    },
+    {
+      "fsl": "kamusta_ka",
+      "fslFile": "sample_1784112555807_b860ec.json",
+      "esl": "how_are_you",
+      "eslFile": "sample_1784112555790_3455b6.json",
+      "frames": 23,
+      "framesSha256": "3313fdf2add5b3cff212727065f397d4e7214ad62a130fa6f3995917fe2a5f26"
+    },
+    {
+      "fsl": "katapusan_ng_linggo",
+      "fslFile": "sample_1784113715108_150598.json",
+      "esl": "weekend",
+      "eslFile": "sample_1784113714987_616b6c.json",
+      "frames": 20,
+      "framesSha256": "9a4922d7724e68970664e81b6403828686addc6e3d542ad4cbab7398edb6c188"
+    },
+    {
+      "fsl": "kaya",
+      "fslFile": "sample_1784112705952_f3b210.json",
+      "esl": "so_so",
+      "eslFile": "sample_1784112705886_21bb89.json",
+      "frames": 8,
+      "framesSha256": "62b5e773d26503cb90ca1dda0139dfb4a82e5d7c585f52ab00d45e5ffc81c635"
+    },
+    {
+      "fsl": "kita_tayo_mamaya",
+      "fslFile": "sample_1784115860782_0d4644.json",
+      "esl": "see_you_later",
+      "eslFile": "sample_1784115860714_b191dd.json",
+      "frames": 19,
+      "framesSha256": "1a8a4950086d9274fdc9a3f33d2cb9b7824cbbf1de798874219c58d295230337"
+    },
+    {
+      "fsl": "kwentuhan",
+      "fslFile": "sample_1784113498868_217e54.json",
+      "esl": "chat",
+      "eslFile": "sample_1784113498700_f2ef11.json",
+      "frames": 12,
+      "framesSha256": "1f4a7a73e20ac6933a12acc932ccf8b94d88bb349586b20fb6227fef73494cc3"
+    },
+    {
+      "fsl": "lima",
+      "fslFile": "sample_1784128617225_3d5bb2.json",
+      "esl": "five",
+      "eslFile": "sample_1784128617169_9414fc.json",
+      "frames": 18,
+      "framesSha256": "56b1305bd5a48f7eb0a71a6852c968ca0b72d7ec70b31764f47b7f4af49ee08a"
+    },
+    {
+      "fsl": "linggo",
+      "fslFile": "sample_1784113705768_66cead.json",
+      "esl": "week",
+      "eslFile": "sample_1784113705752_9667bc.json",
+      "frames": 15,
+      "framesSha256": "15d68b974ed2979b8d061e7dddb59b1d723c0bbf18666870c508caf5391ae1a0"
+    },
+    {
+      "fsl": "mabuti",
+      "fslFile": "sample_1784112498912_2c496c.json",
+      "esl": "good",
+      "eslFile": "sample_1784112498892_37a4fd.json",
+      "frames": 20,
+      "framesSha256": "34fe107abca158b124e01fc18e511506fc86f5d64900acabb12635ab7effc906"
+    },
+    {
+      "fsl": "maganda",
+      "fslFile": "sample_1784115828211_3eff66.json",
+      "esl": "nice",
+      "eslFile": "sample_1784115828143_a80682.json",
+      "frames": 10,
+      "framesSha256": "57ce2ae71cd44cc2c4ef41c263b34fa8f0f88183af19fce325742f665e57b7c1"
+    },
+    {
+      "fsl": "magandang_umaga",
+      "fslFile": "sample_1784115732422_aa4369.json",
+      "esl": "good_morning",
+      "eslFile": "sample_1784115732408_3669cd.json",
+      "frames": 22,
+      "framesSha256": "ac5e81caecbcc1597d7222d01a659cd0b285ddf8e1331038f561ac504293d186"
+    },
+    {
+      "fsl": "magkasingkahulugan_ng_galit",
+      "fslFile": "sample_1784112368293_baa6a1.json",
+      "esl": "angry",
+      "eslFile": "sample_1784112368235_2db25a.json",
+      "frames": 9,
+      "framesSha256": "ac0883ef9cb6e96228bac545ba160535ae9e6fc80b1dcf34babd795c6ec41101"
+    },
+    {
+      "fsl": "magsanay",
+      "fslFile": "sample_1784113653438_27cfd0.json",
+      "esl": "practice",
+      "eslFile": "sample_1784113653423_539071.json",
+      "frames": 24,
+      "framesSha256": "cb6a4f382d0137ce7285e3dac18b74acc9346ba3e74ed5fa4468f196b40a9501"
+    },
+    {
+      "fsl": "mahirap_makarinig",
+      "fslFile": "sample_1784112522638_43dee3.json",
+      "esl": "hard_of_hearing",
+      "eslFile": "sample_1784112522626_19b427.json",
+      "frames": 12,
+      "framesSha256": "a701f900a900409526085920fa554e9e61ab13ca4948776ad85b37becd5ae831"
+    },
+    {
+      "fsl": "makipagkita",
+      "fslFile": "sample_1784115812601_2dc0cf.json",
+      "esl": "meet",
+      "eslFile": "sample_1784115812588_c0c3da.json",
+      "frames": 14,
+      "framesSha256": "d4cd3549479324d5fa569edbd72014067f171013ea4ca3482cbd409a01f4de0d"
+    },
+    {
+      "fsl": "makita",
+      "fslFile": "sample_1784113679336_5725ff.json",
+      "esl": "see",
+      "eslFile": "sample_1784113679141_ab4a96.json",
+      "frames": 15,
+      "framesSha256": "b5ad34b7bd26bf57e281b151197d8a05cdd0aced3dae37d8d231e70d2a9e6887"
+    },
+    {
+      "fsl": "malalim_na_tagalog",
+      "fslFile": "sample_1784112445877_1b1096.json",
+      "esl": "deaf",
+      "eslFile": "sample_1784112445863_d9c3e5.json",
+      "frames": 12,
+      "framesSha256": "98a07ea91fc127bf9ec6b69f948a942fba87801c6e1fb6ca3368ea7aabbbdb3f"
+    },
+    {
+      "fsl": "mamaya",
+      "fslFile": "sample_1784115804795_1fa914.json",
+      "esl": "later",
+      "eslFile": "sample_1784115804734_23ca45.json",
+      "frames": 10,
+      "framesSha256": "d6e94f6664fceb320342aa0c78e3d6fb37e44af05daf1305f710d1a558a42eea"
+    },
+    {
+      "fsl": "masama",
+      "fslFile": "sample_1784112399256_6dd0f2.json",
+      "esl": "bad",
+      "eslFile": "sample_1784112399239_9f7fe5.json",
+      "frames": 19,
+      "framesSha256": "14d7f77bfc190805a0104cfd7278a880afa53093c08feadc4a6e9119df1c37b3"
+    },
+    {
+      "fsl": "masaya",
+      "fslFile": "sample_1784112510015_52a882.json",
+      "esl": "happy",
+      "eslFile": "sample_1784112510003_48ac11.json",
+      "frames": 8,
+      "framesSha256": "734a5b97e220e1f9e0298b511457d2b2fc774456c6d6a756921c3bf183e1790a"
+    },
+    {
+      "fsl": "matalusan",
+      "fslFile": "sample_1784112728965_b1d629.json",
+      "esl": "understand",
+      "eslFile": "sample_1784112728951_a78736.json",
+      "frames": 11,
+      "framesSha256": "2b4371c794eac4a1e21300d33c5dd9cc422d53ebd0a4b61788c37b1f19dfcea6"
+    },
+    {
+      "fsl": "nag-aantok",
+      "fslFile": "sample_1784112695674_c25f95.json",
+      "esl": "sleepy",
+      "eslFile": "sample_1784112695575_397318.json",
+      "frames": 12,
+      "framesSha256": "7b424509d7a08971142e21335dd1c676dc6550a526ffae1b8f42a1d40ae8ae24"
+    },
+    {
+      "fsl": "nakakaintindi_ba_sila_ng_english",
+      "fslFile": "sample_1784112460706_0c1543.json",
+      "esl": "do_you_understand",
+      "eslFile": "sample_1784112460639_f9fedf.json",
+      "frames": 22,
+      "framesSha256": "7174fddade1206bdee7b08d9ef95f4a49a8519e8d7b7fb39aa906f5b939d7a77"
+    },
+    {
+      "fsl": "nakaraan",
+      "fslFile": "sample_1784113641587_e14df1.json",
+      "esl": "past",
+      "eslFile": "sample_1784113641511_e2ceb9.json",
+      "frames": 2,
+      "framesSha256": "ad6d4d32ce3e3db8157f20f29ff8570a5743993c22e78eecb7c9f9046981e535"
+    },
+    {
+      "fsl": "naririnig_mo_ba",
+      "fslFile": "sample_1784112385730_e7982a.json",
+      "esl": "are_you_hearing",
+      "eslFile": "sample_1784112385700_e3d7d8.json",
+      "frames": 26,
+      "framesSha256": "559f13f7f228b1f9b6592432d4bd4be43aebd1e4c278d535951184d3ac7ec05a"
+    },
+    {
+      "fsl": "nasaan_ang_banyo",
+      "fslFile": "sample_1784113762756_5b4684.json",
+      "esl": "where_is_the_bathroom",
+      "eslFile": "sample_1784113762661_6575b5.json",
+      "frames": 21,
+      "framesSha256": "4c2c7d51dc61220fc5ee5c16f9765433942f61b3e2c847ad749c32ee68571555"
+    },
+    {
+      "fsl": "nasasabik_ako",
+      "fslFile": "sample_1784112571226_76c0d9.json",
+      "esl": "im_excited",
+      "eslFile": "sample_1784112571211_3fa247.json",
+      "frames": 23,
+      "framesSha256": "e40e5e876bb70b6e70e68cdc30215a3b9d701159cd75dcb2a95bb1d66349f6e3"
+    },
+    {
+      "fsl": "oras",
+      "fslFile": "sample_1784113687954_0e3dd5.json",
+      "esl": "time",
+      "eslFile": "sample_1784113687869_91074f.json",
+      "frames": 17,
+      "framesSha256": "bf7fa2d67a9a8980559f09ed1ebcbbac30b87dfe171bf47d9f5b808e475d9efa"
+    },
+    {
+      "fsl": "paalam",
+      "fslFile": "sample_1784115794903_db83d4.json",
+      "esl": "goodbye",
+      "eslFile": "sample_1784115794811_409519.json",
+      "frames": 20,
+      "framesSha256": "6e12a131198304fca4944c175438d24bd2cc463ccb131d0123401cc00ff2b90a"
+    },
+    {
+      "fsl": "paano",
+      "fslFile": "sample_1784112541355_f36094.json",
+      "esl": "how",
+      "eslFile": "sample_1784112541188_04d956.json",
+      "frames": 16,
+      "framesSha256": "3774506ecc0f7c2652ef2a51a5ce859ba1cf28c177401492b7a11c74dfdbb4cc"
+    },
+    {
+      "fsl": "paborito",
+      "fslFile": "sample_1784113539763_0523ea.json",
+      "esl": "favorite",
+      "eslFile": "sample_1784113539751_df6974.json",
+      "frames": 11,
+      "framesSha256": "4716d4d370a741a571e8a36b22cbdb0a75ebee1d98b05dc299d9e7702f578e75"
+    },
+    {
+      "fsl": "paggawa_ng_kahulugan",
+      "fslFile": "sample_1784112593991_54f687.json",
+      "esl": "live",
+      "eslFile": "sample_1784112593981_30ce47.json",
+      "frames": 8,
+      "framesSha256": "8f5e7c06ac7284966838fcf66831d1c4f178d12a495343caa6223194a2aa93cd"
+    },
+    {
+      "fsl": "pangalan",
+      "fslFile": "sample_1784112616626_531e2c.json",
+      "esl": "name",
+      "eslFile": "sample_1784112616544_8ebd01.json",
+      "frames": 17,
+      "framesSha256": "4964686a6ac1fdc7553652f916c013d60c0734be6a51fd3414112b25bb829f65"
+    },
+    {
+      "fsl": "pito",
+      "fslFile": "sample_1784128632850_e8c840.json",
+      "esl": "seven",
+      "eslFile": "sample_1784128632804_b65a37.json",
+      "frames": 18,
+      "framesSha256": "452b1f9c8734b7db37b8e0e07c3384e4bfc41d007d1e26a4072a9ef9e0397357"
+    },
+    {
+      "fsl": "pumunta",
+      "fslFile": "sample_1784113560568_4af054.json",
+      "esl": "go",
+      "eslFile": "sample_1784113560520_540928.json",
+      "frames": 10,
+      "framesSha256": "b59eeb679afac4abe67573d4fddc45b2c1c3dce32fb9e08cdab2e5a8360d3d61"
+    },
+    {
+      "fsl": "saan",
+      "fslFile": "sample_1784113750163_9752ec.json",
+      "esl": "where",
+      "eslFile": "sample_1784113750129_918a6a.json",
+      "frames": 11,
+      "framesSha256": "503d809ee350b3d35c1d0c872ef99fcddbfd8459f3a5a322b853bb70915063a6"
+    },
+    {
+      "fsl": "sabihin",
+      "fslFile": "sample_1784113671455_36b901.json",
+      "esl": "say",
+      "eslFile": "sample_1784113671404_78dded.json",
+      "frames": 18,
+      "framesSha256": "62403c3d906813e7933316b93364e29a4d9aa6a742fe439d907e58012cf4b883"
+    },
+    {
+      "fsl": "sampu",
+      "fslFile": "sample_1784128650077_79664b.json",
+      "esl": "ten",
+      "eslFile": "sample_1784128650031_6a5e56.json",
+      "frames": 15,
+      "framesSha256": "6bff6ffc7f709d96de0b2a5debb6016c1bec79750fbdc583e99c69873423d33e"
+    },
+    {
+      "fsl": "sana_basahin_mo_chat_ko_sa_u",
+      "fslFile": "sample_1784112747515_8f3833.json",
+      "esl": "want",
+      "eslFile": "sample_1784112747375_48e596.json",
+      "frames": 10,
+      "framesSha256": "72c8ba05f804cbb0d1badbd3561f91a77df71b6174aa7b7736ee800e244da6e0"
+    },
+    {
+      "fsl": "sino",
+      "fslFile": "sample_1784113780481_7b431e.json",
+      "esl": "who",
+      "eslFile": "sample_1784113780426_9454de.json",
+      "frames": 14,
+      "framesSha256": "e178659621c3b0b2861a086e64d9912aa3c25a3045c0a0dd8127c0c2cfbfc987"
+    },
+    {
+      "fsl": "siyam",
+      "fslFile": "sample_1784128644020_b879a1.json",
+      "esl": "nine",
+      "eslFile": "sample_1784128644009_aee62c.json",
+      "frames": 15,
+      "framesSha256": "78c4f9811fef306709f4e6f9d01dbec97942b8e9e7cbae26521b8fab94160868"
+    },
+    {
+      "fsl": "tanong",
+      "fslFile": "sample_1784113483458_686bed.json",
+      "esl": "ask",
+      "eslFile": "sample_1784113483364_f53454.json",
+      "frames": 12,
+      "framesSha256": "0adc7b27c9ed413ef9e4f3345f38d2d18757e8eeeb33f774eb37895be4094940"
+    },
+    {
+      "fsl": "taon",
+      "fslFile": "sample_1784113810922_7b48ff.json",
+      "esl": "year",
+      "eslFile": "sample_1784113810832_be4182.json",
+      "frames": 23,
+      "framesSha256": "533cd775d39538f0b8aed42f69099c4d55e1d801d9f32e0278f9e1deb5f221e4"
+    },
+    {
+      "fsl": "tapos",
+      "fslFile": "sample_1784113521034_740744.json",
+      "esl": "done",
+      "eslFile": "sample_1784113520896_a4d3e5.json",
+      "frames": 10,
+      "framesSha256": "dfcc7392ececf2e8953c5e29394490a733cad494092b37274f02ef9395491815"
+    },
+    {
+      "fsl": "tapos_na",
+      "fslFile": "sample_1784113547058_3ab813.json",
+      "esl": "finished",
+      "eslFile": "sample_1784113546930_a8269d.json",
+      "frames": 13,
+      "framesSha256": "284de5103160132d49d92197a63e21e25d6db2d12c97e41b65fff60278f4c4b5"
+    },
+    {
+      "fsl": "tatlo",
+      "fslFile": "sample_1784128603404_e1d364.json",
+      "esl": "three",
+      "eslFile": "sample_1784128603159_b24ec7.json",
+      "frames": 14,
+      "framesSha256": "61847758eac6b58c7edbfe355f3601f6ce24473d102a2bb5021a91a0606af6d1"
+    },
+    {
+      "fsl": "tulong",
+      "fslFile": "sample_1784113566478_56f540.json",
+      "esl": "help",
+      "eslFile": "sample_1784113566432_ec06b5.json",
+      "frames": 11,
+      "framesSha256": "10d5f6b77672eb3db8b671d0dc5b06447ac5f676ab440966785367bc1c7b1575"
+    },
+    {
+      "fsl": "tulungan_mo_akong_magsanay",
+      "fslFile": "sample_1784113589734_410a29.json",
+      "esl": "help_me_practice_please",
+      "eslFile": "sample_1784113589632_34cb69.json",
+      "frames": 45,
+      "framesSha256": "7955a1102e743a6c63294e6dce221ac37861fc9b6a1328143f97807a59b087e9"
+    },
+    {
+      "fsl": "umaga",
+      "fslFile": "sample_1784115821512_622cde.json",
+      "esl": "morning",
+      "eslFile": "sample_1784115821453_1256a1.json",
+      "frames": 16,
+      "framesSha256": "3ac03247fa5c90b62abd849473e395c168ef831401edf22f5904f058e74057a3"
+    },
+    {
+      "fsl": "wala_akong_nahanap",
+      "fslFile": "sample_1784112654294_702716.json",
+      "esl": "nothing",
+      "eslFile": "sample_1784112654226_2352d3.json",
+      "frames": 15,
+      "framesSha256": "5304d5f55dcf9de6cf8a73661d95b4e58bf00ea734614d680e81a4c9d59ca8a8"
+    },
+    {
+      "fsl": "wala_naman_mangyayari_kung_hindi_ko_susubukan",
+      "fslFile": "sample_1784112532391_964aa8.json",
+      "esl": "hearing",
+      "eslFile": "sample_1784112532380_ddb6df.json",
+      "frames": 11,
+      "framesSha256": "ee7257ee9d24fecaed577792112e032d1f3bb7a3af4cfca697297a0024c38ff8"
+    },
+    {
+      "fsl": "walo",
+      "fslFile": "sample_1784128638586_66e59c.json",
+      "esl": "eight",
+      "eslFile": "sample_1784128638578_291c0b.json",
+      "frames": 14,
+      "framesSha256": "6bc3c66adaa46b0f9c4f0453394ad42d3e197a55c2a9c7006f54288c2889b6d7"
+    }
+  ],
+  "stray": {
+    "file": "sample_1784112605537_bec003.json",
+    "esl": "my_name",
+    "eslFile": "sample_1784112605409_7920b5.json",
+    "framesSha256": "bc10f5ccea02e7ccb116fe88e2fc4bec8d3ddf901c664152871483cdb0b2e9a0"
+  }
+}
