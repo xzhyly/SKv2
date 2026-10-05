@@ -11,6 +11,12 @@
 //     language map, valued by the sign's assetPath (else key.webm), plus the key as before.
 //  2. displaySignWithFallback uses an asset-map value that starts with "assets/" as the path as-is,
 //     instead of prefixing the language asset base.
+// Avatar phase (docs/reports/2026-10-05-avatar-step1.md (a)): fetchAndRegisterCustomGestures also
+// fills a text -> sign-key map per language for signs that have an avatar clip (signs.php `avatar`),
+// and playSequence() plays each run of consecutive items that have a clip on the avatar as one
+// continuous movement (opts.avatar, js/avatar-player.js). Every other item still goes through the
+// unchanged displaySignWithFallback chain (video, fingerspelling, fallback.png). Without opts.avatar
+// the behaviour is exactly the previous one.
 (function () {
   'use strict';
 
@@ -241,6 +247,10 @@ function formatGrammar(text) {
     return result.trim();
 }
 
+  // Avatar phase: normalized text / key -> sign key, only for signs with an avatar clip.
+  const avatarKeyMapEn = {};
+  const avatarKeyMapFil = {};
+
   // archive/script.js:851-878, with the endpoint and the registration changed (departure 1 below).
   const SAVE_ENDPOINT = "php/api/signs.php";
 async function fetchAndRegisterCustomGestures() {
@@ -269,6 +279,19 @@ async function fetchAndRegisterCustomGestures() {
                 };
                 if (inEn) register(signAssetMapEn, sign.textEn);
                 if (inFil) register(signAssetMapFil, sign.textFil);
+                if (sign.avatar === true) {
+                    // same names as the asset maps, valued by the key (first registration wins)
+                    const registerKey = (map, text) => {
+                        const names = [key, spaceKey];
+                        if (typeof text === 'string' && text) {
+                            const norm = normalizeSpeechText(text);
+                            names.unshift(norm, norm.replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim());
+                        }
+                        names.forEach(name => { if (name && !map[name]) map[name] = key; });
+                    };
+                    if (inEn) registerKey(avatarKeyMapEn, sign.textEn);
+                    if (inFil) registerKey(avatarKeyMapFil, sign.textFil);
+                }
             });
             rebuildKnownPhrases();
         }
@@ -286,6 +309,9 @@ async function fetchAndRegisterCustomGestures() {
     const container = opts.container;
     const wordLabel = opts.wordLabel;
     const getLanguage = opts.getLanguage;
+    // opts.avatar (optional): { store (js/avatar-store.js), getPlayer() -> AvatarPlayer or null while
+    // the parts load, show(), hide() } -- show/hide swap the avatar canvas and the video container.
+    const avatar = opts.avatar || null;
     let token = 0;
     let playing = false;
     let aborts = [];   // each settles whatever the current step is waiting on
@@ -428,6 +454,37 @@ async function fetchAndRegisterCustomGestures() {
       }
     }
 
+    // Avatar phase: the sign key of an item that has an avatar clip, else null.
+    function avatarKeyFor(item) {
+      if (!avatar || !avatar.getPlayer() || !window.AvatarTimeline) return null;
+      const map = isFilipino(getLanguage()) ? avatarKeyMapFil : avatarKeyMapEn;
+      return map[normalizeSpeechText(item)] || null;
+    }
+
+    // Plays one run of items that have clips. A clip that fails to load plays its word as video.
+    async function playAvatarRun(items, myToken) {
+      const preps = await Promise.all(items.map(function (it) { return avatar.store.load(it.key); }));
+      let i = 0;
+      while (i < items.length) {
+        if (myToken !== token) return;
+        if (!preps[i]) {
+          avatar.hide();
+          await displaySignWithFallback(items[i].item, myToken);
+          i++;
+          continue;
+        }
+        let j = i;
+        while (j < items.length && preps[j]) j++;
+        const run = items.slice(i, j);
+        clearContainer();
+        avatar.show();
+        await avatar.getPlayer().play(preps.slice(i, j), {
+          onWord: function (k) { if (myToken === token && run[k]) wordLabel.textContent = run[k].item.toUpperCase(); }
+        });
+        i = j;
+      }
+    }
+
     // archive/script.js:881-904
     async function playSequence(text, myToken) {
       const cleanText = normalizeSpeechText(text);
@@ -449,6 +506,20 @@ async function fetchAndRegisterCustomGestures() {
         sequence.push(words[i]);
       }
 
+      if (avatar && window.AvatarTimeline) {
+        const runs = window.AvatarTimeline.splitRuns(sequence.map(function (item) { return { item: item, key: avatarKeyFor(item) }; }));
+        for (const run of runs) {
+          if (myToken !== token) return;
+          if (run.type === 'avatar') {
+            await playAvatarRun(run.items, myToken);
+          } else {
+            avatar.hide();
+            await displaySignWithFallback(run.item, myToken);
+          }
+        }
+        return;
+      }
+
       for (const item of sequence) {
         if (myToken !== token) return;
         await displaySignWithFallback(item, myToken);
@@ -457,6 +528,7 @@ async function fetchAndRegisterCustomGestures() {
 
     function play(text) {
       abortAll();                       // a new play() supersedes any sequence still running
+      if (avatar && avatar.getPlayer()) avatar.getPlayer().cancel();
       const myToken = ++token;
       playing = true;
       return playSequence(text, myToken).finally(function () {
@@ -468,6 +540,11 @@ async function fetchAndRegisterCustomGestures() {
       token++;
       playing = false;
       abortAll();
+      if (avatar) {
+        const p = avatar.getPlayer();
+        if (p) p.cancel();
+        avatar.hide();
+      }
       clearContainer();
       wordLabel.textContent = '';
     }

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Avatar frame-rate bench</title>
+<style>
+  body { margin: 0; background: #1b2540; color: #fff; font: 16px system-ui, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 16px; }
+  canvas { width: 560px; height: 260px; border-radius: 12px; }
+  pre { background: #0d1530; padding: 12px; border-radius: 8px; max-width: 980px; white-space: pre-wrap; font-size: 13px; }
+  #sheet { display: none; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #sheet canvas { width: 300px; height: 260px; }
+  body.sheet #sheet { display: flex; }
+  body.sheet #bench { display: none; }
+</style>
+</head>
+<body>
+<!--
+  Avatar player frame-rate bench (avatar phase, Task 4 / Task 8). Plays the kiosk avatar at the
+  kiosk panel size (560x260) in two runs: capped at 30 fps (what talk.html does) and uncapped (the
+  renderer's headroom). Prints a line "AVATAR_BENCH {json}" to the console (tests/avatar/pi-bench.sh
+  reads it from Chromium's log on the Pi). Clips: every sign with an avatar clip (php/api/signs.php),
+  else a built-in synthetic movement, so the bench also runs before any clip is recorded.
+  Options: ?seconds=N (each run, default 15), ?sheet (static pose sheet for screenshots instead).
+-->
+<div id="bench">
+  <canvas id="c" width="560" height="260"></canvas>
+  <pre id="out">Loading…</pre>
+</div>
+<div id="sheet"></div>
+<script src="../../js/avatar-rig.js"></script>
+<script src="../../js/avatar-clip.js"></script>
+<script src="../../js/avatar-retarget.js"></script>
+<script src="../../js/avatar-timeline.js"></script>
+<script src="../../js/avatar-renderer.js"></script>
+<script src="../../js/avatar-store.js"></script>
+<script src="../../js/avatar-player.js"></script>
+<script>
+(function () {
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var seconds = Math.max(3, +(params.get('seconds') || 15));
+  var out = document.getElementById('out');
+  var Rig = window.AvatarRig, Retarget = window.AvatarRetarget;
+
+  // Synthetic movement: both arms sweep up to the face and back, hands relaxed (no clip needed).
+  function syntheticPrep() {
+    var rest = Retarget.restPose(Rig), poses = [];
+    for (var i = 0; i < 75; i++) {
+      var u = Math.sin(i / 74 * Math.PI);
+      var p = Retarget.lerpPose(rest, rest, 0);
+      p.arms[0].au = rest.arms[0].au - 1.6 * u; p.arms[0].af = rest.arms[0].af - 2.6 * u;
+      p.arms[1].au = rest.arms[1].au + 1.2 * u; p.arms[1].af = rest.arms[1].af + 2.2 * u;
+      p.arms[0].z = -0.5 * u; p.arms[1].z = 0.2;
+      poses.push(p);
+    }
+    return { fps: 25, poses: poses, key: 'synthetic' };
+  }
+
+  function stats(list) {
+    var s = list.slice().sort(function (a, b) { return a - b; });
+    function q(x) { return s.length ? +s[Math.min(s.length - 1, Math.floor(x * s.length))].toFixed(2) : null; }
+    return { n: s.length, median: q(0.5), p95: q(0.95), max: s.length ? +s[s.length - 1].toFixed(2) : null };
+  }
+
+  function run(player, preps, ms) {
+    var all = { intervals: [], drawMs: [] };
+    var t0 = performance.now();
+    function once() {
+      return player.play(preps).then(function (r) {
+        all.intervals = all.intervals.concat(r.stats.intervals);
+        all.drawMs = all.drawMs.concat(r.stats.drawMs);
+        if (performance.now() - t0 < ms) return once();
+        var iv = stats(all.intervals);
+        return { fps: iv.median ? +(1000 / iv.median).toFixed(1) : null, fpsP5: iv.p95 ? +(1000 / iv.p95).toFixed(1) : null,
+          frameIntervalMs: iv, drawMs: stats(all.drawMs) };
+      });
+    }
+    return once();
+  }
+
+  function loadClips() {
+    return fetch('../../php/api/signs.php').then(function (r) { return r.json(); }).then(function (d) {
+      var keys = Object.keys((d && d.signs) || {}).filter(function (k) { return d.signs[k].avatar; }).slice(0, 4);
+      var store = window.AvatarStore.create({ base: '../../saved_gestures/' });
+      return Promise.all(keys.map(store.load));
+    }).then(function (list) { return list.filter(Boolean); }).catch(function () { return []; });
+  }
+
+  function sheet(parts, preps) {
+    document.body.classList.add('sheet');
+    var host = document.getElementById('sheet');
+    var poses = [Retarget.restPose(Rig)];
+    var p = preps[0];
+    [0.2, 0.4, 0.6, 0.8].forEach(function (f) { poses.push(p.poses[Math.floor(f * (p.poses.length - 1))]); });
+    poses.forEach(function (pose) {
+      var c = document.createElement('canvas');
+      c.width = 300; c.height = 260;
+      host.appendChild(c);
+      window.AvatarRenderer.create(c, parts, { view: Rig.views.admin }).draw(pose, 0);
+    });
+    window.benchDone = true;
+  }
+
+  window.AvatarRenderer.loadParts('../../assets/avatar/').then(function (parts) {
+    return loadClips().then(function (preps) {
+      var source = preps.length ? preps.map(function (p) { return p.key; }).join(', ') : 'synthetic';
+      if (!preps.length) preps = [syntheticPrep()];
+      if (params.has('sheet')) return sheet(parts, preps);
+      var canvas = document.getElementById('c');
+      out.textContent = 'Running ' + seconds + ' s capped at 30 fps, then ' + seconds + ' s uncapped… (' + source + ')';
+      var capped = window.AvatarPlayer.create({ canvas: canvas, parts: parts, fpsCap: 30 });
+      return run(capped, preps, seconds * 1000).then(function (a) {
+        var free = window.AvatarPlayer.create({ canvas: canvas, parts: parts, fpsCap: 0 });
+        return run(free, preps, seconds * 1000).then(function (b) {
+          var result = { userAgent: navigator.userAgent, canvas: '560x260', clips: source, secondsEach: seconds, capped30: a, uncapped: b };
+          window.benchResult = result;
+          window.benchDone = true;
+          out.textContent = JSON.stringify(result, null, 2);
+          console.log('AVATAR_BENCH ' + JSON.stringify(result));
+        });
+      });
+    });
+  }).catch(function (e) {
+    out.textContent = 'Bench failed: ' + (e && e.message ? e.message : e);
+    console.error('AVATAR_BENCH_FAILED', e);
+    window.benchDone = true;
+  });
+})();
+</script>
+</body>
+</html>

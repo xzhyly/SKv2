@@ -1,0 +1,87 @@
+/* css/avatar-clips.css */
+/* avatar-clips.html at the kiosk's 1024x600: nav 52 px, then two 472-px columns at x=24 and x=528
+   (the same columns as gesture-training.html Step 1). Every control is at least 44 px tall.
+   Base reset, colours, the PIN screen, the nav bar and the toast come from gesture-training.css. */
+
+#ac-ui{
+  position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;
+}
+#ac-ui.active{display:flex}
+.ac-back{height:44px;padding:0 14px;font-size:14px}
+.ac-title{flex:1;color:#fff;font-size:18px;font-weight:800;text-align:center}
+.ac-count{color:#cbd5e0;font-size:13px;font-weight:700;min-width:120px;text-align:right}
+
+.ac-main{flex:1;min-height:0;display:flex;gap:32px;padding:14px 24px 16px}
+.ac-col{width:472px;flex:0 0 472px;min-height:0;display:flex;flex-direction:column;gap:8px}
+
+.ac-input{
+  height:44px;border:1.5px solid var(--border);border-radius:8px;background:var(--white);
+  padding:0 12px;font-size:15px;color:var(--text);outline:none;cursor:text;
+}
+.ac-input:focus{border-color:var(--navy)}
+
+.ac-list{
+  flex:1;min-height:0;overflow-y:auto;background:var(--white);border:1.5px solid var(--border);border-radius:10px;
+}
+.ac-item{
+  display:flex;align-items:center;gap:8px;width:100%;min-height:44px;padding:0 12px;
+  border:0;border-bottom:1px solid var(--border);background:transparent;text-align:left;color:var(--text);font-size:15px;
+}
+.ac-item:last-child{border-bottom:0}
+.ac-item.active{background:var(--navy);color:#fff}
+.ac-item-text{flex:1;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ac-item-set{font-size:12px;color:var(--muted);width:40px;text-align:center}
+.ac-item.active .ac-item-set{color:#cbd5e0}
+.ac-item-clip{width:24px;text-align:center;font-weight:900}
+.ac-item-clip.yes{color:var(--green)}
+.ac-empty{padding:14px;color:var(--muted);font-size:14px}
+
+.ac-selected{font-size:15px;font-weight:700;color:var(--navy);min-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-row{display:flex;gap:8px}
+.ac-signer{flex:1;min-width:0}
+
+.ac-btn{
+  display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 16px;
+  border-radius:10px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);
+  font-size:15px;font-weight:800;cursor:pointer;user-select:none;
+}
+.ac-btn:disabled,.ac-btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.ac-choose{background:var(--navy);border-color:var(--navy);color:#fff;flex:0 0 190px}
+.ac-small{height:44px}
+.ac-progress{width:100%;height:12px;accent-color:var(--orange)}
+.ac-status{font-size:13px;color:var(--text-mid);min-height:36px;line-height:1.35}
+.ac-status.error{color:#b91c1c;font-weight:700}
+
+.ac-toggle{display:flex;gap:8px}
+.ac-seg{
+  flex:1;height:44px;border-radius:8px;border:1.5px solid var(--border);background:var(--white);
+  color:var(--navy);font-size:14px;font-weight:800;
+}
+.ac-seg.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.ac-stage{position:relative;width:472px;height:268px;border-radius:12px;overflow:hidden;background:var(--navy)}
+.ac-stage canvas{position:absolute;inset:0;width:472px;height:268px}
+#ac-avatar-canvas{display:none}
+.ac-stage.avatar #ac-avatar-canvas{display:block}
+.ac-stage.avatar #ac-video-canvas{display:none}
+
+.ac-trim{position:relative;width:472px;height:56px;border-radius:8px;background:#dfe5ee;touch-action:none}
+.ac-trim canvas{position:absolute;inset:0}
+.ac-trim-shade{position:absolute;top:0;bottom:0;background:rgba(26,37,64,.55);pointer-events:none}
+.ac-trim-shade-l{left:0}
+.ac-trim-shade-r{right:0}
+.ac-handle{
+  position:absolute;top:0;bottom:0;width:44px;margin-left:-22px;cursor:ew-resize;touch-action:none;
+}
+.ac-handle::after{
+  content:'';position:absolute;left:18px;top:4px;bottom:4px;width:8px;border-radius:4px;background:var(--orange);
+  box-shadow:0 0 0 2px #fff;
+}
+.ac-trim.empty .ac-handle{display:none}
+.ac-trim-row{display:flex;align-items:center;gap:8px}
+.ac-trim-label{flex:1;font-size:13px;color:var(--text-mid);font-weight:700}
+
+.ac-actions{display:flex;gap:10px;margin-top:auto}
+.ac-actions .ac-btn{flex:1}
+.ac-delete{color:#b91c1c}
+.ac-delete.confirm{background:#ef4444;border-color:#ef4444;color:#fff}
+.ac-save{background:var(--orange);border-color:var(--orange);color:#fff;flex:1.4 !important}

@@ -826,7 +826,13 @@
   .speaking-sign-frame{
     width:560px;height:260px;border-radius:12px;background:var(--navy);
     display:flex;align-items:center;justify-content:center;overflow:hidden;
+    position:relative;
   }
+  /* Avatar phase: the avatar canvas covers the frame while a run of signs with clips plays; the
+     video/img container underneath is today's per-word player (js/sign-player.js). */
+  .speaking-sign-media{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+  .speaking-avatar{position:absolute;inset:0;width:560px;height:260px}
+  .speaking-avatar[hidden]{display:none}
   .speaking-sign-word{
     min-height:34px;margin:8px 0 16px;
     font-size:28px;font-weight:700;color:var(--navy);text-align:center;
@@ -1165,7 +1171,10 @@
     <!-- Preview panel (swaps in for the compose rows): the sign clip plays once here, pre-send.
          Nothing in it is stored in the thread — Send routes the TEXT through the confirm card. -->
     <div class="speaking-preview" id="speaking-preview">
-      <div class="speaking-sign-frame" id="speaking-sign-frame"></div>
+      <div class="speaking-sign-frame" id="speaking-sign-frame">
+        <div class="speaking-sign-media" id="speaking-sign-media"></div>
+        <canvas class="speaking-avatar" id="speaking-avatar" width="560" height="260" hidden></canvas>
+      </div>
       <div class="speaking-sign-word" id="speaking-sign-word"></div>
       <div class="speaking-preview-actions">
         <button type="button" class="speaking-edit" id="speaking-edit">Edit</button>
@@ -1209,6 +1218,13 @@
   <script src="js/virtual-keyboard.js" defer></script>
   <script src="js/talk-loader.js"></script>
   <script src="js/talk-signing.js"></script>
+  <script src="js/avatar-rig.js"></script>
+  <script src="js/avatar-clip.js"></script>
+  <script src="js/avatar-retarget.js"></script>
+  <script src="js/avatar-timeline.js"></script>
+  <script src="js/avatar-renderer.js"></script>
+  <script src="js/avatar-store.js"></script>
+  <script src="js/avatar-player.js"></script>
   <script src="js/sign-player.js"></script>
   <script src="js/talk-speaking.js"></script>
   <script src="js/talk-history.js"></script>
@@ -1922,10 +1938,40 @@
       var chipEn = document.getElementById('chip-lang-en');
       var chipFil = document.getElementById('chip-lang-fil');
 
+      // Avatar (avatar phase, decisions 6 and 10): the four parts load once at page load (not
+      // through the loading queue, so a failure never gates "Getting ready…": the words then simply
+      // play as video); clips load per sentence. Hand tracking is paused while the avatar plays and
+      // resumed after only if the signing screen is the one showing (it never is on Speak or Type,
+      // whose entry already stopped the camera: js/talk-signing.js leave()).
+      var avatarCanvas = document.getElementById('speaking-avatar');
+      var avatarPlayer = null;
+      window.AvatarRenderer.loadParts().then(function (parts) {
+        avatarPlayer = window.AvatarPlayer.create({
+          canvas: avatarCanvas,
+          parts: parts,
+          view: window.AvatarRig.views.kiosk,
+          onStart: function () {
+            if (window.GestureDataRecorder && window.GestureDataRecorder.pauseHandLoop) window.GestureDataRecorder.pauseHandLoop();
+          },
+          onEnd: function () {
+            if (document.body.dataset.screen === 'signing' && window.GestureDataRecorder && window.GestureDataRecorder.resumeHandLoop) {
+              window.GestureDataRecorder.resumeHandLoop();
+            }
+          }
+        });
+        avatarPlayer.showRest();
+      }).catch(function (e) { console.warn('[talk] avatar parts not loaded; signs play as video:', e); });
+
       speakingPlayer = SignPlayer.create({
-        container: document.getElementById('speaking-sign-frame'),
+        container: document.getElementById('speaking-sign-media'),
         wordLabel: document.getElementById('speaking-sign-word'),
-        getLanguage: function () { return TalkSpeaking.getLanguage(); }
+        getLanguage: function () { return TalkSpeaking.getLanguage(); },
+        avatar: {
+          store: window.AvatarStore.create({}),
+          getPlayer: function () { return avatarPlayer; },
+          show: function () { avatarCanvas.hidden = false; },
+          hide: function () { avatarCanvas.hidden = true; }
+        }
       });
 
       function setState(name) { screen.setAttribute('data-speaking', name); }

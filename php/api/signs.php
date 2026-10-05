@@ -1,5 +1,6 @@
 <?php
-// Signs list + edit. GET: every sign with set/texts/category/asset/sample count from the DB.
+// Signs list + edit. GET: every sign with set/texts/category/asset/sample count from the DB, plus
+// whether it has an avatar clip on disk.
 // POST {action:"update", key, set, textEn, textFil}: changes a sign's set and texts without touching
 // its samples (sign.json is written first -- disk is the source of truth -- then the gestures row).
 header('Content-Type: application/json');
@@ -58,11 +59,14 @@ try {
         );
         db_fail_check($conn, $result !== false);
         $signs = [];
+        // avatar: the sign has an avatar clip (saved_gestures/<key>/avatar.json; disk only, no DB column).
+        $signsDir = __DIR__ . '/../../saved_gestures/';
         while ($row = mysqli_fetch_assoc($result)) {
             $signs[$row['label']] = sign_from_row($row) + [
                 'category'  => $row['category'],
                 'assetPath' => $row['asset_path'],
                 'samples'   => (int)$row['samples'],
+                'avatar'    => clean_label($row['label']) === $row['label'] && is_file($signsDir . $row['label'] . '/avatar.json'),
             ];
         }
         echo json_encode(['success' => true, 'signs' => (object)$signs]);

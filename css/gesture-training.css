@@ -729,10 +729,12 @@ video#videoFeed{width:100%;height:100%;object-fit:contain;border-radius:12px;tra
   background: var(--navy); color: #fff; font-weight: 700; font-size: 12px;
   padding: 6px 8px; text-align: left; white-space: nowrap;
 }
-.tr-ds-table th:nth-child(1), .tr-ds-table th:nth-child(2) { width: 30%; }
+.tr-ds-table th:nth-child(1), .tr-ds-table th:nth-child(2) { width: 26%; }
 .tr-ds-table th:nth-child(3) { width: 9%; }
 .tr-ds-table th:nth-child(4) { width: 10%; }
-.tr-ds-table th:nth-child(5), .tr-ds-table th:nth-child(6) { width: 10.5%; }
+.tr-ds-table th:nth-child(5) { width: 8%; }
+.tr-ds-table th:nth-child(6), .tr-ds-table th:nth-child(7) { width: 10.5%; }
+.tr-ds-avatar.yes { color: var(--green); font-weight: 900; }
 .tr-ds-table th:nth-child(n+3) { text-align: center; }
 .tr-ds-table tbody tr { border-bottom: 1px solid var(--border); }
 .tr-ds-table td { padding: 0 8px; height: 44px; vertical-align: middle; }
@@ -1129,6 +1131,13 @@ body.keyboard-active #datasetModal.show .tr-modal-card {
 }
 .tr-dataset-btn-lbl{font-weight:800;color:var(--navy);font-size:15px}
 #leftStep1 .tr-dataset-btn .tr-lm-status{font-size:13px}
+/* Avatar phase: [View Active Gesture Dataset | Avatar clips] share the dataset row */
+#leftStep1 .tr-dataset-row{display:flex;gap:12px;flex-shrink:0}
+#leftStep1 .tr-dataset-row #viewDatasetBtn{flex:1;min-width:0;width:auto}
+#leftStep1 .tr-dataset-row #viewDatasetBtn{padding:8px 10px}
+#leftStep1 .tr-dataset-row .tr-avatar-btn{flex:0 0 124px;width:auto;text-decoration:none;padding:8px 10px;justify-content:center}
+#leftStep1 .tr-dataset-row .tr-dataset-btn-lbl{font-size:13px;white-space:nowrap}
+#leftStep1 .tr-dataset-row .tr-lm-status{white-space:nowrap}
 #leftStep1 .tr-bottom-row{margin-top:0;padding-top:0;gap:12px}
 #leftStep1 .tr-ghost-btn{height:48px;font-size:14px}
 #leftStep1 .tr-train-btn{height:52px;font-size:16px;margin-top:0}

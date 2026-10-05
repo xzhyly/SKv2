@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avatar Clips ✿ Sining Kamay</title>
+  <!-- Avatar clips (avatar phase, docs/reports/2026-10-05-avatar-step1.md (f)): pick a sign, pick a
+       video, extract pose + hands with MediaPipe Holistic (vendored, offline), trim, preview on the
+       avatar, Save / Redo / Delete. Meant to be run on the laptop; the Pi only plays clips. The video
+       never leaves the browser. Opened from Train Gestures; gated by the same PIN. -->
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.10">
+  <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
+  <link rel="stylesheet" href="css/avatar-clips.css?v=1.0.0">
+  <script src="js/lib/holistic/holistic.js" defer></script>
+  <script src="js/video-landmarks.js" defer></script>
+  <script src="js/avatar-rig.js" defer></script>
+  <script src="js/avatar-clip.js" defer></script>
+  <script src="js/avatar-retarget.js" defer></script>
+  <script src="js/avatar-timeline.js" defer></script>
+  <script src="js/avatar-renderer.js" defer></script>
+  <script src="js/avatar-player.js" defer></script>
+  <script src="js/avatar-extract.js" defer></script>
+  <script src="js/avatar-clips-ui.js" defer></script>
+  <script src="js/virtual-keyboard.js" defer></script>
+</head>
+<body>
+
+<div id="pin-screen" class="pin-screen active">
+  <div class="pin-card">
+    <div class="pin-badge">🔐</div>
+    <h2>Avatar Clips</h2>
+    <p>Please enter the PIN code to manage the avatar clips.</p>
+    <div class="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+    <div class="pin-pad">
+      <button type="button" class="pin-key" data-pin="1">1</button>
+      <button type="button" class="pin-key" data-pin="2">2</button>
+      <button type="button" class="pin-key" data-pin="3">3</button>
+      <button type="button" class="pin-key" data-pin="4">4</button>
+      <button type="button" class="pin-key" data-pin="5">5</button>
+      <button type="button" class="pin-key" data-pin="6">6</button>
+      <button type="button" class="pin-key" data-pin="7">7</button>
+      <button type="button" class="pin-key" data-pin="8">8</button>
+      <button type="button" class="pin-key" data-pin="9">9</button>
+      <button type="button" class="pin-key ctrl" data-pin="clear">Clear</button>
+      <button type="button" class="pin-key" data-pin="0">0</button>
+      <button type="button" class="pin-key ctrl" data-pin="back">⌫</button>
+    </div>
+    <a href="gesture-training.html" class="pin-back-btn">← Back to Train Gestures</a>
+  </div>
+</div>
+
+<div id="ac-ui">
+  <nav class="tr-nav ac-nav">
+    <a href="gesture-training.html" class="tr-back ac-back">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>
+      Train Gestures
+    </a>
+    <h1 class="ac-title">Avatar clips</h1>
+    <span class="ac-count" id="ac-count"></span>
+  </nav>
+
+  <main class="ac-main">
+    <section class="ac-col ac-left">
+      <input type="search" id="ac-search" class="ac-input" placeholder="Search signs…" autocomplete="off" aria-label="Search signs">
+      <div class="ac-list" id="ac-list" role="listbox" aria-label="Signs"></div>
+      <div class="ac-selected" id="ac-selected">Pick a sign.</div>
+      <div class="ac-row">
+        <label class="ac-btn ac-choose" id="ac-choose" aria-disabled="true">
+          Choose video…
+          <input type="file" id="ac-file" accept="video/*" hidden disabled>
+        </label>
+        <input type="text" id="ac-signer" class="ac-input ac-signer" placeholder="Signer (optional)" maxlength="80" autocomplete="off" aria-label="Signer">
+      </div>
+      <progress id="ac-progress" class="ac-progress" value="0" max="1"></progress>
+      <div class="ac-status" id="ac-status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="ac-col ac-right">
+      <div class="ac-toggle" role="group" aria-label="Stage view">
+        <button type="button" class="ac-seg active" id="ac-view-video" aria-pressed="true">Video + skeleton</button>
+        <button type="button" class="ac-seg" id="ac-view-avatar" aria-pressed="false">Avatar</button>
+      </div>
+      <div class="ac-stage" id="ac-stage">
+        <canvas id="ac-video-canvas" width="472" height="268"></canvas>
+        <canvas id="ac-avatar-canvas" width="472" height="268"></canvas>
+        <video id="ac-video" muted playsinline hidden></video>
+      </div>
+      <div class="ac-trim" id="ac-trim">
+        <canvas id="ac-trim-bars" width="472" height="56"></canvas>
+        <div class="ac-trim-shade ac-trim-shade-l" id="ac-shade-l"></div>
+        <div class="ac-trim-shade ac-trim-shade-r" id="ac-shade-r"></div>
+        <div class="ac-handle ac-handle-l" id="ac-handle-l" role="slider" aria-label="Trim start" tabindex="0"></div>
+        <div class="ac-handle ac-handle-r" id="ac-handle-r" role="slider" aria-label="Trim end" tabindex="0"></div>
+      </div>
+      <div class="ac-trim-row">
+        <span class="ac-trim-label" id="ac-trim-label">No video yet</span>
+        <button type="button" class="ac-btn ac-small" id="ac-preview" disabled>▶ Preview</button>
+      </div>
+      <div class="ac-actions">
+        <button type="button" class="ac-btn ac-delete" id="ac-delete" disabled>Delete</button>
+        <button type="button" class="ac-btn ac-redo" id="ac-redo" disabled>Redo</button>
+        <button type="button" class="ac-btn ac-save" id="ac-save" disabled>Save</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="sk-toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -233,14 +233,19 @@
               <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center; padding:10px;">Loading dataset...</p>
             </div>
 
-            <!-- Dataset Trigger Button -->
-            <button type="button" id="viewDatasetBtn" onclick="trOpenDatasetModal()" class="tr-lm-card tr-dataset-btn">
-              <span class="tr-dataset-btn-lbl">📁 View Active Gesture Dataset</span>
-              <span style="display:flex;align-items:center;gap:6px;">
-                <span class="tr-lm-status" id="datasetCount">0 gestures</span>
-                <span style="color:var(--orange);font-weight:900;font-size:16px;">›</span>
-              </span>
-            </button>
+            <!-- Dataset Trigger Button + Avatar clips (avatar phase: its own page, same PIN) -->
+            <div class="tr-dataset-row">
+              <button type="button" id="viewDatasetBtn" onclick="trOpenDatasetModal()" class="tr-lm-card tr-dataset-btn">
+                <span class="tr-dataset-btn-lbl">📁 View Active Gesture Dataset</span>
+                <span style="display:flex;align-items:center;gap:6px;">
+                  <span class="tr-lm-status" id="datasetCount">0 gestures</span>
+                  <span style="color:var(--orange);font-weight:900;font-size:16px;">›</span>
+                </span>
+              </button>
+              <a href="avatar-clips.html" id="avatarClipsBtn" class="tr-lm-card tr-dataset-btn tr-avatar-btn">
+                <span class="tr-dataset-btn-lbl">🧍 Avatar clips</span>
+              </a>
+            </div>
 
             <div id="trainDataControls"></div>
             <div class="tr-bottom-row">
