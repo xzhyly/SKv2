@@ -899,6 +899,35 @@ below. None of that ran.
     ≥ 44×44px; 0 console errors through a full list/thread/delete/clear-all
     walkthrough.
 
+### Avatar clips (`avatar-clips.html`, avatar phase, 2026-10-05)
+
+- **Opened from** Train Gestures Step 1: the old "View Active Gesture Dataset" row is now
+  `[📁 View Active Gesture Dataset · N gestures › | 🧍 Avatar clips]` (measured 528,154 336x56 and
+  876,154 124x56; labels 13 px, one line each). The link goes to `avatar-clips.html`; Train Gestures sets
+  `sessionStorage.sk_train_unlocked` on PIN unlock, so the page opens without a second PIN in the same tab; a
+  direct visit shows the same PIN pad (PIN `2026`, `js/avatar-clips-ui.js`).
+- **Dataset table** gains an **Avatar** column (✓ / —) between Samples and Edit, from `signs.php`'s `avatar`
+  flag (its own fetch in `renderSavedDataset`; a failed fetch shows ? and never fails the table). Columns
+  26/26/9/10/8/10.5/10.5 %; rows stay 45 px.
+- **Layout at 1024x600** (measured, no page scroll, every control >= 44 px): nav 52 px; left column (24..496):
+  search, sign list (text, set, ✓/—), selected line, `[Choose video… | Signer]`, progress bar, status;
+  right column (528..1000): `[Video + skeleton | Avatar]` toggle, 472x268 stage, 472x56 trim strip with two
+  44-px handles (bars: dark = a hand detected, grey = pose only, orange top = a hand "up"), trim label +
+  Preview, `[Delete | Redo | Save]`.
+- **Flow.** Pick a sign -> Choose video (read through an object URL, never uploaded) -> extraction with
+  progress and the skeleton drawn on each frame (pose cyan, right hand red, left hand green, head/hips
+  yellow) -> auto-trim (first .. last frame of a >= 3-frame run with a wrist above shoulder + 0.6 x
+  (hip - shoulder)) -> handles to change it -> Preview on the avatar -> Save posts only the clip JSON to
+  `php/api/avatar_clip.php`. Redo discards the extraction (aborting one in progress) and opens the file picker;
+  Delete is a two-tap confirm and removes only `avatar.json`. Videos over 60 s are refused before extraction,
+  and a trim over 500 frames (20 s) shows "too long" and disables Save. Without WebAssembly SIMD the page says so and
+  disables Choose video (only the SIMD Holistic build is vendored).
+- **Measured** (`tests/avatar/admin-check.mjs`, 22/22 PASS, every non-localhost host blocked): `my_name_is.mp4`
+  (1080x1920, 10.24 s) -> 256 frames in 61.3 s, auto-trim 31..221 (1.24-8.84 s), saved 191 frames
+  (162-164 KB); 73 requests, all localhost; one POST body (the clip JSON, about the clip's size; the video is
+  2,602,227 bytes); no new video file under the repo, htdocs or `C:\xampp\tmp`; samples and `sign.json`
+  byte-identical; 0 console errors.
+
 ### 4. Key decisions and why
 
 - Speech recognition is hard-forced to the Vosk offline adapter "to ensure 100%
@@ -1386,6 +1415,40 @@ owner to verify on real hardware (`docs/system/DEBT.md` item 85).
 - **Signing flow.** The Translate-button flow with the fake camera is timing dependent (a "Didn't catch that" card
   in 2 earlier runs, a confirm card "You signed Zz Pareho Na." in the run that was checked); the start → sign → stop
   gesture flow was not driven (the fake camera shows only `hello`). A real-camera check is still open (DEBT).
+
+### 3e. 2D avatar in Speak or Type (avatar phase, 2026-10-05)
+
+Proposal `docs/reports/2026-10-05-avatar-step1.md`; final report `docs/reports/2026-10-05-avatar-final.md`;
+decisions in `DECISIONS.md` ("2D avatar phase").
+- **What the user sees.** Translate in Speak or Type now plays every run of consecutive words whose sign has an
+  avatar clip on a flat 2D cut-out avatar inside the same 560x260 frame, as one continuous movement (rest ->
+  sign -> blend -> sign ... -> rest). A word without a clip, or whose clip fails to load, plays exactly as
+  before (video -> fingerspelling -> `fallback.png`). The word label shows the current sign's text in upper
+  case, as for video. Edit, Send and leaving the screen stop the avatar. No new buttons or screens; the thread
+  and the confirm card are unchanged.
+- **Markup.** `#speaking-sign-frame` now holds `#speaking-sign-media` (the SignPlayer's video/img container)
+  and `<canvas id="speaking-avatar" width="560" height="260" hidden>` positioned over it. Measured: the canvas
+  is exactly the frame (232,154 560x260 on turn 1); `scrollWidth` 1024.
+- **Scripts** (before `js/sign-player.js`): `js/avatar-rig.js`, `avatar-clip.js`, `avatar-retarget.js`,
+  `avatar-timeline.js`, `avatar-renderer.js`, `avatar-store.js`, `avatar-player.js`. Holistic is never loaded by
+  `talk.html` (measured: no request).
+- **Loading.** The four PNGs (`assets/avatar/`, 450,910 bytes) load once at page load, outside the
+  `TalkLoader` queue (a failure only means video; measured: 4 PNG requests per page load). Clips load per
+  sentence from `saved_gestures/<key>/avatar.json` into a 12-clip LRU cache (`js/avatar-store.js`, 3 s timeout).
+- **Hand tracking.** The player's `onStart` calls `GestureDataRecorder.pauseHandLoop()`; `onEnd` calls
+  `resumeHandLoop()` only if `body[data-screen] === 'signing'`. On Speak or Type the camera is already off
+  (`TalkSigning.leave()`), measured 0 `Hands.send` during playback; on the signing screen (fake camera)
+  46-48 sends/s before, 0 during, 47-66 in the 1.5 s after.
+- **Look.** Flat colours only (no gradients, blur, shadows or `ctx.filter`), blink every 2.6-5.2 s, breathing
+  (0.6% torso stretch), farther arm and farther fingers drawn first, own light background (`#EEF1F7`) inside
+  the navy frame. Capped at 30 fps; measured on this laptop 29.9 fps (p5 29.2-29.8), 0.3 ms per frame
+  (`tests/avatar/talk-avatar-check.mjs`, `tests/avatar/bench.html`). Pi: not measured
+  (`tests/avatar/pi-bench.sh`).
+- **Measured** (`tests/avatar/talk-avatar-check.mjs`, 26/26 PASS): "zz ava one zz ava two zz ava three" ->
+  one `play()` with 3 clips, captions in order, 0 `<video>` created, canvas never hidden mid-run, 6.8 s;
+  transitions 350 / 431 / 250 / 400 ms with worst joint jumps 40.6 / 44.3 / 37.4 / 21.5 px per 40 ms;
+  "zz ava one nice" -> the avatar run, then `assets/signs/en/nice.webm` 15 ms after it ends; a clip removed after
+  registration -> that word fingerspelled as video; 0 console errors.
 
 ### 1. Owns these files
 

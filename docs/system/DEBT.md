@@ -1505,6 +1505,37 @@ so a later session does not re-litigate them:
      sentence sites were verified by code and by the escape helper, not by driving a camera
      (`st-final-fix-report.md`). Typing on the real touchscreen and on-Pi timings are not measured.
 
+109. **Low severity, open (avatar phase): Pi timing of the avatar is not measured.** On this laptop the player
+     holds 29.9 fps capped at 30 (GPU and `--disable-gpu`; 0.2-0.3 ms per frame, uncapped 59-60 fps = the
+     display rate). Run `bash tests/avatar/pi-bench.sh` on the Pi and record the result
+     (`docs/reports/2026-10-05-avatar-final.md`).
+
+110. **Low severity, open (avatar phase): no avatar clips are recorded yet.** Every word still plays as video
+     until the owner records clips (one signer) on `avatar-clips.html`. Test clips are never committed.
+
+111. **Low severity, open (avatar phase): extraction is slow and stateful.** About 0.24 s per frame on this
+     laptop (61.3 s for a 10.24 s video at 25 fps), and Holistic's tracking state makes two runs on the same
+     video differ slightly (right-hand detections 195-198 of 256 across runs). Fine for one clip at a time;
+     the later bulk import should expect minutes per batch.
+
+112. **Low severity, open (avatar phase): the gap fill switches sharply at 8 frames.** A hand dropout of up to
+     8 frames (320 ms) is interpolated between the neighbouring shapes; a 9-frame one eases about 75% of the
+     way to the relaxed hand and back (task review, measured 23-26 px per frame in hand-local steps). Within
+     decision 7; a blended weight would smooth it.
+
+113. **Low severity, open (avatar phase): `avatar_clip.php` re-encodes the clip.** `json_decode(..., true)` +
+     `json_encode` turns an empty JSON object into `[]`; no field the player reads can be an empty object.
+     A rename over a file Apache is serving can fail on Windows; it is retried once after 50 ms.
+
+115. **Low severity, open (avatar phase): a running kiosk page does not see new or changed clips.** The
+     text -> key maps (`js/sign-player.js` registration, first registration wins) and the 12-clip cache
+     (`js/avatar-store.js`) live for the page load: a clip saved or redone on `avatar-clips.html` is used
+     after `talk.html` reloads (End Conversation does a real page load). A deleted clip falls back to video
+     at once (its fetch 404s).
+
+114. **Low severity, open (avatar phase): the extracted face is not used.** Facial expressions are out of
+     scope; the head only rolls and shifts from the ears and nose.
+
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead
 endpoints" list) was considered as a place to store the new category and

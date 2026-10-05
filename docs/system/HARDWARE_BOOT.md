@@ -101,3 +101,13 @@ deployment described above rather than replacing it:
 - Could not determine: whether `js/vosk.js`'s `sampleRate` parameter is fixed to a particular value anywhere at the call site inside `index.html` — the only concrete usage found in-repo is `speech_test.html:86`, which is outside this document's owned scope and was cited only in passing.
 - Could not determine: any explicit statement in code tying `--disable-accelerated-video-decode` or the "small" Vosk model choice to Raspberry Pi hardware limits — plausible per the system brief but not asserted as fact per the accuracy rule; both are recorded as "reason not documented in code."
 - Could not determine: the true uncompressed size or full internal audio-model parameters (e.g., MFCC config values, sample rate expected by the acoustic model) of the Vosk model beyond its directory/file listing, since fully unpacking/parsing `conf/mfcc.conf` etc. was outside the "inspect filename/structure only" instruction for this file.
+
+## Avatar frame-rate bench on the Pi (avatar phase, 2026-10-05)
+
+`tests/avatar/pi-bench.sh` (run on the Pi's desktop: `bash tests/avatar/pi-bench.sh [seconds]`) closes the kiosk
+Chromium, opens `http://localhost/SKR/tests/avatar/bench.html` with `start_kiosk.sh`'s flags and a throw-away
+profile, waits for the `AVATAR_BENCH {json}` console line in Chromium's `--enable-logging=stderr` output, prints it
+and saves it to `~/avatar-bench-<date>.json`; then restart the kiosk from the desktop entry. The bench plays the
+avatar at 560x260, capped at 30 fps then uncapped (signs with clips, else a synthetic movement). **Pi timing has
+not been measured.** On this laptop: 29.9 fps capped, 59-60 fps uncapped (the display rate), 0.2-0.3 ms per
+frame, with GPU and with `--disable-gpu` (the log parsing was checked with desktop Chrome).

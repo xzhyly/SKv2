@@ -250,6 +250,31 @@ whole-phase fix); the `*-check.mjs`/`verify-e2e.mjs` files are plain node script
 at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md`). `tests/video-capture/capture-ui-check.mjs`, `e2e.mjs`,
 `screenshots.mjs` and `startup-check.mjs` were adapted to the new Step 1 field (`#signTextEn`).
 
+### Avatar phase files (new 2026-10-05)
+
+| File | Owns |
+|---|---|
+| `avatar-clips.html`, `css/avatar-clips.css`, `js/avatar-clips-ui.js` | Admin page "Avatar clips" (PIN; extract / trim / preview / save / delete) |
+| `js/avatar-extract.js` | Video -> raw clip frames with Holistic (admin page only) |
+| `js/avatar-rig.js` | Avatar geometry (parts, sockets, face anchors, bone lengths, rest pose) |
+| `js/avatar-clip.js` | Clip format `sk_avatar_clip_v1`: pack, validate, auto-trim, calibrate |
+| `js/avatar-retarget.js` | Signer -> avatar retargeting, face region, IK, hand gap fill, smoothing |
+| `js/avatar-timeline.js` | Sentence timeline (rest, clips, blends) and the avatar/video run split |
+| `js/avatar-renderer.js` | Flat canvas drawing of one pose |
+| `js/avatar-store.js` | Clip loading on demand, 12-clip LRU |
+| `js/avatar-player.js` | rAF playback at 30 fps with start/end hooks |
+| `php/api/avatar_clip.php` | POST save/delete of `saved_gestures/<key>/avatar.json` |
+| `assets/avatar/head.png`, `torso.png`, `upper_arm.png`, `forearm.png` | The four parts (450,910 bytes) |
+| `js/lib/holistic/` (7 files, 30,195,488 bytes) | Vendored MediaPipe Holistic 0.5.1675471629 (see `VENDORED.md`) |
+| `tests/avatar/helper.mjs`, `avatar-math.test.mjs`, `avatar-clip-endpoint.test.mjs` | Unit + endpoint tests |
+| `tests/avatar/admin-check.mjs`, `talk-avatar-check.mjs` | Browser checks (offline extraction; Let's Talk) |
+| `tests/avatar/bench.html`, `tests/avatar/pi-bench.sh` | Frame-rate bench; the Pi run script |
+
+Load order in `talk.html`: ... `js/talk-signing.js`, then `avatar-rig`, `avatar-clip`, `avatar-retarget`,
+`avatar-timeline`, `avatar-renderer`, `avatar-store`, `avatar-player`, then `js/sign-player.js`,
+`js/talk-speaking.js`, `js/talk-history.js`. New over-5 MB files: `holistic_solution_packed_assets.data`
+(16.1 MB), `holistic_solution_simd_wasm_bin.wasm` (6.2 MB), `pose_landmark_full.tflite` (6.1 MB).
+
 ### `.superpowers/` (4 files)
 
 Session artifacts from a prior agent-assisted work session (`sdd/progress.md`,

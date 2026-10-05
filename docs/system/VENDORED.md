@@ -115,3 +115,20 @@ inside `hands.js` (`hands.js:90`, `hands.js:93`) and
 - Whether `hand_landmark_lite.tflite` is reachable from any UI file in scope for
   this pass (only 4 files were grepped for inference call sites — see
   `docs/system/ML.md`).
+
+## MediaPipe Holistic (avatar phase, 2026-10-05)
+
+- **Files** (`js/lib/holistic/`, 7 files, 30,195,488 bytes, unmodified from the npm package
+  `@mediapipe/holistic` 0.5.1675471629, Apache-2.0; tarball sha512 matched the registry `integrity`):
+  `holistic.js` (78,139), `holistic.binarypb` (1,741), `holistic_solution_packed_assets_loader.js` (9,786),
+  `holistic_solution_packed_assets.data` (16,877,755), `holistic_solution_simd_wasm_bin.js` (276,482),
+  `holistic_solution_simd_wasm_bin.wasm` (6,511,073), `pose_landmark_full.tflite` (6,440,512).
+  Version string: `VERSION","0.5.1675471629"` in `holistic.js`.
+- **Only the SIMD build** (owner decision): the non-SIMD `holistic_solution_wasm_bin.js/.wasm` pair is NOT
+  vendored, so Holistic only runs where WebAssembly SIMD exists; `js/avatar-extract.js` `simdSupported()`
+  checks first and the admin page shows a message. `pose_landmark_lite/heavy.tflite` are not vendored either:
+  `modelComplexity` is always 1 (full).
+- **Used only by `avatar-clips.html`** (`locateFile: f => 'js/lib/holistic/' + f`), never by the kiosk pages.
+- **Offline proof** (measured, Chrome with `--host-resolver-rules="MAP * ~NOTFOUND, EXCLUDE localhost"`):
+  `initialize()` resolved and all 256 frames of a test video were processed; every request went to localhost
+  (`tests/avatar/admin-check.mjs`; step 1 report (b)).

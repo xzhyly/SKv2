@@ -96,6 +96,13 @@ Phase 2, and at HEAD, confirmed via `node --check`. It has been archived to
 `archive/CAMERA-TRANSLATOR.md` for the full finding. Nothing else in the repo
 references it (no `href`, `location.href`, or `window.open` anywhere).
 
+## Not inference: MediaPipe Holistic for avatar clips (avatar phase, 2026-10-05)
+
+`avatar-clips.html` runs MediaPipe Holistic (`js/lib/holistic/`, `js/avatar-extract.js`) on a chosen video to
+extract pose + hand landmarks for the 2D avatar. It never classifies, never feeds the k-NN, and never runs on
+the kiosk's Let's Talk screens. `knnPredict`, `cosineSimilarity` and `trainModel` are unchanged. See
+`VENDORED.md` and `UI.md` Part 2 "Avatar clips".
+
 ## Could not determine
 
 - Whether `diagnostic.html` makes its own direct Hands/TF.js calls — it was not

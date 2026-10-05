@@ -1605,3 +1605,82 @@ their recommended default), the task reports `.git/sdd/st-task-{1,2,4,5,6,7,8}-r
   `.git/sdd/st-task-8-report.md` item 9); camera-to-first-result 153 ms, `trainMs` 1,694.
 - `e2e.mjs`: ready 1,016 ms, recording auto-stopped after 15,753 ms, processing 13,623 ms, per-rep frames [18, 17, 17], Train
   "Complete! — 123 gestures ready" in 2,109 ms.
+
+## Decisions made during the 2D avatar phase (2026-10-05)
+
+Phase "2D avatar for text-to-sign". Source: the approved proposal `docs/reports/2026-10-05-avatar-step1.md`
+(owner decisions 1-10 in the task prompt; all 16 open questions at the recommended default except Q1),
+the owner's approval message, and the final report `docs/reports/2026-10-05-avatar-final.md`.
+
+### Owner decisions (task prompt and approval)
+
+1. **A 2D cut-out puppet on a canvas** (vanilla JS, offline, no build step). Four PNG parts (head, torso,
+   upper arm, forearm; the arm is mirrored for the other side); hands are drawn by code from the 21 hand
+   landmarks so fingers bend.
+2. **Motion = pose + both hands from MediaPipe Holistic**, vendored in `js/lib/holistic/`, run only on the
+   admin page, never on the kiosk's Let's Talk screens.
+3. **One avatar clip per sign**, stored once with the sign (ESL, FSL and Both share it), from ONE signer.
+   Recognition samples and the avatar clip are independent: changing one never touches the other.
+4. **Admin page "Avatar clips"** (`avatar-clips.html`): pick a sign, pick a video, extract with progress and
+   a skeleton overlay, auto-trim with manual handles, preview, Save / Redo / Delete. The video is never
+   uploaded or stored.
+5. **Player:** clips back to back, ~250 ms blend end-pose -> start-pose, no drop to rest between signs, rest
+   before the first and after the last.
+6. **Let's Talk Speak or Type uses the avatar**; a word with no clip falls back to today's video. Captions and
+   the thread unchanged; no new buttons or screens.
+7. **Fix the prototype's problems:** stretched arms, the face-region collision, the stiff fallback hand, the
+   sleeve separating from the shoulder.
+8. **No security work** (DEBT 72 stays open).
+9. **The page opens from a button next to "View Active Gesture Dataset", behind the same PIN**; the dataset
+   table shows which signs have a clip; extraction runs on the laptop, the Pi only plays.
+10. **Light kiosk player:** PNGs at Let's Talk load, clips on demand with a small cache, hand tracking paused
+   while the avatar plays.
+- **At approval (replaces part of decision 5 and Q11): flat 2D only.** Solid colours as in the PNGs and the
+  prototype's "flat" mode: no gradient shading, no blur, no hand or floor shadow, no `ctx.filter`, no quality
+  tiers or step-down code. Blink, slight breathing and depth ordering (far parts first) stay; the avatar
+  paints its own light background.
+- **At approval (Q1): only the SIMD Holistic build is vendored.** Extraction runs on the laptop; without
+  WebAssembly SIMD the admin page says so instead of failing silently.
+
+### Decisions made during execution
+
+- **Retargeting is new code, not a port.** The prototype's frames were mapped outside its page with one uniform
+  scale (step 1 report (d)); the player retargets at play time: bone direction and 2D foreshortening from the
+  signer, bone lengths from the avatar (`js/avatar-retarget.js`). A clip stores raw signer-space landmarks so
+  the math can improve without re-extracting.
+- **Rest pose: elbows bent, hands relaxed in front of the waist** (`js/avatar-rig.js` `restWristOffset`), not
+  the prototype's straight-down arms. Reason (measured on the Task 2 pose sheet): the straight-down rest put the
+  fingers below the kiosk panel's visible area (its view ends at logical y = 592).
+- **Transition durations are minimums that lengthen with the distance travelled** (`js/avatar-timeline.js`):
+  250 ms between signs, 350 ms from rest, 400 ms to rest, lengthened (up to 700 ms) so no drawn joint moves
+  more than 50 px per 40 ms, measured on the blended path itself (16 samples). Reason: a fixed 250 ms blend
+  between far-apart signs measured 82.8 px per 40 ms, and a straight-line estimate still gave 61 px, against
+  the 60 px continuity threshold (Q14). In the measured 3-sign sentence one blend became 431 ms.
+- **A zero-lag 5-tap temporal smoothing (1-4-6-4-1) runs once when a clip is prepared**
+  (`smoothPoses()`). Reason: raw retargeted hand shapes jumped up to 145 px per 40 ms (detection pops); the
+  prototype hid this with a per-tick low-pass in its player. After smoothing the sample's within-clip jumps are
+  median 11.3, p95 33.3, max 61.0 px per 40 ms (`tests/avatar/avatar-math.test.mjs`).
+- **The face-region mapping moves the hand's contact point, not its wrist, and does not rotate the hand
+  offset** (whole-phase / task review): a fingertip that touches the signer's nose lands within 3 px of the
+  caricature's nose, also with the signer's head tilted 0.3-0.35 rad.
+- **"Has a clip" is disk only** (Q2): `saved_gestures/<key>/avatar.json`; `signs.php` GET reports
+  `avatar: true|false` with `is_file()`; no schema change (a mysqldump was still taken first). Deleting a sign
+  in the dataset view deletes its clip with the folder (Q3; `save_gesture.php` already deletes every `*.json`).
+- **The Train Gestures dataset table reads the `avatar` flags with its own `signs.php` fetch**
+  (`js/gesture-training-ui.js` `renderSavedDataset`) instead of changing `js/gesture-data.js`
+  (`loadSigns()` keeps only set/texts), so the capture-flow file stays untouched.
+- **Hand tracking pause/resume lives in `talk.html`'s player hooks**, not in `js/gesture-data.js` (Q7):
+  `onStart` calls `pauseHandLoop()`; `onEnd` calls `resumeHandLoop()` only if the signing screen is showing.
+  Measured on the signing screen with a fake camera: 46-48 sends/s before, 0 during a 4.3-4.5 s playback,
+  47-66 in the 1.5 s after.
+- **The avatar canvas sits over a new `#speaking-sign-media` container inside `#speaking-sign-frame`**; the
+  SignPlayer's container is the media div, so `clearContainer()` never removes the canvas. Without an avatar
+  option `js/sign-player.js` behaves exactly as before.
+- **PIN:** `avatar-clips.html` has its own PIN pad (same PIN); Train Gestures sets the `sessionStorage` flag
+  `sk_train_unlocked` on unlock, so the button opens the page without a second PIN in the same tab session.
+- **Train Gestures row:** `[View Active Gesture Dataset | Avatar clips]` share the old button's row (336 + 124
+  px, labels 13 px, no arrow on the Avatar button) so both labels fit on one line at 1024x600 (measured).
+- **Admin Delete is a two-tap confirm** ("Tap again to delete", 3 s), not a browser dialog.
+- **Extraction draws each frame into a canvas of at most 720 px** before `send()` (Q15). Measured against the
+  prototype's full-resolution CDN run on the same video: 256/256 frames, detections pose 256/256, right hand
+  198/197 (195-198 across runs), left hand 64-66/63, pose mean difference 0.0130.

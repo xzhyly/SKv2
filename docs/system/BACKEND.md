@@ -825,3 +825,27 @@ full run's end state; a crash simulation (file copied and deleted, no manifest e
 at step 2 with nothing moved and no `text_en` column. It clones a scratch database from the pre-phase dump
 (`tests/sign-texts/helper.mjs`) and never touches live.
 
+## Avatar clips (avatar phase, 2026-10-05)
+
+- **Storage:** one clip per sign at `saved_gestures/<key>/avatar.json` (format `sk_avatar_clip_v1`, raw
+  MediaPipe Holistic landmarks in signer space, 25 fps, 3 decimals: `js/avatar-clip.js`). Every sample reader
+  globs `sample_*.json`, so the clip is never read as a recognition sample; the full sync ignores it
+  (`tests/avatar/avatar-clip-endpoint.test.mjs`). **No DB column and no schema change** (a mysqldump was taken
+  anyway: `E:\ACADSS\IOT\backups\2026-10-05-avatar\sining_kamay_db_before-avatar.sql`, 6,022,829 bytes).
+  Measured size: 191 frames = 162-164 KB (about 850 B per frame).
+- **`php/api/avatar_clip.php`** (new, POST only, no auth: DEBT 72). `{action:"save", key, clip}` writes
+  `avatar.json` for an existing sign (`saved_gestures/<key>/sign.json` must exist; `clean_label($key) === $key`
+  and a realpath prefix check) after validating the clip (mirrors `validateClip()`: format, key, fps 1..60,
+  numeric video size, the standard 11 `poseIdx`, trim order, 1..500 frames, `[pose(11x4)|null, lh(21x3)|null,
+  rh(21x3)|null]`, numbers finite and |v| <= 100, visibility 0..1, at least one pose); body limit 1 MB (413);
+  `createdAt` set by the server; temp file + rename (retried once after 50 ms). `{action:"delete", key}` unlinks
+  `avatar.json` only. Unknown action 400 (checked first), unknown sign 404, GET 405. Never touches samples or
+  `sign.json` (test: byte-identical before/after save and delete). An `array_is_list` polyfill covers PHP 8.0.
+- **`php/api/signs.php` GET** adds `avatar: true|false` per sign (`is_file()` on `avatar.json`). Measured GET
+  time (Apache, 5 runs each, interleaved): about 34 ms before, 38 ms after.
+- **Deleting a sign** (`save_gesture.php` `delete_gesture`) deletes every `*.json` in its folder, so its clip goes
+  with it (step 1 Q3; tested).
+- **Read path:** the kiosk fetches `saved_gestures/<key>/avatar.json` as a static file (`js/avatar-store.js`)
+  and rejects a clip whose `key` is not the folder's.
+- **Getting clips to the Pi:** like recognition samples, real clips live in the tracked `saved_gestures/`
+  folder, so they are committed and pulled (or copied) the same way. Test clips (zz probes) are never committed.
