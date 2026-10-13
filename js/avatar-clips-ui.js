@@ -3,6 +3,9 @@
 // auto-trim with manual handles -> preview on the avatar -> Save / Redo / Delete (decision 4).
 // The video is only ever read locally through an object URL; the only request that carries data is
 // the clip JSON posted to php/api/avatar_clip.php. A sign's recognition samples are never touched.
+// "Import JSON" loads a landmark file (the system's own clip or the prototype tool's output,
+// AvatarClip.importClip) instead of a video and joins the same flow at the trim step, with no
+// video to show; "Export JSON" downloads a sign's saved clip as <key>.avatar.json.
 (function () {
   'use strict';
 
@@ -10,6 +13,7 @@
   var UNLOCK_KEY = 'sk_train_unlocked';     // unlock time (ms), set by Train Gestures; this tab session only
   var UNLOCK_MS = 10 * 60 * 1000;           // ... and honoured for 10 minutes
   var SIGNER_KEY = 'sk_avatar_signer';
+  var MAX_JSON_BYTES = 8 * 1024 * 1024;     // Import JSON: 1500 untrimmed frames are about 1.3 MB
   var TRACK_W = 472;
   var HAND = [[0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [0, 17, 18, 19, 20], [5, 9, 13, 17]];
   var P = window.AvatarClip ? window.AvatarClip.P : null;
@@ -18,7 +22,7 @@
 
   var state = {
     signs: {}, key: null, ext: null, extracting: false, abort: null, deleteTimer: null,
-    player: null, extractor: null, seeking: false, pendingSeek: null
+    player: null, extractor: null, seeking: false, pendingSeek: null, lastSource: 'video', importId: 0
   };
 
   // ── PIN ──
@@ -140,8 +144,8 @@
     renderList();
     renderSelected();
     status(state.signs[key] && state.signs[key].avatar
-      ? 'This sign has a clip. Preview plays it; choose a video to replace it.'
-      : 'Choose a video of this sign.');
+      ? 'This sign has a clip. Preview plays it; choose a video or import a JSON to replace it.'
+      : 'Choose a video of this sign, or import a JSON clip.');
   }
 
   function updateButtons() {
@@ -149,10 +153,15 @@
     var canChoose = !!s && !state.extracting && window.AvatarExtract.simdSupported();
     $('ac-file').disabled = !canChoose;
     $('ac-choose').setAttribute('aria-disabled', canChoose ? 'false' : 'true');
+    var canImport = !!s && !state.extracting;     // no extractor involved: works without SIMD
+    $('ac-json').disabled = !canImport;
+    $('ac-import').setAttribute('aria-disabled', canImport ? 'false' : 'true');
+    $('ac-view-video').disabled = !!(state.ext && state.ext.imported);   // an imported clip has no video
     var tooLong = state.ext && state.ext.trim.end - state.ext.trim.start + 1 > window.AvatarClip.MAX_FRAMES;
     $('ac-save').disabled = !(s && state.ext && !state.extracting && !tooLong);
     $('ac-redo').disabled = !(state.ext || state.extracting);
     $('ac-delete').disabled = !(s && s.avatar && !state.extracting);
+    $('ac-export').disabled = !(s && s.avatar && !state.extracting);
     $('ac-preview').disabled = !(s && !state.extracting && (state.ext || s.avatar) && state.player);
     document.querySelectorAll('.ac-item').forEach(function (b) { b.disabled = state.extracting; });
   }
@@ -198,6 +207,11 @@
   // Show extracted frame `i` (seek the kept local video; coalesce rapid handle drags).
   function showFrame(i) {
     if (!state.ext) return;
+    if (state.ext.imported) {                       // no video: the avatar holds that frame's pose
+      var prep = state.ext.prep;
+      if (prep && prep.poses[i] && state.player && !state.player.isPlaying()) state.player.renderer.draw(prep.poses[i], performance.now());
+      return;
+    }
     if (state.seeking) { state.pendingSeek = i; return; }
     var v = $('ac-video');
     state.seeking = true;
@@ -215,7 +229,7 @@
   }
 
   function setView(which) {
-    var avatar = which === 'avatar';
+    var avatar = which === 'avatar' || !!(state.ext && state.ext.imported);
     $('ac-stage').classList.toggle('avatar', avatar);
     $('ac-view-video').classList.toggle('active', !avatar);
     $('ac-view-avatar').classList.toggle('active', avatar);
@@ -313,6 +327,7 @@
 
   // ── Extraction ──
   function discardExtraction() {
+    state.importId++;                               // a file still being read is dropped
     if (state.abort) state.abort.abort();
     if (state.player) state.player.cancel();
     state.ext = null;
@@ -333,6 +348,7 @@
     if (!state.key || state.extracting) return;
     var key = state.key;
     discardExtraction();
+    state.lastSource = 'video';
     state.extracting = true;
     state.abort = new AbortController();
     var signal = state.abort.signal;
@@ -378,11 +394,85 @@
     });
   }
 
+  // ── Import JSON ──
+  function runImport(file) {
+    if (!state.key || state.extracting) return;
+    var key = state.key;
+    discardExtraction();
+    state.lastSource = 'json';
+    var id = state.importId;
+    function fail(why) { status('Import failed. ' + why + ' Nothing was saved.', true); }
+    if (file.size > MAX_JSON_BYTES) { fail('This file is too large to be an avatar clip.'); return; }
+    status('Reading ' + file.name + '…');
+    file.text().then(function (text) {
+      if (id !== state.importId || key !== state.key || state.extracting) return;
+      var data;
+      try { data = JSON.parse(text); } catch (e) { fail('This file is not valid JSON.'); return; }
+      var res = window.AvatarClip.importClip(data);
+      if (!res.ok) { fail(res.error); return; }
+      var n = res.frames.length;
+      // A system clip is already trimmed: keep it whole. The prototype's output is a whole video.
+      var auto = res.source === 'prototype' ? window.AvatarClip.autoTrim(res.frames) : null;
+      var trim = auto ? { start: auto.start, end: auto.end, auto: true } : { start: 0, end: n - 1, auto: false };
+      var prep;
+      try {     // per-frame avatar poses, for the still shown while a trim handle is dragged
+        prep = window.AvatarRetarget.prepare(window.AvatarClip.buildClip({
+          key: key, fps: res.fps, video: res.video, frames: res.frames, trim: { start: 0, end: n - 1 }
+        }), window.AvatarRig);
+      } catch (e) {
+        fail('This clip cannot be shown on the avatar (' + (e && e.message ? e.message : e) + ').');
+        return;
+      }
+      state.ext = { frames: res.frames, fps: res.fps, video: res.video, trim: trim, imported: true, offsetMs: res.offsetMs, prep: prep };
+      if (res.signer) $('ac-signer').value = res.signer;
+      var c = { pose: 0, lh: 0, rh: 0 };
+      res.frames.forEach(function (f) { if (f[0]) c.pose++; if (f[1]) c.lh++; if (f[2]) c.rh++; });
+      // read by tests/avatar/import-check.mjs
+      window.avatarClipsLastImport = { name: file.name, source: res.source, frames: res.frames, counts: c, trim: trim };
+      $('ac-progress').value = 1;
+      status('Imported ' + file.name + ': ' + n + ' frames. Pose in ' + c.pose + ', right hand in ' + c.rh + ', left hand in ' + c.lh + '. ' +
+        (res.source === 'clip' ? 'This clip is already trimmed; drag the handles to trim it more.'
+          : auto ? 'Trimmed to the first hand raise .. last hand lower; drag the handles to change it.'
+            : 'No raised hand found: every frame is selected; drag the handles to trim it.'));
+      setView('avatar');
+      renderTrim();
+      showFrame(trim.start);
+    }).catch(function (e) {
+      if (id === state.importId) fail('This file could not be read (' + (e && e.message ? e.message : e) + ').');
+    });
+  }
+
   function currentClip() {
     var e = state.ext;
-    return window.AvatarClip.buildClip({
+    var clip = window.AvatarClip.buildClip({
       key: state.key, fps: e.fps, video: e.video, frames: e.frames, trim: e.trim,
       signer: $('ac-signer').value.trim()
+    });
+    // a re-imported system clip: its trim times stay those of its original video
+    if (e.offsetMs) { clip.trim.startMs += e.offsetMs; clip.trim.endMs += e.offsetMs; }
+    return clip;
+  }
+
+  // ── Export JSON ──
+  function exportClip() {
+    var key = state.key;
+    if (!key) return;
+    fetch('saved_gestures/' + encodeURIComponent(key) + '/avatar.json', { cache: 'no-cache' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(function (text) {
+      var v = window.AvatarClip.validateClip(JSON.parse(text));
+      if (!v.ok) throw new Error(v.error);
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = key + '.avatar.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+      status('Exported ' + key + '.avatar.json to this computer\'s downloads.');
+    }).catch(function (e) {
+      status('Export failed: ' + (e && e.message ? e.message : e), true);
     });
   }
 
@@ -420,7 +510,8 @@
     }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); }).then(function (res) {
       if (!res.ok || !res.d.success) throw new Error(res.d && res.d.error ? res.d.error : 'save failed');
       toast('✅ Clip saved');
-      status('Saved: ' + res.d.frames + ' frames (' + Math.round(res.d.bytes / 1024) + ' KB). The video was not uploaded.');
+      status('Saved: ' + res.d.frames + ' frames (' + Math.round(res.d.bytes / 1024) + ' KB).' +
+        (state.ext && state.ext.imported ? '' : ' The video was not uploaded.'));
       return loadSigns();
     }).catch(function (e) {
       status('Save failed: ' + (e && e.message ? e.message : e), true);
@@ -428,9 +519,11 @@
   }
 
   function redo() {
+    var json = state.lastSource === 'json';
     discardExtraction();
-    status('Choose a video for this sign.');
-    if (!$('ac-file').disabled) $('ac-file').click();
+    status(json ? 'Choose a JSON clip for this sign.' : 'Choose a video for this sign.');
+    var input = $(json ? 'ac-json' : 'ac-file');
+    if (!input.disabled) input.click();
   }
 
   function disarmDelete() {
@@ -477,6 +570,12 @@
       e.target.value = '';                    // choosing the same file again still fires change
       if (f) runExtraction(f);
     });
+    $('ac-json').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (f) runImport(f);
+    });
+    $('ac-export').addEventListener('click', exportClip);
     $('ac-view-video').addEventListener('click', function () { setView('video'); });
     $('ac-view-avatar').addEventListener('click', function () { setView('avatar'); });
     $('ac-preview').addEventListener('click', preview);
@@ -488,7 +587,7 @@
     drawVideoFrame(null);
     renderTrim();
     if (!window.AvatarExtract.simdSupported()) {
-      status('This browser cannot run the extractor: WebAssembly SIMD is missing. Use the laptop\'s Chrome. Saved clips can still be previewed and deleted.', true);
+      status('This browser cannot run the extractor: WebAssembly SIMD is missing. Use the laptop\'s Chrome. Saved clips can still be previewed, exported and deleted, and JSON clips imported.', true);
     } else {
       status('Pick a sign.');
     }

@@ -46,8 +46,9 @@
   font-size:15px;font-weight:800;cursor:pointer;user-select:none;
 }
 .ac-btn:disabled,.ac-btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
-.ac-choose{background:var(--navy);border-color:var(--navy);color:#fff;flex:0 0 190px}
-.ac-small{height:44px}
+.ac-choose,.ac-import{flex:0 0 138px;padding:0 8px;white-space:nowrap}
+.ac-choose{background:var(--navy);border-color:var(--navy);color:#fff}
+.ac-small{height:44px;white-space:nowrap}
 .ac-progress{width:100%;height:12px;accent-color:var(--orange)}
 .ac-status{font-size:13px;color:var(--text-mid);min-height:36px;line-height:1.35}
 .ac-status.error{color:#b91c1c;font-weight:700}
@@ -58,6 +59,7 @@
   color:var(--navy);font-size:14px;font-weight:800;
 }
 .ac-seg.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.ac-seg:disabled{opacity:.45;cursor:not-allowed}
 .ac-stage{position:relative;width:472px;height:268px;border-radius:12px;overflow:hidden;background:var(--navy)}
 .ac-stage canvas{position:absolute;inset:0;width:472px;height:268px}
 #ac-avatar-canvas{display:none}
@@ -78,7 +80,7 @@
 }
 .ac-trim.empty .ac-handle{display:none}
 .ac-trim-row{display:flex;align-items:center;gap:8px}
-.ac-trim-label{flex:1;font-size:13px;color:var(--text-mid);font-weight:700}
+.ac-trim-label{flex:1;min-width:0;font-size:13px;line-height:1.25;color:var(--text-mid);font-weight:700}
 
 .ac-actions{display:flex;gap:10px;margin-top:auto}
 .ac-actions .ac-btn{flex:1}

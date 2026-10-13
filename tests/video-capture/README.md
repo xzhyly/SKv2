@@ -25,8 +25,11 @@ Run: `node --test --test-concurrency=1 tests/video-capture/*.test.mjs`
 
 - `extractor-check.mjs` (Task 4) - `js/video-landmarks.js`'s `extractVideoLandmarks()` +
   `js/gesture-data.js`'s `createVideoDetector()`/`onHandResults()`, against
-  `tests/video-capture/extractor.page.html`. No fake camera; drives MediaPipe over a synthetic
-  MediaRecorder recording built in-page from `assets/signs/en/hello.webm`.
+  `tests/video-capture/extractor.page.html`. No fake camera; drives MediaPipe over a fixed VP8
+  recording built with the repo-root `ffmpeg.exe` from `assets/signs/en/hello.webm`
+  (`fake-camera.mjs` `buildWebm()`, 12 s, the same bytes on every run) and over its no-cues,
+  no-duration copy. Until 2026-10-13 the recording was made in the page with MediaRecorder; its
+  timing depended on machine load and "3 reps" sometimes failed with `too-few-reps`.
 
   Run: `node tests/video-capture/extractor-check.mjs`
 
@@ -106,5 +109,6 @@ Full measured output from the verification run is in
   opt-in addition (Task 6) for checking request bodies at the CDP level; they are no-ops for any
   caller that never invokes `enableNetwork()`.
 - `fake-camera.mjs` - `buildY4m(dir)`: the fake-camera `.y4m` (hello.webm x3 with black gaps)
-  shared by `e2e.mjs` and `screenshots.mjs`.
+  shared by `e2e.mjs` and `screenshots.mjs`; `buildWebm(dir)`: the same kind of recording as a
+  fixed `.webm` file for `extractor-check.mjs`.
 - `load-gesture-data.mjs` - loads `js/gesture-data.js` under Node for the pure unit tests.

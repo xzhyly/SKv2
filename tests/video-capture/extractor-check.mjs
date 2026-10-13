@@ -2,11 +2,13 @@
 // extractVideoLandmarks() + js/gesture-data.js's createVideoDetector()/onHandResults().
 //
 // Drives tests/video-capture/extractor.page.html over headless Chrome via CDP
-// (tests/video-capture/cdp.mjs). Builds a synthetic MediaRecorder WebM in-page (3 plays of
-// assets/signs/en/hello.webm with 1.5s black gaps at 320x240, same recipe as
-// .git/sdd/spike.html's makeRecording), then produces a no-cues/no-duration copy with
-// ffmpeg.exe -c copy in a temporary folder under tests/video-capture/ (deleted at the end,
-// never committed, nothing written under assets/). Verifies, for BOTH files:
+// (tests/video-capture/cdp.mjs). Builds a fixed VP8 WebM with ffmpeg.exe (fake-camera.mjs's
+// buildWebm(): 3 plays of assets/signs/en/hello.webm with 1.5s black gaps at 320x240), then
+// produces a no-cues/no-duration copy with ffmpeg.exe -c copy (the shape of a MediaRecorder
+// recording), both in a temporary folder under tests/video-capture/ (deleted at the end, never
+// committed, nothing written under assets/). Until 2026-10-13 the first file was recorded in the
+// page with MediaRecorder; its timing depended on machine load and the 3-reps check was flaky.
+// Verifies, for BOTH files:
 //   - frames.length === Math.ceil(duration * 15)
 //   - durationMs is finite
 //   - two runs on the same file give identical frames (deep-equal)
@@ -23,10 +25,11 @@
 //
 // Run: node tests/video-capture/extractor-check.mjs
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome } from './cdp.mjs';
+import { buildWebm } from './fake-camera.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -59,17 +62,15 @@ async function main() {
     const setupResult = await chrome.evaluate(`window.setupMp(${JSON.stringify(CLIP_URL)})`);
     check('MediaPipe set up on hidden #videoFeed', setupResult && setupResult.ok === true);
 
-    console.log('--- building synthetic recording ---');
-    const recMeta = await chrome.evaluate(`window.makeRecording(${JSON.stringify(CLIP_URL)}, 1500, 30)`);
-    console.log(`  recording built: ${recMeta.bytes} bytes, source clip duration ${recMeta.clipDuration}s`);
-
-    const inBase64 = await chrome.evaluate('window.recBlobBase64()');
-    const inPath = path.join(tmpDir, 'in.webm');
-    writeFileSync(inPath, Buffer.from(inBase64, 'base64'));
+    console.log('--- building the fixed recording with ffmpeg ---');
+    const inPath = buildWebm(tmpDir);
+    console.log(`  in.webm: ${statSync(inPath).size} bytes`);
 
     console.log('--- producing no-cues/no-duration copy via ffmpeg -c copy ---');
     const outPath = path.join(tmpDir, 'out.webm');
-    const stdout = execFileSync(FFMPEG, ['-y', '-i', inPath, '-c', 'copy', '-f', 'webm', 'pipe:1'], {
+    // -map_metadata -1: in.webm carries a per-stream DURATION tag that ffmpeg would otherwise write
+    // into the piped copy's header; without it the copy has no duration, like a MediaRecorder file.
+    const stdout = execFileSync(FFMPEG, ['-y', '-i', inPath, '-c', 'copy', '-map_metadata', '-1', '-map_metadata:s:v', '-1', '-f', 'webm', 'pipe:1'], {
       maxBuffer: 1024 * 1024 * 64,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
@@ -80,7 +81,7 @@ async function main() {
 
     const files = [
       {
-        name: 'in.webm (original MediaRecorder output)',
+        name: 'in.webm (fixed ffmpeg VP8 recording)',
         load: `window.loadBlobFromUrl(${JSON.stringify(`http://localhost/SKR/tests/video-capture/${path.basename(tmpDir)}/in.webm`)})`,
         expectInfiniteDuration: false,
       },

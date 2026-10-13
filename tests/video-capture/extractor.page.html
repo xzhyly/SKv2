@@ -17,10 +17,6 @@
      `readyState >= 2` gate is satisfied and hands.send() actually fires while the live loop
      is running - needed to verify the loop resumes (send-count check) after release(). -->
 <video id="videoFeed" muted playsinline loop style="display:none"></video>
-<!-- Source clip + recording canvas, used only to build the synthetic MediaRecorder WebM
-     in-page (same technique as .git/sdd/spike.html's makeRecording). -->
-<video id="srcClip" muted playsinline style="display:none"></video>
-<canvas id="recCanvas" width="320" height="240" style="display:none"></canvas>
 
 <script>
 // Count Hands.prototype.send() calls before any Hands instance exists, so both the live
@@ -44,74 +40,8 @@ window.__patchSendCounter = function (HandsClass) {
 // Driven by extractor-check.mjs over CDP. Every function below returns a plain
 // JSON-serializable value (Runtime.evaluate returnByValue).
 
-// Builds a synthetic MediaRecorder WebM: 3 plays of clipUrl with 1.5s black gaps at 320x240,
-// same recipe as .git/sdd/spike.html's makeRecording. Stores the Blob on window.recBlob and
-// returns metadata (never the Blob itself - it can't cross Runtime.evaluate's JSON boundary).
-window.makeRecording = async function (clipUrl, gapMs, fps) {
-  gapMs = gapMs || 1500;
-  fps = fps || 30;
-  const src = document.getElementById('srcClip');
-  src.src = clipUrl;
-  await new Promise((resolve, reject) => {
-    src.addEventListener('loadeddata', resolve, { once: true });
-    src.addEventListener('error', reject, { once: true });
-  });
-
-  const c = document.getElementById('recCanvas');
-  const ctx = c.getContext('2d');
-  const stream = c.captureStream(fps);
-  const mr = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-  const chunks = [];
-  mr.ondataavailable = (e) => {
-    if (e.data.size) chunks.push(e.data);
-  };
-
-  let drawing = true;
-  const tick = () => {
-    if (!drawing) return;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, 320, 240);
-    if (!src.paused) {
-      const vw = src.videoWidth, vh = src.videoHeight;
-      const dh = 320 / (vw / vh);
-      ctx.drawImage(src, 0, (240 - dh) / 2, 320, dh);
-    }
-  };
-  const iv = setInterval(tick, 1000 / fps);
-
-  mr.start();
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  await wait(gapMs);
-  for (let i = 0; i < 3; i++) {
-    src.currentTime = 0;
-    await src.play();
-    await new Promise((r) => src.addEventListener('ended', r, { once: true }));
-    src.pause();
-    await wait(gapMs);
-  }
-  drawing = false;
-  clearInterval(iv);
-  const stopped = new Promise((r) => (mr.onstop = r));
-  mr.stop();
-  await stopped;
-
-  window.recBlob = new Blob(chunks, { type: 'video/webm' });
-  return { bytes: window.recBlob.size, clipDuration: src.duration };
-};
-
-// Reads window.recBlob as a base64 string so the CDP driver can write it to disk (for the
-// ffmpeg no-cues/no-duration copy). Never used to send the video anywhere over the network.
-window.recBlobBase64 = async function () {
-  const buf = new Uint8Array(await window.recBlob.arrayBuffer());
-  let s = '';
-  for (let i = 0; i < buf.length; i += 8192) {
-    s += String.fromCharCode.apply(null, buf.subarray(i, i + 8192));
-  }
-  return btoa(s);
-};
-
-// Loads a base64-encoded webm (e.g. the ffmpeg no-cues copy fetched from the temp folder) into
-// window.recBlob so runExtract() can use it the same way as the in-page recording.
+// Loads a webm built by the driver with ffmpeg (the fixed recording, or its no-cues copy) from
+// the temp folder into window.recBlob for runExtract(). The video is only read, never sent.
 window.loadBlobFromUrl = async function (url) {
   const res = await fetch(url);
   window.recBlob = await res.blob();

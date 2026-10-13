@@ -1,6 +1,6 @@
 // js/avatar-clip.js
 // The avatar clip format (sk_avatar_clip_v1, docs/reports/2026-10-05-avatar-step1.md (c)):
-// build, validate, auto-trim and per-clip calibration. A clip is RAW MediaPipe Holistic landmarks
+// build, validate, import, auto-trim and per-clip calibration. A clip is RAW MediaPipe Holistic landmarks
 // in signer space (normalized image coordinates); retargeting to the avatar happens at play time
 // (js/avatar-retarget.js), so improving that math never needs a re-extraction.
 // Pure: no DOM. Attaches window.AvatarClip, and module.exports under node.
@@ -17,6 +17,8 @@
     { S: P.shL, E: P.elL, W: P.wrL, hand: 1 }    // frame[1] = left hand
   ];
   var MAX_FRAMES = 500;   // 20 s at 25 fps
+  var PROTO_FORMAT = 'avatar_pose_hands_v1';   // the prototype tool's output (Import JSON)
+  var MAX_IMPORT_FRAMES = 1500;                // untrimmed import: 60 s at 25 fps, as for a video
   var MIN_UP_RUN = 3;     // auto-trim: a hand must be up for at least 3 consecutive frames
 
   function r(n, dp) { var m = Math.pow(10, dp); return Math.round(n * m) / m; }
@@ -100,6 +102,19 @@
     return true;
   }
 
+  // The per-frame part of validateClip(): null when every frame is well formed, else the error.
+  function framesError(frames) {
+    var poses = 0;
+    for (var i = 0; i < frames.length; i++) {
+      var f = frames[i];
+      if (!Array.isArray(f) || f.length !== 3) return 'frame ' + i + ' is not [pose, lh, rh]';
+      if (!pointsOk(f[0], POSE_IDX.length, 4)) return 'frame ' + i + ' pose malformed';
+      if (!pointsOk(f[1], 21, 3) || !pointsOk(f[2], 21, 3)) return 'frame ' + i + ' hand malformed';
+      if (f[0]) poses++;
+    }
+    return poses ? null : 'no frame has a pose';
+  }
+
   // -> {ok:true} or {ok:false, error}
   function validateClip(c) {
     if (!c || typeof c !== 'object') return { ok: false, error: 'not an object' };
@@ -120,16 +135,66 @@
     }
     if (!Array.isArray(c.frames) || c.frames.length < 1) return { ok: false, error: 'no frames' };
     if (c.frames.length > MAX_FRAMES) return { ok: false, error: 'more than ' + MAX_FRAMES + ' frames' };
-    var poses = 0;
-    for (var i = 0; i < c.frames.length; i++) {
-      var f = c.frames[i];
-      if (!Array.isArray(f) || f.length !== 3) return { ok: false, error: 'frame ' + i + ' is not [pose, lh, rh]' };
-      if (!pointsOk(f[0], POSE_IDX.length, 4)) return { ok: false, error: 'frame ' + i + ' pose malformed' };
-      if (!pointsOk(f[1], 21, 3) || !pointsOk(f[2], 21, 3)) return { ok: false, error: 'frame ' + i + ' hand malformed' };
-      if (f[0]) poses++;
+    var e = framesError(c.frames);
+    return e ? { ok: false, error: e } : { ok: true };
+  }
+
+  // A JSON file chosen with "Import JSON" on avatar-clips.html -> frames for the same trim /
+  // preview / save flow as an extracted video. Accepts the system's own clip (already trimmed: its
+  // frames are kept exactly, so an exported clip re-imports unchanged) and the prototype tool's
+  // avatar_pose_hands_v1 ({t, pose, lh, rh} frames, 4 decimals, untrimmed), converted to the
+  // stored frame layout and precision. The file's own key is ignored.
+  // -> {ok:true, source:'clip'|'prototype', frames, fps, video, signer, offsetMs} or {ok:false, error}
+  function importClip(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      return { ok: false, error: 'This file is not an avatar clip.' };
     }
-    if (!poses) return { ok: false, error: 'no frame has a pose' };
-    return { ok: true };
+    if (data.format === FORMAT) {
+      var copy = {};
+      Object.keys(data).forEach(function (k) { copy[k] = data[k]; });
+      copy.key = 'import';
+      var v = validateClip(copy);
+      if (!v.ok) return { ok: false, error: 'This avatar clip is not valid: ' + v.error + '.' };
+      return {
+        ok: true, source: 'clip', frames: data.frames, fps: data.fps,
+        video: { w: data.video.w, h: data.video.h, durationMs: isNum(data.video.durationMs) ? data.video.durationMs : data.frames.length * 1000 / data.fps },
+        signer: typeof data.signer === 'string' ? data.signer : '', offsetMs: data.trim.startMs
+      };
+    }
+    if (data.format !== PROTO_FORMAT) {
+      var what = typeof data.format === 'string' && data.format ? 'Its format is "' + data.format.slice(0, 40) + '".' : 'It has no format field.';
+      if (data.label !== undefined || /^mediapipe_hands/.test(String(data.format))) what += ' It looks like a recognition sample.';
+      return { ok: false, error: 'This file is not an avatar clip (' + FORMAT + ' or ' + PROTO_FORMAT + '). ' + what };
+    }
+    function bad(why) { return { ok: false, error: 'This ' + PROTO_FORMAT + ' file is not valid: ' + why + '.' }; }
+    if (!isNum(data.fps) || data.fps < 1 || data.fps > 60) return bad('fps out of range');
+    if (!isNum(data.w) || !isNum(data.h) || data.w <= 0 || data.h <= 0) return bad('video size missing');
+    if (!Array.isArray(data.poseIdx) || data.poseIdx.join(',') !== POSE_IDX.join(',')) return bad('poseIdx must be the standard 11 points');
+    if (!Array.isArray(data.frames) || data.frames.length < 1) return bad('no frames');
+    if (data.frames.length > MAX_IMPORT_FRAMES) return bad('more than ' + MAX_IMPORT_FRAMES + ' frames');
+    // Same rounding as packFrame(); anything that is not a list of number lists is left as it is
+    // for framesError() to report.
+    function round(list, vis) {
+      if (list === null || list === undefined) return null;
+      if (!Array.isArray(list)) return list;
+      return list.map(function (p) {
+        if (!Array.isArray(p)) return p;
+        return p.map(function (n, k) { return isNum(n) ? r(n, vis && k === 3 ? 2 : 3) : n; });
+      });
+    }
+    var frames = [];
+    for (var i = 0; i < data.frames.length; i++) {
+      var f = data.frames[i];
+      if (!f || typeof f !== 'object' || Array.isArray(f)) return bad('frame ' + i + ' is not {pose, lh, rh}');
+      frames.push([round(f.pose, true), round(f.lh, false), round(f.rh, false)]);
+    }
+    var e = framesError(frames);
+    if (e) return bad(e);
+    return {
+      ok: true, source: 'prototype', frames: frames, fps: data.fps,
+      video: { w: data.w, h: data.h, durationMs: Math.round(frames.length * 1000 / data.fps) },
+      signer: typeof data.signer === 'string' ? data.signer.slice(0, 80) : '', offsetMs: 0
+    };
   }
 
   function median(a) {
@@ -191,6 +256,9 @@
     autoTrim: autoTrim,
     buildClip: buildClip,
     validateClip: validateClip,
+    PROTO_FORMAT: PROTO_FORMAT,
+    MAX_IMPORT_FRAMES: MAX_IMPORT_FRAMES,
+    importClip: importClip,
     calibrate: calibrate,
     px: px,
     median: median
