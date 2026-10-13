@@ -849,3 +849,7 @@ at step 2 with nothing moved and no `text_en` column. It clones a scratch databa
   and rejects a clip whose `key` is not the folder's.
 - **Getting clips to the Pi:** like recognition samples, real clips live in the tracked `saved_gestures/`
   folder, so they are committed and pulled (or copied) the same way. Test clips (zz probes) are never committed.
+- **Import / Export JSON (2026-10-13)** added no endpoint and no DB change. Export is a plain GET of the
+  static `avatar.json`, downloaded by the browser as `<key>.avatar.json`; an imported file is converted in
+  the browser and saved through the same `avatar_clip.php` `save` action, which sets `key` and `createdAt`
+  itself. The files stay the source of truth.

@@ -210,11 +210,11 @@ env var); `tests/normalization/migration.test.mjs` separately, 13/13.
 | tests/video-capture/feature-rows.test.mjs | Node unit tests for `js/gesture-data.js`'s `recordingToFeatureRows()` v3 subsampling (`MAX_ROWS_PER_RAW_SAMPLE = 30`) and the unchanged v2 branch |
 | tests/video-capture/save-raw.test.mjs | Live-DB/disk tests for `php/api/save_gesture.php` accepting a v3 (`formatVersion: 3`) raw sample: compact-JSON storage, the 301-frame cap, response shape |
 | tests/video-capture/extractor.page.html | Browser-only harness page for `extractor-check.mjs` — runs one `extractVideoLandmarks()` pass over a recorded Blob using a fresh `createVideoDetector()` |
-| tests/video-capture/extractor-check.mjs | Headless-Chrome (CDP) driver for `extractor.page.html` — 28 checks against a real MediaPipe extraction of a fake-camera recording |
+| tests/video-capture/extractor-check.mjs | Headless-Chrome (CDP) driver for `extractor.page.html` — 28 checks against a real MediaPipe extraction of a fixed ffmpeg-built recording (`fake-camera.mjs` `buildWebm()`, since 2026-10-13; before that an in-page MediaRecorder recording whose timing made the 3-reps check flaky) and its no-cues copy |
 | tests/video-capture/capture-ui-check.mjs | Headless-Chrome (CDP) driver exercising `js/gesture-capture-ui.js`'s full state machine (Ready → Countdown → Recording → Review → Processing → Saving → Done, plus Cancel/Redo/error paths) against `gesture-training.html` — 74 checks |
 | tests/video-capture/e2e.mjs | End-to-end driver: a full fake-camera recording through `gesture-training.html`'s real UI to 3 saved samples, then Train AI / Predict — 52 checks, includes the golden-sample-files regression (210 existing sample files / 3,232 rows byte-identical to `813bfbe`) |
 | tests/video-capture/cdp.mjs | Shared minimal Chrome DevTools Protocol client used by the `*-check.mjs`/`e2e.mjs` drivers above (headless Chrome launch, page navigation, console/network capture) |
-| tests/video-capture/fake-camera.mjs | Shared helper (2026-09-27): `buildY4m(dir)` builds the fake-camera `.y4m` (hello.webm ×3 with black gaps, repo-root `ffmpeg.exe`) used by `e2e.mjs` and `screenshots.mjs` |
+| tests/video-capture/fake-camera.mjs | Shared helper (2026-09-27): `buildY4m(dir)` builds the fake-camera `.y4m` (hello.webm ×3 with black gaps, repo-root `ffmpeg.exe`) used by `e2e.mjs` and `screenshots.mjs`; `buildWebm(dir)` (2026-10-13) builds the same kind of recording as a fixed 12 s VP8 `.webm` for `extractor-check.mjs` |
 | tests/video-capture/screenshots.mjs | Headless-Chrome driver (2026-09-27, capture UI layout fix): screenshots of Step 1 and every recording-mode state at 1024x600 and 1280x720 into `docs/reports/img/`, with no-scrollbar / touch-target / overlap / camera-release checks |
 | tests/video-capture/startup-check.mjs | Headless-Chrome timing check (owner follow-up, 2026-09-27): recording mode Starting camera → START enabled on the first and second open, the page-load hand-tracking warm-up (`window.handTrackingWarmUp`), Train AI time and Step 3 camera → first result, console errors. Creates no samples |
 | tests/video-capture/load-gesture-data.mjs | Shared helper: loads `js/gesture-data.js` (and friends) under node via `createRequire`/a DOM shim, for the node-side unit tests above |
@@ -254,10 +254,10 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 
 | File | Owns |
 |---|---|
-| `avatar-clips.html`, `css/avatar-clips.css`, `js/avatar-clips-ui.js` | Admin page "Avatar clips" (PIN; extract / trim / preview / save / delete) |
+| `avatar-clips.html`, `css/avatar-clips.css`, `js/avatar-clips-ui.js` | Admin page "Avatar clips" (PIN; extract or import JSON / trim / preview / save / delete / export JSON) |
 | `js/avatar-extract.js` | Video -> raw clip frames with Holistic (admin page only) |
 | `js/avatar-rig.js` | Avatar geometry (parts, sockets, face anchors, bone lengths, rest pose) |
-| `js/avatar-clip.js` | Clip format `sk_avatar_clip_v1`: pack, validate, auto-trim, calibrate |
+| `js/avatar-clip.js` | Clip format `sk_avatar_clip_v1`: pack, validate, import (own format or the prototype's `avatar_pose_hands_v1`), auto-trim, calibrate |
 | `js/avatar-retarget.js` | Signer -> avatar retargeting, face region, IK, hand gap fill, smoothing |
 | `js/avatar-timeline.js` | Sentence timeline (rest, clips, blends) and the avatar/video run split |
 | `js/avatar-renderer.js` | Flat canvas drawing of one pose |
@@ -266,8 +266,8 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 | `php/api/avatar_clip.php` | POST save/delete of `saved_gestures/<key>/avatar.json` |
 | `assets/avatar/head.png`, `torso.png`, `upper_arm.png`, `forearm.png` | The four parts (450,910 bytes) |
 | `js/lib/holistic/` (7 files, 30,195,488 bytes) | Vendored MediaPipe Holistic 0.5.1675471629 (see `VENDORED.md`) |
-| `tests/avatar/helper.mjs`, `avatar-math.test.mjs`, `avatar-clip-endpoint.test.mjs` | Unit + endpoint tests |
-| `tests/avatar/admin-check.mjs`, `talk-avatar-check.mjs` | Browser checks (offline extraction; Let's Talk) |
+| `tests/avatar/helper.mjs`, `avatar-math.test.mjs`, `avatar-import.test.mjs`, `avatar-clip-endpoint.test.mjs` | Unit + endpoint tests (`avatar-import`: `importClip()`, 2026-10-13) |
+| `tests/avatar/admin-check.mjs`, `talk-avatar-check.mjs`, `import-check.mjs` | Browser checks (offline extraction; Let's Talk; Import / Export JSON, 2026-10-13) |
 | `tests/avatar/bench.html`, `tests/avatar/pi-bench.sh` | Frame-rate bench; the Pi run script |
 
 Load order in `talk.html`: ... `js/talk-signing.js`, then `avatar-rig`, `avatar-clip`, `avatar-retarget`,

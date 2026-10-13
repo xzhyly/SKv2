@@ -84,13 +84,19 @@ locally via XAMPP:
   behave the same in local dev as on the Pi.
 
 Confirmed working locally: camera capture and sign-to-text translation, with
-the k-NN classifier loading all 120 ESL gestures and no console errors — first
+the k-NN classifier loading all 122 signs (89 Both + 33 ESL) and no console errors — first
 on `sign-to-text.html`, now (2026-09-21) inside `talk.html`'s signing screen;
 `sign-to-text.html` itself is archived (`archive/sign-to-text.html`). As of
 the 2026-09-23 gesture-categorization phase, every gesture-training label
 also carries a `word`/`letter`/`number`/`phrase` category (auto-guessed by a
 heuristic, manually re-taggable in `gesture-training.html`'s Step 1) — see
 `docs/system/UI.md` and `docs/system/DECISIONS.md`.
+
+`avatar-clips.html` (opened from Train Gestures, laptop only) makes one 2D-avatar
+clip per sign from a video or an imported landmark JSON, saved as
+`saved_gestures/<key>/avatar.json`; in Let's Talk, Speak or Type plays a word on
+the avatar when its sign has a clip and as video otherwise — see
+`docs/system/UI.md` ("Avatar clips", Part 3 3e).
 
 `talk.html` is the "Let's Talk" two-way conversation screen (see
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing

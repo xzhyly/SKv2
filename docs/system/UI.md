@@ -910,10 +910,11 @@ below. None of that ran.
   flag (its own fetch in `renderSavedDataset`; a failed fetch shows ? and never fails the table). Columns
   26/26/9/10/8/10.5/10.5 %; rows stay 45 px.
 - **Layout at 1024x600** (measured, no page scroll, every control >= 44 px): nav 52 px; left column (24..496):
-  search, sign list (text, set, ✓/—), selected line, `[Choose video… | Signer]`, progress bar, status;
+  search, sign list (text, set, ✓/—), selected line, `[Choose video… | Import JSON… | Signer]` (2026-10-13:
+  24,451 138x52; 170,451 138x52; 316,451 180x44), progress bar, status;
   right column (528..1000): `[Video + skeleton | Avatar]` toggle, 472x268 stage, 472x56 trim strip with two
   44-px handles (bars: dark = a hand detected, grey = pose only, orange top = a hand "up"), trim label +
-  Preview, `[Delete | Redo | Save]`.
+  Export JSON (754,458 128x44) + Preview (890,458 110x44), `[Delete | Redo | Save]`.
 - **Flow.** Pick a sign -> Choose video (read through an object URL, never uploaded) -> extraction with
   progress and the skeleton drawn on each frame (pose cyan, right hand red, left hand green, head/hips
   yellow) -> auto-trim (first .. last frame of a >= 3-frame run with a wrist above shoulder + 0.6 x
@@ -927,6 +928,29 @@ below. None of that ran.
   (162-164 KB); 73 requests, all localhost; one POST body (the clip JSON, about the clip's size; the video is
   2,602,227 bytes); no new video file under the repo, htdocs or `C:\xampp\tmp`; samples and `sign.json`
   byte-identical; 0 console errors.
+- **Import JSON / Export JSON (2026-10-13, `docs/reports/2026-10-13-avatar-json-import.md`).**
+  - **Import JSON…** (next to Choose video…, enabled once a sign is picked, also without SIMD) reads a
+    landmark file in the browser (`File.text()`, at most 8 MB) and skips extraction. `AvatarClip.importClip()`
+    (`js/avatar-clip.js`) accepts `sk_avatar_clip_v1` (frames kept exactly) and the prototype tool's
+    `avatar_pose_hands_v1` (`{t, pose, lh, rh}` frames -> `[pose, lh, rh]`, coordinates rounded to 3 decimals
+    and visibility to 2 as `packFrame()` does, the file's own fps kept, at most 1500 frames). Then the same
+    flow as a video: a prototype file is auto-trimmed, a system clip (already trimmed) is selected whole;
+    handles, Preview, Save, Redo (which reopens the JSON picker).
+  - **No video:** the stage shows the avatar, the "Video + skeleton" tab is disabled, and dragging a handle
+    shows that frame's pose on the avatar.
+  - **Key and signer:** the file's own `key` is ignored (the clip is saved to the selected sign); a `signer`
+    in the file fills the Signer field (not written to this computer's remembered signer until edited).
+  - **Rejected with a message, nothing saved:** invalid JSON; any other shape (the message names the file's
+    format, and says so when it looks like a recognition sample); a clip that fails `validateClip()`.
+  - **Export JSON** (trim row, enabled when the selected sign has a clip) downloads the saved `avatar.json`
+    as `<key>.avatar.json`, byte for byte.
+  - **Signer field** placeholder is now "Signer ID, e.g. P03" (132 px of text in a 154-px field).
+  - **Measured** (`tests/avatar/import-check.mjs`, 31/31 PASS, every non-localhost host blocked):
+    `my_name_is.avatar.json` -> 256 frames (pose 256, right hand 197, left hand 63), auto-trim 31..221, saved
+    191 frames (162,166 bytes); the export is byte-identical to the saved file; importing the export into a
+    second sign and saving gives 191 frames with 0 of 24,406 values different and the same trim times
+    (1240-8840 ms); Let's Talk played the clip on the avatar (8.35 s, 0 videos); 84 requests, all localhost;
+    2 POSTs (the two saves); no page scroll, every control >= 44 px, no label cut off; 0 console errors.
 
 ### 4. Key decisions and why
 

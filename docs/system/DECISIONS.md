@@ -1684,3 +1684,41 @@ the owner's approval message, and the final report `docs/reports/2026-10-05-avat
 - **Extraction draws each frame into a canvas of at most 720 px** before `send()` (Q15). Measured against the
   prototype's full-resolution CDN run on the same video: 256/256 frames, detections pose 256/256, right hand
   198/197 (195-198 across runs), left hand 64-66/63, pose mean difference 0.0130.
+
+## Decisions made during the avatar JSON import / export change (2026-10-13)
+
+Source: the owner's task prompt (decisions 1-9, settled) and `docs/reports/2026-10-13-avatar-json-import.md`.
+
+### Owner decisions
+
+- **Import JSON** next to Choose video: a landmark file instead of a video, no extraction, then the same
+  trim / Preview / Save / Redo flow; the stage shows the avatar and "Video + skeleton" is disabled.
+- **Accepted formats:** `sk_avatar_clip_v1` and the prototype tool's `avatar_pose_hands_v1` (converted).
+  Anything else, or a file that fails the clip validation, is refused with an English message.
+- **The file's own key is ignored**; a signer in the file fills the Signer field.
+- **Export JSON** downloads `<key>.avatar.json`; re-importing an export gives the same frames.
+- **Signer placeholder** "Signer ID, e.g. P03". **Save** stays on `php/api/avatar_clip.php`; no new endpoint,
+  no DB change. **The Avatar clips button stays** in Train Gestures; the PIN behaviour is unchanged.
+- **`extractor-check.mjs`'s fixture** is built from a fixed ffmpeg `.webm`.
+
+### Build decisions
+
+- **A system clip is selected whole on import; only a prototype file is auto-trimmed.** A saved clip is
+  already trimmed, and auto-trimming it again could drop frames the owner kept by hand, which would break
+  "re-importing an export gives the same frames". The handles still trim it further.
+- **A re-imported clip keeps its original trim times.** Its `trim.startMs` is added back at Save, so the
+  times still refer to the original video (measured: 1240-8840 ms before and after). The `auto` flag is not
+  carried: a re-imported clip is saved with `auto: false`.
+- **The fps of a prototype file is kept, not resampled.** The clip format allows 1-60 fps and the player reads
+  `clip.fps`; the prototype tool always writes 25.
+- **An untrimmed import may hold up to 1500 frames** (60 s at 25 fps, the same limit as a video); the saved
+  trim is still limited to 500. `validateClip()`'s per-frame checks moved into `framesError()`, used by both.
+- **Export is the stored file byte for byte**, checked with `validateClip()` before the download starts.
+- **The file's signer is not written to `localStorage`** until the owner edits the field, so an imported file
+  does not replace the signer remembered on this computer.
+- **Export JSON sits in the trim row** next to Preview; the bottom row keeps `[Delete | Redo | Save]`.
+- **While a trim handle is dragged on an imported clip the avatar shows that frame's pose**, in place of the
+  video frame.
+- **`extractor-check.mjs`:** the no-cues copy needs `-map_metadata -1`, because the ffmpeg-built file carries
+  a per-stream `DURATION` tag that ffmpeg would otherwise write into the piped copy (measured: without it
+  the copy's duration is 12, not Infinity, and the Infinity-branch check fails).
