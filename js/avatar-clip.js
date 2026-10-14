@@ -20,6 +20,7 @@
   var PROTO_FORMAT = 'avatar_pose_hands_v1';   // the prototype tool's output (Import JSON)
   var MAX_IMPORT_FRAMES = 1500;                // untrimmed import: 60 s at 25 fps, as for a video
   var MIN_UP_RUN = 3;     // auto-trim: a hand must be up for at least 3 consecutive frames
+  var HAND_EDGE_MAX = 8;  // auto-trim: frames an end may move inward to reach a frame with the hands
 
   function r(n, dp) { var m = Math.pow(10, dp); return Math.round(n * m) / m; }
 
@@ -41,18 +42,40 @@
   }
 
   // A wrist is "up" when it is above shoulderY + 0.6 * (hipY - shoulderY).
-  function handUp(frame) {
+  // -> [arm 0 up, arm 1 up] (ARMS order), or null without a pose.
+  function armsUp(frame) {
     var pose = frame && frame[0];
-    if (!pose) return false;
+    if (!pose) return null;
     var sy = (pose[P.shL][1] + pose[P.shR][1]) / 2;
     var hy = (pose[P.hipL][1] + pose[P.hipR][1]) / 2;
     var line = sy + 0.6 * (hy - sy);
-    return pose[P.wrL][1] < line || pose[P.wrR][1] < line;
+    return ARMS.map(function (a) { return pose[a.W][1] < line; });
+  }
+  function handUp(frame) {
+    var up = armsUp(frame);
+    return !!up && (up[0] || up[1]);
   }
 
-  // First frame of the first run of >= MIN_UP_RUN "up" frames .. last frame of the last such run.
+  // A hand is raised and every raised arm's hand is detected.
+  function handsReady(frame) {
+    var up = armsUp(frame);
+    return !!up && (up[0] || up[1]) && ARMS.every(function (a, i) { return !up[i] || !!frame[a.hand]; });
+  }
+
+  // First frame of the first run of >= MIN_UP_RUN "up" frames .. last frame of the last such run,
+  // then each end moved inward (at most HAND_EDGE_MAX frames) to the nearest handsReady() frame, so
+  // a clip does not start or end on a raised arm whose hand Holistic has not found (DEBT 124).
   // Returns {start, end} (inclusive frame indices) or null when no hand is ever raised.
   function autoTrim(frames) {
+    var t = upRange(frames);
+    if (!t) return null;
+    var lim = Math.min(HAND_EDGE_MAX, Math.floor((t.end - t.start) / 2));
+    for (var s = t.start; s <= t.start + lim; s++) if (handsReady(frames[s])) { t.start = s; break; }
+    for (var e = t.end; e >= t.end - lim; e--) if (handsReady(frames[e])) { t.end = e; break; }
+    return t;
+  }
+
+  function upRange(frames) {
     var start = -1, end = -1, run = 0;
     for (var i = 0; i < frames.length; i++) {
       if (handUp(frames[i])) {
@@ -253,6 +276,7 @@
     MAX_FRAMES: MAX_FRAMES,
     packFrame: packFrame,
     handUp: handUp,
+    handsReady: handsReady,
     autoTrim: autoTrim,
     buildClip: buildClip,
     validateClip: validateClip,

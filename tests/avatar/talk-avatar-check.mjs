@@ -1,10 +1,12 @@
 // avatar phase, Task 7: the avatar in Let's Talk "Speak or Type", headless Chrome at 1024x600.
-// Clips: three zz probe signs get clips extracted at run time on avatar-clips.html from the
-// repo's own sign videos (assets/signs/en/hello.webm, how_are_you.webm, my_name.webm); nothing is
-// committed and every zz probe is removed at the end (step 1 report Q12).
+// Clips: three zz probe signs get clips imported (Import JSON) on avatar-clips.html, built from the
+// committed Holistic output of the repo's own sign videos (tests/avatar/fixtures/holistic-signs.json:
+// hello.webm, how_are_you.webm, my_name.webm) with the auto-trim of before 2026-10-14, so hello
+// starts on the frame just before its hand is found (DEBT 124). No fresh Holistic run: the check
+// cannot pass or fail by chance. Every zz probe is removed at the end (step 1 report Q12).
 //   1  "zz ava one zz ava two zz ava three" plays as ONE avatar run: one play() with 3 clips,
 //      captions in order, 0 <video> created, the canvas never hidden mid-run; blend continuity of
-//      that sentence's timeline logged (max joint jump per 40 ms across each sign boundary).
+//      that sentence's timeline: every 40 ms window overlapping a transition (5 ms apart) <= 60 px.
 //   2  "zz ava one nice": the avatar run, then nice.webm as video.
 //   3  A clip that fails to load (file removed after the page registered it) plays as video.
 //   4  Hand tracking: on the signing screen (fake camera, loop running) avatar playback stops
@@ -18,9 +20,11 @@ import path from 'node:path';
 import { launchChrome } from '../video-capture/cdp.mjs';
 import { buildY4m } from '../video-capture/fake-camera.mjs';
 import { save, cleanZz, dir, repo } from '../sign-texts/api-helper.mjs';
+import { Clip } from './helper.mjs';
 
 const BASE = 'http://localhost/SKR/';
 const IMG = path.join(repo, 'docs', 'reports', 'img');
+const FIXTURE = JSON.parse(fs.readFileSync(path.join(repo, 'tests', 'avatar', 'fixtures', 'holistic-signs.json'), 'utf8'));
 const PROBES = [
   { key: 'zz_ava_one', text: 'Zz Ava One', video: 'hello.webm' },
   { key: 'zz_ava_two', text: 'Zz Ava Two', video: 'how_are_you.webm' },
@@ -66,7 +70,8 @@ try {
   fs.mkdirSync(IMG, { recursive: true });
   for (const p of PROBES) check(`probe sign ${p.key}`, save({ sign_language: 'ESL', text_en: p.text }).status === 200);
 
-  // ── clips via the admin page ──
+  // ── clips via the admin page (Import JSON of the fixture) ──
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'avatar-talk-'));
   c1 = await launchChrome({ port: 9441 });
   const ev1 = (e) => c1.evaluate(e);
   const wait1 = async (e, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev1(e)) return true; await sleep(250); } return false; };
@@ -75,18 +80,24 @@ try {
   await sleep(2500);
   await wait1(`document.querySelectorAll('.ac-item').length > 100`, 20000);
   const docNode = async () => (await c1.send('DOM.getDocument', {})).result.root.nodeId;
-  report.extract = [];
+  report.clips = [];
   for (const p of PROBES) {
-    await ev1(`window.avatarClipsLastExtraction = null; document.querySelector('.ac-item[data-key="${p.key}"]').click(); 1`);
-    const node = await c1.send('DOM.querySelector', { nodeId: await docNode(), selector: '#ac-file' });
-    await c1.send('DOM.setFileInputFiles', { nodeId: node.result.nodeId, files: [path.join(repo, 'assets', 'signs', 'en', p.video)] });
-    await wait1(`!!window.avatarClipsLastExtraction`, 180000);
-    const e = await ev1(`(()=>{const e=window.avatarClipsLastExtraction;return {n:e.frames.length,counts:e.counts,trim:e.trim,ms:e.ms}})()`);
+    const s = FIXTURE.signs.find((x) => x.video === p.video);
+    const clip = Clip.buildClip({ key: p.key, fps: FIXTURE.fps, video: { w: s.w, h: s.h, durationMs: s.durationMs }, frames: s.frames,
+      trim: { ...s.oldAutoTrim, auto: true }, createdAt: '2026-10-14T00:00:00Z' });
+    const file = path.join(tmp, p.key + '.avatar.json');
+    fs.writeFileSync(file, JSON.stringify(clip));
+    await ev1(`window.avatarClipsLastImport = null; document.querySelector('.ac-item[data-key="${p.key}"]').click(); 1`);
+    const node = await c1.send('DOM.querySelector', { nodeId: await docNode(), selector: '#ac-json' });
+    await c1.send('DOM.setFileInputFiles', { nodeId: node.result.nodeId, files: [file] });
+    await wait1(`!!window.avatarClipsLastImport`, 20000);
+    const e = await ev1(`(()=>{const e=window.avatarClipsLastImport;return {source:e.source,n:e.frames.length,trim:e.trim}})()`);
     await ev1(`document.getElementById('ac-save').click(); 1`);
     await wait1(`/^Saved/.test(document.getElementById('ac-status').textContent)`, 20000);
-    const ok = fs.existsSync(path.join(dir(p.key), 'avatar.json'));
-    report.extract.push({ key: p.key, video: p.video, ...e });
-    check(`clip for ${p.key} from ${p.video}`, ok, J(e));
+    const f = path.join(dir(p.key), 'avatar.json');
+    const ok = fs.existsSync(f) && J(JSON.parse(fs.readFileSync(f, 'utf8')).frames) === J(clip.frames);
+    report.clips.push({ key: p.key, video: p.video, fixtureFrames: s.oldAutoTrim, ...e });
+    check(`clip for ${p.key} from the ${p.video} fixture (frames ${s.oldAutoTrim.start}..${s.oldAutoTrim.end})`, ok && e.source === 'clip', J(e));
   }
   check('admin page: 0 console errors', c1.getConsoleErrors().length === 0 && c1.getExceptions().length === 0, J(c1.getConsoleErrors().slice(0, 3)));
   await c1.close(); c1 = null;
@@ -97,7 +108,6 @@ try {
   fs.writeFileSync(path.join(dir('zz_ava_four'), 'avatar.json'), JSON.stringify(four));
 
   // ── talk.html ──
-  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'avatar-talk-'));
   const y4m = buildY4m(tmp);
   c2 = await launchChrome({ port: 9442, extraArgs: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-video-capture=${y4m}`] });
   await c2.send('Page.addScriptToEvaluateOnNewDocument', { source: HOOKS });
@@ -171,11 +181,11 @@ try {
     const tl = AvatarTimeline.build(preps, AvatarRig);
     const pts = (p) => { const j = AvatarRetarget.toJoints(p, AvatarRig); const o = []; j.arms.forEach((a) => o.push(a.S, a.E, a.W, ...a.hand)); return o; };
     const jump = (a, b) => { const x = pts(a), y = pts(b); let m = 0; for (let i = 0; i < x.length; i++) m = Math.max(m, Math.hypot(x[i].x - y[i].x, x[i].y - y[i].y)); return m; };
-    return tl.segments.filter((s) => s.kind !== 'clip').map((s) => { let worst = 0; for (let t = s.t0; t < s.t1; t += 40) worst = Math.max(worst, jump(tl.poseAt(t).pose, tl.poseAt(Math.min(tl.duration, t + 40)).pose));
+    return tl.segments.filter((s) => s.kind !== 'clip').map((s) => { let worst = 0; for (let t = s.t0 - 40; t < s.t1; t += 5) worst = Math.max(worst, jump(tl.poseAt(Math.max(0, t)).pose, tl.poseAt(Math.min(tl.duration, t + 40)).pose));
       return { kind: s.kind, word: s.word, ms: Math.round(s.t1 - s.t0), worstPx40ms: +worst.toFixed(1), startGap: +jump(tl.poseAt(s.t0).pose, s.a).toFixed(2), endGap: +jump(tl.poseAt(s.t1 - 1e-6).pose, s.b).toFixed(2) }; });
   })()`);
   report.continuity = cont;
-  check(`blend continuity: every transition <= ${JUMP_MAX} px per 40 ms, ends match (<= 0.5 px)`, cont.every((s) => s.worstPx40ms <= JUMP_MAX && s.startGap <= 0.5 && s.endGap <= 0.5), J(cont));
+  check(`blend continuity: every 40 ms window overlapping a transition <= ${JUMP_MAX} px, ends match (<= 0.5 px)`, cont.every((s) => s.worstPx40ms <= JUMP_MAX && s.startGap <= 0.5 && s.endGap <= 0.5), J(cont));
   check('rest pose at both ends', await ev(`(async () => { const s = AvatarStore.create({}); const tl = AvatarTimeline.build([await s.load('zz_ava_one')], AvatarRig);
     const r = JSON.stringify(AvatarRetarget.toJoints(AvatarRetarget.restPose(AvatarRig), AvatarRig)); return JSON.stringify(AvatarRetarget.toJoints(tl.poseAt(0).pose, AvatarRig)) === r && JSON.stringify(AvatarRetarget.toJoints(tl.poseAt(tl.duration).pose, AvatarRig)) === r; })()`));
   await shot('avatar-talk-rest.png');

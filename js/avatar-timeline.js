@@ -21,9 +21,21 @@
   // MAX_TRANSITION_MS caps the lengthening. Measured reasons: a fixed 250 ms blend between two
   // far-apart signs moved a joint 82.8 px in 40 ms; a straight-line estimate still gave 61 px.
   // (Continuity threshold 60 px, step 1 report Q14.)
+  // MAX_TRANSITION_MS never shortens a transition past CONTINUITY_MAX, the continuity limit itself:
+  // a sign held far from rest measured 59.4 px per 40 ms at the 700 ms cap (DEBT 124). The estimate
+  // is conservative: the measured peak was 0.82-0.998 of it over 356 rest <-> frame transitions.
   var SPEED_MAX = 50;
+  var CONTINUITY_MAX = 60;
   var MAX_TRANSITION_MS = 700;
   var PATH_STEPS = 16;
+  // Clip edges (DEBT 124): a clip's first and last frames can be the arm rising into the sign or
+  // dropping out of it, where Holistic's pose wrist (no hand yet) and the first detected hand are
+  // far apart: measured 156-210 px per 40 ms on hello.webm. Wherever the trim lands, a transition
+  // would then end (or start) right next to that step. So a clip plays from its first frame whose
+  // raised arms have their hands (prep.ready, AvatarClip.handsReady()), moved on past any step
+  // faster than SPEED_MAX, to the mirror frame at its end; the transitions replace the skipped rise
+  // and drop. The search for the hands looks at most half the clip in from each end (no such
+  // frame: that end stays); the fast steps are skipped up to the other end.
 
   function points(pose, rig) {
     var out = [];
@@ -43,7 +55,37 @@
   }
 
   function transitionMs(a, b, base, rig) {
-    return Math.min(MAX_TRANSITION_MS, Math.max(base, Math.ceil(1.5 * pathSpeed(a, b, rig) * 40 / SPEED_MAX)));
+    var peak40 = 1.5 * pathSpeed(a, b, rig) * 40;   // px per 40 ms at the peak, over 1 ms
+    return Math.max(Math.min(MAX_TRANSITION_MS, Math.max(base, Math.ceil(peak40 / SPEED_MAX))), Math.ceil(peak40 / CONTINUITY_MAX));
+  }
+
+  function stepPx(a, b, rig) {
+    var p = points(a, rig), q = points(b, rig), m = 0;
+    for (var j = 0; j < p.length; j++) m = Math.max(m, Math.hypot(p[j].x - q[j].x, p[j].y - q[j].y));
+    return m;
+  }
+
+  // -> {entry, exit}: the first and last frame of prep.poses that play (see the clip edges above).
+  function clipEdges(prep, rig) {
+    var n = prep.poses.length;
+    var cap = Math.floor((n - 1) / 2);
+    var per40 = 40 * prep.fps / 1000;   // one frame step -> px per 40 ms
+    var ready = prep.ready || [];
+    function fast(i) { return stepPx(prep.poses[i], prep.poses[i + 1], rig) * per40 > SPEED_MAX; }
+    var entry = 0, exit = n - 1;
+    while (entry < cap && !ready[entry]) entry++;
+    if (!ready[entry]) entry = 0;
+    while (exit > n - 1 - cap && !ready[exit]) exit--;
+    if (!ready[exit]) exit = n - 1;
+    while (entry < exit && fast(entry)) entry++;
+    while (exit > entry && fast(exit - 1)) exit--;
+    return { entry: entry, exit: exit };
+  }
+
+  // The part of a prepared clip that plays: same fps, poses entry..exit.
+  function playedPart(prep, rig) {
+    var e = clipEdges(prep, rig);
+    return { fps: prep.fps, poses: prep.poses.slice(e.entry, e.exit + 1), entry: e.entry, exit: e.exit };
   }
 
   function ease(u) { return u * u * (3 - 2 * u); }
@@ -59,13 +101,15 @@
     return Retarget.lerpPose(prep.poses[i], prep.poses[i + 1], f - i);
   }
 
-  // preps: [prepared clip] (js/avatar-retarget.js prepare()). Returns
+  // preps: [prepared clip] (js/avatar-retarget.js prepare()); each plays its frames entry..exit
+  // (clipEdges()), and segment.prep is that played part. Returns
   // { duration, segments, poseAt(ms) -> {pose, word} } where word is the index of the sign whose
   // incoming transition or clip is playing (the caption switches as the hand starts moving).
   function build(preps, rig) {
     var rest = Retarget.restPose(rig);
     var segs = [];
     var t = 0;
+    preps = preps.map(function (p) { return playedPart(p, rig); });
     preps.forEach(function (prep, i) {
       var from = i === 0 ? rest : preps[i - 1].poses[preps[i - 1].poses.length - 1];
       var dur = transitionMs(from, prep.poses[0], i === 0 ? IN_MS : BLEND_MS, rig);
@@ -113,7 +157,7 @@
     return out;
   }
 
-  var api = { build: build, splitRuns: splitRuns, transitionMs: transitionMs, IN_MS: IN_MS, BLEND_MS: BLEND_MS, OUT_MS: OUT_MS, SPEED_MAX: SPEED_MAX };
+  var api = { build: build, splitRuns: splitRuns, transitionMs: transitionMs, clipEdges: clipEdges, IN_MS: IN_MS, BLEND_MS: BLEND_MS, OUT_MS: OUT_MS, SPEED_MAX: SPEED_MAX };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.AvatarTimeline = api;
 })();

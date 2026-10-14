@@ -241,7 +241,9 @@
   }
   function wrap(d) { while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 
-  // Whole clip -> { fps, cal, poses: [param pose per frame], faceMax }.
+  // Whole clip -> { fps, cal, poses: [param pose per frame], ready: [bool per frame], faceMax }.
+  // ready = AvatarClip.handsReady(): a hand is raised and every raised arm's hand was detected
+  // (js/avatar-timeline.js plays a clip from its first such frame to its last, DEBT 124).
   // opts.smooth === false skips smoothPoses (tests of the gap fill only).
   function prepare(clip, rig, opts) {
     var cal = Clip.calibrate(clip);
@@ -272,7 +274,7 @@
     });
     fillHands(out, 0, rig, clip.fps);
     fillHands(out, 1, rig, clip.fps);
-    return { fps: clip.fps, cal: cal, poses: opts && opts.smooth === false ? out : smoothPoses(out), faceMax: faceMax };
+    return { fps: clip.fps, cal: cal, poses: opts && opts.smooth === false ? out : smoothPoses(out), ready: clip.frames.map(Clip.handsReady), faceMax: faceMax };
   }
 
   var api = {
