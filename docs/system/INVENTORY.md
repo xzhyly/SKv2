@@ -266,8 +266,9 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 | `php/api/avatar_clip.php` | POST save/delete of `saved_gestures/<key>/avatar.json` |
 | `assets/avatar/head.png`, `torso.png`, `upper_arm.png`, `forearm.png` | The four parts (450,910 bytes) |
 | `js/lib/holistic/` (7 files, 30,195,488 bytes) | Vendored MediaPipe Holistic 0.5.1675471629 (see `VENDORED.md`) |
-| `tests/avatar/helper.mjs`, `avatar-math.test.mjs`, `avatar-import.test.mjs`, `avatar-clip-endpoint.test.mjs` | Unit + endpoint tests (`avatar-import`: `importClip()`, 2026-10-13) |
-| `tests/avatar/admin-check.mjs`, `talk-avatar-check.mjs`, `import-check.mjs` | Browser checks (offline extraction; Let's Talk; Import / Export JSON, 2026-10-13) |
+| `tests/avatar/helper.mjs`, `avatar-math.test.mjs`, `avatar-import.test.mjs`, `avatar-clip-endpoint.test.mjs`, `avatar-edges.test.mjs` | Unit + endpoint tests (`avatar-import`: `importClip()`, 2026-10-13; `avatar-edges`: clip-edge continuity and hands-ready auto-trim, DEBT 124, 2026-10-14) |
+| `tests/avatar/fixtures/holistic-signs.json` | Committed Holistic output (every frame) of `assets/signs/en/hello.webm`, `how_are_you.webm`, `my_name.webm`, 136,594 bytes, with the pre-2026-10-14 auto-trims; used by `avatar-edges.test.mjs` and `talk-avatar-check.mjs` (2026-10-14) |
+| `tests/avatar/admin-check.mjs`, `talk-avatar-check.mjs`, `import-check.mjs` | Browser checks (offline extraction; Let's Talk, clips imported from the fixture since 2026-10-14; Import / Export JSON, 2026-10-13) |
 | `tests/avatar/bench.html`, `tests/avatar/pi-bench.sh` | Frame-rate bench; the Pi run script |
 
 ### Bulk video importer files (new 2026-10-13/14)

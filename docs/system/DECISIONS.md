@@ -1656,6 +1656,21 @@ the owner's approval message, and the final report `docs/reports/2026-10-05-avat
   more than 50 px per 40 ms, measured on the blended path itself (16 samples). Reason: a fixed 250 ms blend
   between far-apart signs measured 82.8 px per 40 ms, and a straight-line estimate still gave 61 px, against
   the 60 px continuity threshold (Q14). In the measured 3-sign sentence one blend became 431 ms.
+  Since 2026-10-14 (DEBT 124) the 700 ms cap never shortens a transition past 60 px per 40 ms: a sign held
+  far from rest measured 59.4 px at the cap, and the path estimate is conservative (measured peak 0.82-0.998
+  of it over 356 rest <-> frame transitions).
+- **A clip plays from its first "hands ready" frame, not its first stored frame** (2026-10-14, DEBT 124,
+  `js/avatar-timeline.js` `clipEdges()`): the first frame where a hand is raised and every raised arm's hand
+  was detected, then on past any step faster than 50 px per 40 ms; the mirror rule at the end. Reason: on
+  hello.webm the frame before the hand is found has the pose wrist low, and the next steps measured
+  156-210 px per 40 ms, so a transition ending there jumped (up to 155 px) depending on which frame
+  Holistic's run happened to trim to. Done at play time so every saved clip and bulk candidate benefits
+  without re-extraction; applies to every transition, including sign -> sign blends (the skipped frames are
+  the arm rising from or dropping to rest, which a blend replaces too). The hand search looks at most half
+  the clip in from each end; the fast-step skip stops at the other end. Saved clips are not rewritten.
+- **Auto-trim moves each end inward to a "hands ready" frame** (2026-10-14, `AvatarClip.autoTrim()`), at most
+  8 frames and at most half the raised range; with no such frame the end stays. All 12 measured extractions
+  of hello.webm then started on the same frame (19; before: 17, 18 or 19). The owner's sample keeps 31..221.
 - **A zero-lag 5-tap temporal smoothing (1-4-6-4-1) runs once when a clip is prepared**
   (`smoothPoses()`). Reason: raw retargeted hand shapes jumped up to 145 px per 40 ms (detection pops); the
   prototype hid this with a per-tick low-pass in its player. After smoothing the sample's within-clip jumps are

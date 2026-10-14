@@ -918,7 +918,8 @@ below. None of that ran.
 - **Flow.** Pick a sign -> Choose video (read through an object URL, never uploaded) -> extraction with
   progress and the skeleton drawn on each frame (pose cyan, right hand red, left hand green, head/hips
   yellow) -> auto-trim (first .. last frame of a >= 3-frame run with a wrist above shoulder + 0.6 x
-  (hip - shoulder)) -> handles to change it -> Preview on the avatar -> Save posts only the clip JSON to
+  (hip - shoulder), each end then moved inward, at most 8 frames, to a frame where every raised arm's hand is
+  detected — 2026-10-14, DEBT 124) -> handles to change it -> Preview on the avatar -> Save posts only the clip JSON to
   `php/api/avatar_clip.php`. Redo discards the extraction (aborting one in progress) and opens the file picker;
   Delete is a two-tap confirm and removes only `avatar.json`. Videos over 60 s are refused before extraction,
   and a trim over 500 frames (20 s) shows "too long" and disables Save. Without WebAssembly SIMD the page says so and
@@ -1555,7 +1556,9 @@ decisions in `DECISIONS.md` ("2D avatar phase").
   (`tests/avatar/pi-bench.sh`).
 - **Measured** (`tests/avatar/talk-avatar-check.mjs`, 26/26 PASS): "zz ava one zz ava two zz ava three" ->
   one `play()` with 3 clips, captions in order, 0 `<video>` created, canvas never hidden mid-run, 6.8 s;
-  transitions 350 / 431 / 250 / 400 ms with worst joint jumps 40.6 / 44.3 / 37.4 / 21.5 px per 40 ms;
+  transitions 350 / 431 / 250 / 400 ms with worst joint jumps 40.6 / 44.3 / 37.4 / 21.5 px per 40 ms
+  (2026-10-14, clips from the committed fixture, every 40 ms window overlapping a transition: 618 / 532 / 250 /
+  400 ms, 45.6 / 49.7 / 34.7 / 28.7 px, identical in 5 of 5 runs);
   "zz ava one nice" -> the avatar run, then `assets/signs/en/nice.webm` 15 ms after it ends; a clip removed after
   registration -> that word fingerspelled as video; 0 console errors.
 

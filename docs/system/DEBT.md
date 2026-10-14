@@ -1577,6 +1577,20 @@ so a later session does not re-litigate them:
      files 1 of 6 extractions exceeded 60 px (74.7); with this phase's files 2 of 6 (107.7, 154.8). The
      cause is in the retargeting / timeline (hand gap fill at a clip's first frame), which this phase
      must not change. Bulk-made candidates are trimmed by the same auto-trim.
+     **RESOLVED (2026-10-14, avatar jump fix, `docs/reports/2026-10-14-avatar-jump-fix.md`).** The cause
+     was the clip itself: on hello.webm the frame before the hand is found has Holistic's pose wrist low,
+     and the next frames move 156-210 px per 40 ms; the transition ended right next to that step. At play
+     time (`js/avatar-timeline.js` `clipEdges()`) a clip now plays from its first frame whose raised arms
+     have their hands (`AvatarClip.handsReady()`, recorded per frame as `prep.ready` by
+     `js/avatar-retarget.js`), moved on past any step faster than 50 px per 40 ms, to the mirror frame at
+     its end, so saved clips benefit without re-extraction; and the 700 ms transition cap no longer
+     shortens a transition past 60 px per 40 ms. `AvatarClip.autoTrim()` now moves each end inward (at
+     most 8 frames, at most half the raised range) to a `handsReady()` frame. Measured on the committed
+     fixture (`tests/avatar/fixtures/holistic-signs.json`): 1,546 trims of the three signs, worst 57.4 px
+     per 40 ms at either end; 12 extractions of hello.webm, 0 over 60 (worst 49.7, 49.8 with their old trims; 12 of 12 over 60
+     with the old code when every 40 ms window is measured). `talk-avatar-check.mjs` now builds its clips
+     from that fixture. Not covered: a manual trim whose first or last half has no frame with the raised
+     hand detected keeps that end, so a rise inside the clip still plays as recorded.
 125. **Low, open (bulk importer, whole-phase review):** (a) "Use this" on Avatar clips checks a candidate's
      set from the listing, not from the file it then fetches, so a candidate replaced by another-set
      video in another tab between listing and click would be saved. (b) With `ESL_x_P01` and `FSL_x_P01`
