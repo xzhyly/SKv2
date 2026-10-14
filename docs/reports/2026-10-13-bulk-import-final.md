@@ -182,7 +182,7 @@ worth fixing before many clips are made, because bulk-made candidates are trimme
 ## 8. Files
 
 - **New:** `bulk-import.html`, `css/bulk-import.css`, `js/bulk-import-core.js`, `js/bulk-import-ui.js`,
-  `php/api/bulk_import.php`, `tests/bulk-import/` (15 files).
+  `php/api/bulk_import.php`, `tests/bulk-import/` (12 files).
 - **Changed:** `php/api/save_gesture.php` (two optional fields; a request without them is stored byte for
   byte as before), `js/avatar-extract.js` (time range), `avatar-clips.html`, `css/avatar-clips.css`,
   `js/avatar-clips-ui.js` (Candidates panel), `.gitignore`, `tests/avatar/import-check.mjs` (removes the
