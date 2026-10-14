@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bulk Video Import ✿ Sining Kamay</title>
+  <!-- Bulk video importer (docs/reports/2026-10-13-bulk-import-step1.md): choose a folder of
+       <SET>_<label>_<SIGNER>.<ext> videos, extract hand landmarks (the live capture's own Hands
+       pass + segmenter) and, for the avatar signers, an avatar candidate clip (MediaPipe Holistic
+       on the best repetition only), cached per video in bulk_import_cache/. Laptop only (1366x768):
+       nothing on the kiosk links here. The videos never leave the browser: the only requests are
+       the landmark JSON to php/api/bulk_import.php and, once Import is pressed in step 3, one
+       sample per repetition to php/api/save_gesture.php. Gated by the Train Gestures PIN.
+       Script order matters: js/bulk-import-ui.js initialises Holistic BEFORE it calls
+       GestureDataRecorder.setupMediaPipe() (which forces non-SIMD WebAssembly for Hands). -->
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/gesture-training.css?v=1.0.10">
+  <link rel="stylesheet" href="css/bulk-import.css?v=1.0.5">
+  <script src="js/lib/holistic/holistic.js" defer></script>
+  <script src="js/lib/mediapipe/hands.js" defer></script>
+  <script src="js/gesture-data.js" defer></script>
+  <script src="js/capture-core.js" defer></script>
+  <script src="js/video-landmarks.js" defer></script>
+  <script src="js/avatar-clip.js" defer></script>
+  <script src="js/avatar-extract.js" defer></script>
+  <script src="js/bulk-import-core.js" defer></script>
+  <script src="js/bulk-import-ui.js" defer></script>
+</head>
+<body>
+
+<div id="pin-screen" class="pin-screen active">
+  <div class="pin-card">
+    <div class="pin-badge">🔐</div>
+    <h2>Bulk Video Import</h2>
+    <p>Please enter the PIN code to import a folder of videos.</p>
+    <div class="pin-dots">
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+      <span class="pin-dot"></span>
+    </div>
+    <div class="pin-pad">
+      <button type="button" class="pin-key" data-pin="1">1</button>
+      <button type="button" class="pin-key" data-pin="2">2</button>
+      <button type="button" class="pin-key" data-pin="3">3</button>
+      <button type="button" class="pin-key" data-pin="4">4</button>
+      <button type="button" class="pin-key" data-pin="5">5</button>
+      <button type="button" class="pin-key" data-pin="6">6</button>
+      <button type="button" class="pin-key" data-pin="7">7</button>
+      <button type="button" class="pin-key" data-pin="8">8</button>
+      <button type="button" class="pin-key" data-pin="9">9</button>
+      <button type="button" class="pin-key ctrl" data-pin="clear">Clear</button>
+      <button type="button" class="pin-key" data-pin="0">0</button>
+      <button type="button" class="pin-key ctrl" data-pin="back">⌫</button>
+    </div>
+    <a href="gesture-training.html" class="pin-back-btn">← Back to Train Gestures</a>
+  </div>
+</div>
+
+<div id="bi-ui">
+  <nav class="tr-nav bi-nav">
+    <a href="gesture-training.html" class="tr-back bi-back">
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>
+      Train Gestures
+    </a>
+    <h1 class="bi-title">Bulk video import</h1>
+    <span class="bi-count" id="bi-count"></span>
+  </nav>
+
+  <div class="bi-steps" role="tablist" aria-label="Import steps">
+    <button type="button" class="bi-step active" role="tab" data-step="folder" id="bi-tab-folder" aria-selected="true"><span class="bi-step-n">1</span>Folder</button>
+    <button type="button" class="bi-step" role="tab" data-step="extract" id="bi-tab-extract" aria-selected="false"><span class="bi-step-n">2</span>Extract</button>
+    <button type="button" class="bi-step" role="tab" data-step="review" id="bi-tab-review" aria-selected="false"><span class="bi-step-n">3</span>Review</button>
+    <button type="button" class="bi-step" role="tab" data-step="import" id="bi-tab-import" aria-selected="false"><span class="bi-step-n">4</span>Import</button>
+    <button type="button" class="bi-step" role="tab" data-step="avatar" id="bi-tab-avatar" aria-selected="false"><span class="bi-step-n">5</span>Avatar</button>
+  </div>
+
+  <div class="bi-status-row">
+    <div class="bi-status" id="bi-status" role="status" aria-live="polite"></div>
+    <button type="button" class="bi-btn bi-retry" id="bi-retry" hidden>Retry</button>
+  </div>
+
+  <main class="bi-main">
+    <!-- 1. Folder -->
+    <section class="bi-panel active" id="bi-step-folder" role="tabpanel" aria-labelledby="bi-tab-folder">
+      <div class="bi-col bi-col-side">
+        <div class="bi-card">
+          <h2 class="bi-h">Folder of videos</h2>
+          <p class="bi-note">File names: <code>ESL_how_are_you_P01.mp4</code> — set (ESL, FSL or BOTH), sign, signer (P01–P99). The videos are read on this computer only; they are never uploaded.</p>
+          <label class="bi-btn bi-primary" id="bi-choose">
+            Choose folder…
+            <input type="file" id="bi-folder" webkitdirectory multiple hidden>
+          </label>
+          <div class="bi-folder-name" id="bi-folder-name">No folder chosen.</div>
+          <div class="bi-counts" id="bi-counts">
+            <div class="bi-stat"><b id="bi-n-videos">0</b><span>videos</span></div>
+            <div class="bi-stat"><b id="bi-n-signs">0</b><span>signs</span></div>
+            <div class="bi-stat"><b id="bi-n-signers">0</b><span>signers</span></div>
+            <div class="bi-stat"><b id="bi-n-problems">0</b><span>problems</span></div>
+            <div class="bi-stat"><b id="bi-n-cached">0</b><span>already extracted</span></div>
+          </div>
+        </div>
+        <div class="bi-card bi-signers" id="bi-signers" hidden>
+          <h2 class="bi-h">Signers used for recognition</h2>
+          <p class="bi-note">Only these signers' videos are imported as training samples.</p>
+          <div class="bi-checks" id="bi-recognition"></div>
+          <h2 class="bi-h bi-h-gap">Avatar signers</h2>
+          <p class="bi-note">An avatar clip is extracted for the ticked signers. The first one is the default signer; the others are fallbacks, in this order.</p>
+          <div class="bi-order" id="bi-avatar"></div>
+        </div>
+      </div>
+      <div class="bi-col bi-col-wide">
+        <div class="bi-card bi-fill">
+          <h2 class="bi-h">Problems <span class="bi-h-count" id="bi-problem-count"></span></h2>
+          <div class="bi-scroll">
+            <table class="bi-table" id="bi-problems">
+              <thead><tr><th>File</th><th>Problem</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div class="bi-empty" id="bi-problems-empty">Choose a folder to list its videos.</div>
+          </div>
+        </div>
+        <div class="bi-row-end">
+          <button type="button" class="bi-btn bi-primary" id="bi-to-extract" disabled>Next: Extract →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Extract -->
+    <section class="bi-panel" id="bi-step-extract" role="tabpanel" aria-labelledby="bi-tab-extract">
+      <div class="bi-col bi-col-side">
+        <div class="bi-card">
+          <div class="bi-run-row">
+            <button type="button" class="bi-btn bi-primary" id="bi-start" disabled>Start</button>
+            <button type="button" class="bi-btn" id="bi-pause" disabled>Pause</button>
+            <button type="button" class="bi-btn" id="bi-resume" disabled>Resume</button>
+          </div>
+          <progress id="bi-progress" class="bi-progress" value="0" max="1"></progress>
+          <div class="bi-run-line"><span id="bi-run-count">Video 0 of 0</span><span id="bi-run-pct"></span></div>
+          <div class="bi-run-file" id="bi-run-file">—</div>
+          <dl class="bi-times">
+            <div><dt>Elapsed</dt><dd id="bi-elapsed">0:00</dd></div>
+            <div><dt>Time left</dt><dd id="bi-eta">—</dd></div>
+            <div><dt>Speed</dt><dd id="bi-rate">—</dd></div>
+          </dl>
+        </div>
+        <div class="bi-card">
+          <div class="bi-stage">
+            <canvas id="bi-preview" width="400" height="300"></canvas>
+          </div>
+          <label class="bi-check bi-preview-toggle"><input type="checkbox" id="bi-preview-on" checked> Show the frame being read</label>
+        </div>
+      </div>
+      <div class="bi-col bi-col-wide">
+        <div class="bi-card bi-fill">
+          <h2 class="bi-h">Videos <span class="bi-h-count" id="bi-video-count"></span></h2>
+          <div class="bi-scroll">
+            <table class="bi-table" id="bi-videos">
+              <thead><tr><th>File</th><th>Sign</th><th>Set</th><th>Signer</th><th>Reps</th><th>Status</th><th>Avatar candidate</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div class="bi-empty" id="bi-videos-empty">Choose a folder in step 1.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Review: nothing is written to saved_gestures, the signs or the database here -->
+    <section class="bi-panel" id="bi-step-review" role="tabpanel" aria-labelledby="bi-tab-review">
+      <div class="bi-col bi-col-side">
+        <div class="bi-card">
+          <h2 class="bi-h">Import</h2>
+          <p class="bi-note">Tick the videos to import. Each repetition becomes one training sample of its sign. Nothing is saved until Import is pressed.</p>
+          <button type="button" class="bi-btn bi-primary bi-wide" id="bi-import" disabled>Import 0 videos (0 samples)</button>
+          <div class="bi-import-note" id="bi-import-note" role="status" aria-live="polite"></div>
+        </div>
+        <div class="bi-card">
+          <h2 class="bi-h">After this import</h2>
+          <table class="bi-table bi-proj" id="bi-projection">
+            <thead>
+              <tr><th rowspan="2">Model</th><th colspan="3">Training rows</th><th colspan="2">knnPredict (estimate)</th></tr>
+              <tr><th>now</th><th>added</th><th>after</th><th>now</th><th>after</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <p class="bi-note bi-proj-note">The ESL model holds the ESL and BOTH signs, the FSL model the FSL and BOTH signs (and both hold <code>start</code> and <code>stop</code>). knnPredict: estimate, this laptop's Chrome, for one camera frame on a made-up model of that size. The Pi is slower.</p>
+          <p class="bi-note bi-proj-note bi-warn-note" id="bi-proj-capped" hidden>A model above 100,000 rows is timed at 100,000 rows: the real time is higher.</p>
+        </div>
+      </div>
+      <div class="bi-col bi-col-wide">
+        <div class="bi-card bi-new-card" id="bi-new-card" hidden>
+          <h2 class="bi-h">New signs <span class="bi-h-count" id="bi-new-count"></span></h2>
+          <p class="bi-note">These signs do not exist yet. Check the text each one shows; the sign key stays the file's label.</p>
+          <div class="bi-new-list" id="bi-new-signs"></div>
+        </div>
+        <div class="bi-card bi-fill">
+          <div class="bi-head-row">
+            <h2 class="bi-h">Videos <span class="bi-h-count" id="bi-review-count"></span></h2>
+            <div class="bi-filters" id="bi-filters" role="group" aria-label="Show">
+              <button type="button" class="bi-filter active" data-filter="all" aria-pressed="true">All <span></span></button>
+              <button type="button" class="bi-filter" data-filter="problems" aria-pressed="false">Problems <span></span></button>
+              <button type="button" class="bi-filter" data-filter="new" aria-pressed="false">New signs <span></span></button>
+              <button type="button" class="bi-filter" data-filter="import" aria-pressed="false">To import <span></span></button>
+            </div>
+          </div>
+          <div class="bi-scroll">
+            <table class="bi-table" id="bi-review">
+              <thead><tr><th><span class="bi-sr">Import</span></th><th>File</th><th>Sign</th><th>Set</th><th>Signer</th><th>Reps</th><th>Status</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div class="bi-empty" id="bi-review-empty">Choose a folder in step 1.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Import: progress, then the summary -->
+    <section class="bi-panel" id="bi-step-import" role="tabpanel" aria-labelledby="bi-tab-import">
+      <div class="bi-col bi-col-side">
+        <div class="bi-card">
+          <h2 class="bi-h">Import</h2>
+          <div class="bi-run-row">
+            <button type="button" class="bi-btn" id="bi-imp-pause" disabled>Pause</button>
+            <button type="button" class="bi-btn" id="bi-imp-resume" disabled>Resume</button>
+          </div>
+          <progress id="bi-imp-progress" class="bi-progress" value="0" max="1"></progress>
+          <div class="bi-run-line"><span id="bi-imp-count">Video 0 of 0</span><span id="bi-imp-pct"></span></div>
+          <div class="bi-run-file" id="bi-imp-file">—</div>
+          <dl class="bi-times">
+            <div><dt>Samples added</dt><dd id="bi-imp-added">0</dd></div>
+            <div><dt>Duplicates</dt><dd id="bi-imp-dup">0</dd></div>
+            <div><dt>Videos skipped</dt><dd id="bi-imp-skip">0</dd></div>
+          </dl>
+          <div class="bi-import-note" id="bi-imp-note" role="status" aria-live="polite">Tick the videos in step 3, then press Import there.</div>
+        </div>
+        <div class="bi-card bi-remind" id="bi-remind" hidden>
+          <h2 class="bi-h">Next step</h2>
+          <p id="bi-remind-text">Now run Compile (Train AI) on Train Gestures for ESL and for FSL.</p>
+          <p class="bi-note">The kiosk keeps using its old model until then.</p>
+          <a href="gesture-training.html" class="bi-btn">Open Train Gestures</a>
+        </div>
+      </div>
+      <div class="bi-col bi-col-wide">
+        <div class="bi-card bi-fill">
+          <h2 class="bi-h">Summary</h2>
+          <div class="bi-scroll bi-summary" id="bi-summary">
+            <div class="bi-empty" id="bi-summary-empty">Nothing has been imported yet.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Avatar: the default signer's clip for every sign. Reads the cache: no folder needed. -->
+    <section class="bi-panel" id="bi-step-avatar" role="tabpanel" aria-labelledby="bi-tab-avatar">
+      <div class="bi-col bi-col-side">
+        <div class="bi-card">
+          <h2 class="bi-h">Default signer</h2>
+          <p class="bi-note">Every sign gets the avatar clip of the default signer; a sign that signer has no clip for gets the first fallback that has one. The list below is step 1's: first ticked = default, then the fallbacks in order.</p>
+          <label class="bi-field" for="bi-av-default">Default signer
+            <select id="bi-av-default" class="bi-select"></select>
+          </label>
+          <h2 class="bi-h bi-h-gap">Avatar signers</h2>
+          <div class="bi-order" id="bi-av-order"></div>
+          <div class="bi-empty bi-av-none" id="bi-av-order-empty">No signer has an avatar clip in the cache yet.</div>
+          <label class="bi-check bi-av-keep"><input type="checkbox" id="bi-av-keep" checked> Keep signs I picked by hand</label>
+          <div class="bi-run-row">
+            <button type="button" class="bi-btn" id="bi-av-refresh">Refresh</button>
+            <button type="button" class="bi-btn bi-primary bi-av-apply" id="bi-av-apply" disabled>Apply to all signs</button>
+            <button type="button" class="bi-btn" id="bi-av-resume" disabled>Resume</button>
+          </div>
+          <progress id="bi-av-progress" class="bi-progress" value="0" max="1"></progress>
+          <div class="bi-import-note" id="bi-av-note" role="status" aria-live="polite"></div>
+        </div>
+        <div class="bi-card">
+          <h2 class="bi-h">Clips of a signer added to the list</h2>
+          <p class="bi-note">A signer ticked here after the extraction has no clips yet. Choose the folder in step 1, then run the extraction again: only the avatar step is done for the videos already extracted.</p>
+          <button type="button" class="bi-btn bi-btn-wrap bi-wide" id="bi-av-to-extract">Run the avatar step for signers added to the list</button>
+        </div>
+      </div>
+      <div class="bi-col bi-col-wide">
+        <div class="bi-card bi-av-sum-card" id="bi-av-sum-card" hidden>
+          <h2 class="bi-h">Summary of the last Apply</h2>
+          <div class="bi-scroll bi-summary" id="bi-av-summary"></div>
+        </div>
+        <div class="bi-card bi-fill">
+          <h2 class="bi-h">What Apply will do <span class="bi-h-count" id="bi-av-count"></span></h2>
+          <div class="bi-av-counts" id="bi-av-counts"></div>
+          <div class="bi-scroll">
+            <table class="bi-table" id="bi-av-table">
+              <thead><tr><th>Sign</th><th>Text</th><th>Clip now</th><th>Candidates</th><th>Apply will</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <div class="bi-empty" id="bi-av-empty">Open this step to read the signs and the cache.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Off-screen, never shown: #videoFeed is the element GestureDataRecorder.setupMediaPipe() needs
+       (it never gets a source here), #bi-video is the one the Holistic extractor seeks through. -->
+  <video id="videoFeed" class="bi-offscreen" muted playsinline></video>
+  <video id="bi-video" class="bi-offscreen" muted playsinline></video>
+</div>
+
+<div id="sk-toast" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><title>avatar-extract range check</title>
+<!-- Like tests/video-capture/extractor.page.html: <base> makes "js/..." resolve as it does from a
+     page at http://localhost/SKR/. -->
+<base href="/SKR/">
+</head>
+<body>
+<input type="file" id="pick">
+<script>
+// A FAKE window.Holistic, defined before any extractor is loaded: the real model varies slightly
+// between runs, so "the same output as before" cannot be proven with it. send({image}) reads the
+// canvas it is given (scaled into a 16x12 canvas) and derives the landmarks from those pixels
+// only - no state between frames - so a frame's result depends on nothing but the picture the
+// extractor drew. Every call is recorded in window.__log, in order.
+window.__log = [];
+(function () {
+  var small = document.createElement('canvas');
+  small.width = 16; small.height = 12;
+  var sctx = small.getContext('2d', { willReadFrequently: true });
+  var N = 16 * 12;
+  function Holistic(config) { this.config = config; this.cb = null; window.__log.push({ op: 'new' }); }
+  Holistic.prototype.setOptions = function (o) { window.__log.push({ op: 'setOptions', o: o }); };
+  Holistic.prototype.onResults = function (cb) { this.cb = cb; };
+  Holistic.prototype.initialize = function () { window.__log.push({ op: 'initialize' }); return Promise.resolve(); };
+  Holistic.prototype.reset = function () { window.__log.push({ op: 'reset' }); };
+  Holistic.prototype.send = function (input) {
+    var image = input.image;
+    sctx.drawImage(image, 0, 0, 16, 12);
+    var d = sctx.getImageData(0, 0, 16, 12).data;
+    var sum = 0, hash = 0, i;
+    for (i = 0; i < d.length; i += 4) {
+      sum += d[i] + d[i + 1] + d[i + 2];
+      hash = (hash * 31 + d[i] * 65536 + d[i + 1] * 256 + d[i + 2]) % 2147483647;
+    }
+    function px(j, c) { return d[(j % N) * 4 + c]; }
+    function points(count, seed, vis) {
+      var out = [];
+      for (var j = 0; j < count; j++) {
+        var p = { x: px(j * 5 + seed, 0) / 255, y: px(j * 7 + seed + 3, 1) / 255, z: (px(j * 11 + seed + 1, 2) - 128) / 255 };
+        if (vis) p.visibility = px(j * 13 + seed + 2, 0) / 255;
+        out.push(p);
+      }
+      return out;
+    }
+    var mean = sum / (N * 3);
+    var r = { image: image };
+    if (mean > 2) r.poseLandmarks = points(33, 0, true);          // a black frame has no pose
+    if (mean > 2 && hash % 3 !== 0) r.leftHandLandmarks = points(21, 40, false);
+    if (mean > 2 && hash % 4 !== 0) r.rightHandLandmarks = points(21, 90, false);
+    window.__log.push({ op: 'send', w: image.width, h: image.height, hash: hash, mean: Math.round(mean * 100) / 100 });
+    var cb = this.cb;
+    return Promise.resolve().then(function () { if (cb) cb(r); });
+  };
+  window.Holistic = Holistic;
+})();
+</script>
+<script src="js/video-landmarks.js"></script>
+<script src="js/avatar-clip.js"></script>
+<script>
+// Driven by extract-range-check.mjs over CDP; every function returns a JSON-serializable value.
+window.extractors = {};
+
+// Loads one build of js/avatar-extract.js (it assigns window.AvatarExtract), keeps one extractor
+// of it under `name` and initialises it. from: {url} (the working-tree file, as Apache serves it)
+// or {source} (the text of an earlier revision, run as an inline script - never written to disk).
+// Returns the fake Holistic's log of the initialisation.
+window.loadExtractor = async function (name, from) {
+  window.AvatarExtract = undefined;
+  var s = document.createElement('script');
+  if (from.source !== undefined) {
+    s.textContent = from.source;
+    document.head.appendChild(s);
+  } else {
+    await new Promise(function (resolve, reject) {
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error('cannot load ' + from.url)); };
+      s.src = from.url;
+      document.head.appendChild(s);
+    });
+  }
+  var api = window.AvatarExtract;
+  if (!api) throw new Error('no AvatarExtract for ' + name);
+  window.extractors[name] = api.createExtractor();
+  window.__log.length = 0;
+  await window.extractors[name].init();
+  return { fps: api.FPS, simd: api.simdSupported(), log: window.__log.slice() };
+};
+
+// The fixed test video: built by the driver with ffmpeg in an os.tmpdir() folder and handed to
+// #pick with DOM.setFileInputFiles, as a person would choose it. Only read here.
+window.takePickedFile = function () {
+  var f = document.getElementById('pick').files[0];
+  window.recBlob = f || null;
+  return f ? { name: f.name, size: f.size } : null;
+};
+
+// One extract() of window.recBlob with the extractor `name`.
+// o: { range: {startMs, endMs} | absent, abortAfter: n onFrame calls | absent }.
+// Returns the result as a JSON string (so two runs can be compared as strings), its keys, every
+// value assigned to video.currentTime in order, the fake Holistic's log and the onFrame calls.
+window.runExtract = async function (name, o) {
+  o = o || {};
+  var video = document.createElement('video');
+  var desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+  var seeks = [];
+  Object.defineProperty(video, 'currentTime', {
+    configurable: true,
+    get: function () { return desc.get.call(video); },
+    set: function (v) { seeks.push(v); desc.set.call(video, v); }
+  });
+  var controller = o.abortAfter ? new AbortController() : null;
+  var onFrame = [];
+  var opts = {
+    video: video,
+    onFrame: function (index, total, results, canvas) {
+      onFrame.push([index, total, !!(results && results.image === canvas), canvas.width, canvas.height, arguments.length]);
+      if (controller && onFrame.length >= o.abortAfter) controller.abort();
+    }
+  };
+  if (controller) opts.signal = controller.signal;
+  if (o.range) opts.range = o.range;
+  window.__log.length = 0;
+  var out = { seeks: seeks, onFrame: onFrame };
+  try {
+    var result = await window.extractors[name].extract(window.recBlob, opts);
+    out.ok = true;
+    out.keys = Object.keys(result);
+    out.json = JSON.stringify(result);
+  } catch (err) {
+    out.ok = false;
+    out.errorName = err && err.name;
+    out.errorMessage = err && err.message;
+  }
+  out.log = window.__log.slice();
+  if (video.src && video.src.indexOf('blob:') === 0) URL.revokeObjectURL(video.src);
+  video.removeAttribute('src');
+  video.load();
+  return out;
+};
+</script>
+</body>
+</html>

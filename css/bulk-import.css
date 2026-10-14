@@ -1,0 +1,214 @@
+/* css/bulk-import.css */
+/* bulk-import.html, a laptop page (designed for 1366x768, no horizontal scroll down to 1280): nav
+   52 px, the step bar, a status line, then one panel per step. The page itself never scrolls
+   (gesture-training.css); the tables scroll inside their cards.
+   Base reset, colours, the PIN screen, the nav bar and the toast come from gesture-training.css. */
+
+#bi-ui{
+  position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;
+}
+#bi-ui.active{display:flex}
+.bi-back{height:36px;padding:0 14px;font-size:13px}
+.bi-title{flex:1;color:#fff;font-size:18px;font-weight:800;text-align:center}
+.bi-count{color:#cbd5e0;font-size:13px;font-weight:700;min-width:140px;text-align:right}
+
+/* ── Step bar ── */
+.bi-steps{flex-shrink:0;display:flex;gap:8px;padding:10px 24px 0}
+.bi-step{
+  flex:1;height:40px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  border-radius:8px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);
+  font-size:14px;font-weight:800;
+}
+.bi-step-n{
+  width:22px;height:22px;border-radius:50%;background:var(--bg);color:var(--text-mid);
+  display:inline-flex;align-items:center;justify-content:center;font-size:12px;
+}
+.bi-step.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.bi-step.active .bi-step-n{background:var(--orange);color:#fff}
+.bi-step:focus-visible,.bi-btn:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+
+.bi-status-row{flex-shrink:0;display:flex;align-items:center;gap:12px;min-height:28px;padding:8px 24px 0}
+.bi-status{flex:1;min-width:0;font-size:13px;line-height:1.35;color:var(--text-mid)}
+.bi-retry{height:32px;padding:0 14px;font-size:13px}
+.bi-retry[hidden]{display:none}
+.bi-status.error{color:#b91c1c;font-weight:700}
+
+/* ── Panels ── */
+.bi-main{flex:1;min-height:0;position:relative}
+.bi-panel{position:absolute;inset:0;display:none;gap:16px;padding:10px 24px 16px;min-width:0}
+.bi-panel.active{display:flex}
+.bi-col{min-height:0;min-width:0;display:flex;flex-direction:column;gap:12px}
+.bi-col-side{flex:0 0 432px;overflow-y:auto}
+.bi-col-wide{flex:1}
+.bi-card{background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;flex-shrink:0}
+.bi-fill{flex:1;min-height:0;display:flex;flex-direction:column}
+.bi-h{font-size:15px;font-weight:800;color:var(--navy);margin-bottom:6px}
+.bi-h-gap{margin-top:16px}
+.bi-h-count{font-weight:700;color:var(--muted);font-size:13px;margin-left:4px}
+.bi-note{font-size:13px;line-height:1.4;color:var(--text-mid);margin-bottom:10px}
+.bi-note code{font-family:Consolas,'Courier New',monospace;font-size:12px;background:var(--bg);padding:1px 4px;border-radius:4px}
+
+.bi-btn{
+  display:inline-flex;align-items:center;justify-content:center;height:44px;padding:0 18px;
+  border-radius:10px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);
+  font-size:15px;font-weight:800;cursor:pointer;user-select:none;white-space:nowrap;
+}
+.bi-btn:disabled,.bi-btn[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
+.bi-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.bi-row-end{display:flex;justify-content:flex-end;flex-shrink:0}
+
+/* ── Folder ── */
+.bi-folder-name{margin-top:10px;font-size:13px;font-weight:700;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bi-counts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.bi-stat{flex:1 1 70px;background:var(--bg);border-radius:8px;padding:8px 6px;text-align:center}
+.bi-stat b{display:block;font-size:20px;color:var(--navy);font-variant-numeric:tabular-nums}
+.bi-stat span{display:block;font-size:11px;color:var(--text-mid);font-weight:700}
+
+.bi-checks{display:flex;flex-wrap:wrap;gap:6px}
+.bi-check{
+  display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 10px;border-radius:8px;
+  border:1.5px solid var(--border);font-size:14px;font-weight:700;color:var(--text);cursor:pointer;
+}
+.bi-check input{width:16px;height:16px;accent-color:var(--navy)}
+.bi-check small{font-weight:600;color:var(--muted);font-size:12px}
+.bi-order{display:flex;flex-direction:column;gap:6px}
+.bi-order-row{
+  display:flex;align-items:center;gap:8px;min-height:40px;padding:0 6px 0 10px;border-radius:8px;border:1.5px solid var(--border);
+  font-size:14px;font-weight:700;color:var(--text);
+}
+.bi-order-row.on{border-color:var(--navy)}
+.bi-order-row label{flex:1;display:flex;align-items:center;gap:8px;min-height:38px;cursor:pointer}
+.bi-order-row input{width:16px;height:16px;accent-color:var(--navy)}
+.bi-order-role{font-size:12px;font-weight:700;color:var(--text-mid);white-space:nowrap}
+.bi-order-row.on .bi-order-role.default{color:var(--orange-deep)}
+.bi-move{
+  width:32px;height:32px;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);
+  font-size:14px;font-weight:800;line-height:1;
+}
+.bi-move:disabled{opacity:.35;cursor:not-allowed}
+
+/* ── Tables ── */
+.bi-scroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--border);border-radius:8px}
+.bi-table{width:100%;border-collapse:collapse;font-size:13px;color:var(--text)}
+.bi-table th{
+  position:sticky;top:0;background:var(--navy);color:#fff;text-align:left;font-weight:700;
+  padding:8px 10px;white-space:nowrap;z-index:1;
+}
+.bi-table td{padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+.bi-table td.bi-file{font-family:Consolas,'Courier New',monospace;font-size:12px;word-break:break-all;min-width:180px}
+.bi-table td.bi-num{text-align:center;font-variant-numeric:tabular-nums}
+.bi-table tr.current td{background:#fff7ed}
+.bi-table tr.failed td.bi-st{color:#b91c1c;font-weight:700}
+.bi-table tr.done td.bi-st{color:#15803d;font-weight:700}
+.bi-table tr.cached td.bi-st{color:var(--text-mid)}
+.bi-table td.bi-warn{color:#b45309;font-weight:700}
+.bi-empty{padding:14px;color:var(--text-mid);font-size:14px}
+
+/* ── Extract ── */
+.bi-run-row{display:flex;gap:8px}
+.bi-run-row .bi-btn{flex:1;padding:0 8px}
+.bi-progress{width:100%;height:14px;margin-top:12px;accent-color:var(--orange)}
+.bi-run-line{display:flex;justify-content:space-between;margin-top:6px;font-size:14px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums}
+.bi-run-file{margin-top:4px;font-family:Consolas,'Courier New',monospace;font-size:12px;color:var(--text-mid);min-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bi-times{display:flex;gap:8px;margin-top:10px}
+.bi-times div{flex:1;background:var(--bg);border-radius:8px;padding:6px 8px;min-width:0}
+.bi-times dt{font-size:11px;font-weight:700;color:var(--text-mid)}
+.bi-times dd{font-size:14px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bi-stage{width:400px;max-width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--navy)}
+.bi-stage canvas{display:block;width:100%;height:100%}
+.bi-preview-toggle{margin-top:10px;border:0;padding:0}
+
+/* ── Review ── */
+.bi-wide{width:100%}
+.bi-import-note{margin-top:8px;min-height:18px;font-size:13px;line-height:1.35;color:var(--text-mid)}
+.bi-import-note.error{color:#b91c1c;font-weight:700}
+.bi-proj{font-size:12px}
+.bi-proj th{padding:5px 6px;text-align:center;position:static}
+.bi-proj td{padding:6px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bi-proj td:first-child{text-align:left;font-weight:800;color:var(--navy)}
+.bi-proj td.bi-add{color:#15803d;font-weight:700}
+.bi-proj-note{margin:10px 0 0}
+.bi-proj-note[hidden]{display:none}
+.bi-warn-note{color:#b45309;font-weight:700}
+.bi-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.bi-head-row .bi-h{margin-bottom:0}
+.bi-filters{display:flex;gap:6px}
+.bi-filter{
+  height:32px;padding:0 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--white);color:var(--navy);
+  font-size:13px;font-weight:800;white-space:nowrap;
+}
+.bi-filter span{font-weight:700;color:var(--muted)}
+.bi-filter.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.bi-filter.active span{color:#cbd5e0}
+.bi-filter:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+.bi-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.bi-table td.bi-tick{width:34px;text-align:center}
+.bi-table td.bi-tick input{width:16px;height:16px;accent-color:var(--navy)}
+.bi-table td.bi-rst{min-width:200px}
+.bi-table tr.k-ok td.bi-rst,.bi-table tr.k-imported td.bi-rst{color:#15803d;font-weight:700}
+.bi-table tr.k-problem td.bi-rst,.bi-table tr.k-bad td.bi-rst{color:#b45309;font-weight:700}
+.bi-table tr.k-off td{color:var(--text-mid)}
+.bi-table td.bi-rst label{display:block;font-weight:600;color:var(--text);cursor:pointer}
+.bi-tag{
+  display:inline-block;margin-left:6px;padding:0 6px;border-radius:6px;background:#fff7ed;border:1px solid var(--orange);
+  color:var(--orange-deep);font-size:11px;font-weight:800;white-space:nowrap;
+}
+.bi-new-card[hidden]{display:none}
+.bi-new-card .bi-note{margin-bottom:8px}
+.bi-new-list{max-height:132px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.bi-new-row{display:flex;align-items:center;gap:10px;min-width:0;flex-shrink:0}
+.bi-new-row.off{opacity:.55}
+.bi-new-key{flex:0 0 170px;min-width:0;font-family:Consolas,'Courier New',monospace;font-size:12px;font-weight:700;color:var(--navy);word-break:break-all}
+.bi-new-set{flex:0 0 40px;font-size:12px;font-weight:800;color:var(--text-mid)}
+.bi-new-field{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text-mid)}
+.bi-new-field input{
+  flex:1;min-width:0;height:32px;padding:0 8px;border-radius:8px;border:1.5px solid var(--border);
+  font:inherit;font-size:14px;font-weight:600;color:var(--text);background:var(--white);
+}
+.bi-new-field input:focus-visible{outline:3px solid var(--orange);outline-offset:1px}
+.bi-new-field input.bad{border-color:#b91c1c;background:#fef2f2}
+
+/* ── Import + summary ── */
+.bi-remind[hidden]{display:none}
+.bi-remind{border-color:var(--orange);background:#fff7ed}
+.bi-remind #bi-remind-text{font-size:17px;line-height:1.35;font-weight:800;color:var(--navy);margin-bottom:6px}
+.bi-summary{padding:12px 14px}
+.bi-summary .bi-empty{padding:0}
+.bi-sum-h{font-size:14px;font-weight:800;color:var(--navy);margin:16px 0 6px}
+.bi-sum-h:first-child{margin-top:0}
+.bi-sum-line{font-size:13px;line-height:1.5;color:var(--text)}
+.bi-sum-line.bi-warn{color:#b45309;font-weight:700}
+.bi-summary .bi-table{border:1px solid var(--border)}
+.bi-summary .bi-table th{position:static}
+.bi-table tr.low td{background:#fff7ed}
+
+/* ── Avatar ── */
+.bi-field{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700;color:var(--text)}
+.bi-select{
+  flex:1;min-width:0;height:44px;padding:0 10px;border-radius:8px;border:1.5px solid var(--border);
+  background:var(--white);color:var(--navy);font:inherit;font-size:15px;font-weight:800;
+}
+.bi-select:focus-visible{outline:3px solid var(--orange);outline-offset:1px}
+.bi-select:disabled{opacity:.45}
+.bi-av-none{padding:0}
+.bi-av-none[hidden]{display:none}
+.bi-av-keep{margin:12px 0}
+.bi-av-apply{flex:2 !important}
+.bi-btn-wrap{white-space:normal;height:auto;min-height:44px;padding:8px 14px;text-align:center;line-height:1.25}
+.bi-av-sum-card{display:flex;flex-direction:column;max-height:45%;min-height:0}
+.bi-av-sum-card[hidden]{display:none}
+.bi-av-counts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:26px}
+.bi-av-chip{
+  padding:3px 10px;border-radius:999px;background:var(--bg);color:var(--navy);font-size:12px;font-weight:800;white-space:nowrap;
+}
+.bi-table tr.a-set td.bi-av-act{color:#15803d;font-weight:700}
+.bi-table tr.a-fallback td.bi-av-act,.bi-table tr.a-no-clip td.bi-av-act,.bi-table tr.a-set-differs td.bi-av-act{color:#b45309;font-weight:700}
+.bi-table tr.a-left-alone td.bi-av-act,.bi-table tr.a-not-imported td.bi-av-act{color:var(--text-mid);font-weight:700}
+
+/* setupMediaPipe() needs a <video>; neither one is ever visible (display:none would work too, but
+   an off-screen element is what was measured). */
+.bi-offscreen{position:absolute;left:-9999px;top:0;width:320px;height:240px;visibility:hidden;pointer-events:none}
+
+@media (max-height:700px){
+  .bi-stage{width:320px}
+}

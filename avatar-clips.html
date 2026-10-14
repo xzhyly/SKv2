@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/gesture-training.css?v=1.0.10">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
-  <link rel="stylesheet" href="css/avatar-clips.css?v=1.0.1">
+  <link rel="stylesheet" href="css/avatar-clips.css?v=1.0.3">
   <script src="js/lib/holistic/holistic.js" defer></script>
   <script src="js/video-landmarks.js" defer></script>
   <script src="js/avatar-rig.js" defer></script>
@@ -68,8 +68,21 @@
   <main class="ac-main">
     <section class="ac-col ac-left">
       <input type="search" id="ac-search" class="ac-input" placeholder="Search signs…" autocomplete="off" aria-label="Search signs">
-      <div class="ac-list" id="ac-list" role="listbox" aria-label="Signs"></div>
-      <div class="ac-selected" id="ac-selected">Pick a sign.</div>
+      <div class="ac-list-wrap">
+        <div class="ac-list" id="ac-list" role="listbox" aria-label="Signs"></div>
+        <!-- The bulk importer's candidate clips of the selected sign, over the sign list. -->
+        <div class="ac-cands" id="ac-cands" role="region" aria-label="Candidates" hidden>
+          <div class="ac-cands-head">
+            <span class="ac-cands-title" id="ac-cands-title">Candidates</span>
+            <button type="button" class="ac-btn ac-small" id="ac-cands-close">Close</button>
+          </div>
+          <div class="ac-cands-list" id="ac-cands-list"></div>
+        </div>
+      </div>
+      <div class="ac-selected-row">
+        <div class="ac-selected" id="ac-selected">Pick a sign.</div>
+        <button type="button" class="ac-btn ac-small ac-cands-open" id="ac-cands-open" aria-controls="ac-cands" aria-expanded="false" disabled>Candidates (0)</button>
+      </div>
       <div class="ac-row">
         <label class="ac-btn ac-choose" id="ac-choose" aria-disabled="true">
           Choose video…

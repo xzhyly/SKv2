@@ -469,6 +469,24 @@ if ($isV3) {
     }
 }
 
+// Bulk video importer (v3 only, both optional): signer = who signed the video (P01..P99),
+// importId = the sample's identity (32 hex chars), which makes a repeated import a no-op below.
+// A request without them -- and any v2 request -- is handled exactly as before.
+$signer   = null;
+$importId = null;
+if ($isV3 && isset($body['signer'])) {
+    if (!is_string($body['signer']) || !preg_match('/^P(0[1-9]|[1-9][0-9])$/D', $body['signer'])) {
+        fail('signer must be P01..P99');
+    }
+    $signer = $body['signer'];
+}
+if ($isV3 && isset($body['importId'])) {
+    if (!is_string($body['importId']) || !preg_match('/^[0-9a-f]{32}$/D', $body['importId'])) {
+        fail('importId must be 32 lower-case hex characters');
+    }
+    $importId = $body['importId'];
+}
+
 // ── Existing sign with this key? (sign.json / samples in saved_gestures, the legacy
 //    saved_gestures_fsl folder, or a DB row by label). A different set is a collision. ──
 $existingSign = null;
@@ -548,6 +566,26 @@ $sampleLanguage = ($set === 'FSL') ? 'FSL' : 'ESL';
 $filename = 'sample_' . round(microtime(true) * 1000) . '_' . bin2hex(random_bytes(3)) . '.json';
 $path     = $resolvedLabelDir . DIRECTORY_SEPARATOR . $filename;
 
+// An imported sample is named after its importId, so importing the same video rep twice finds its
+// own file: answer "duplicate" and write nothing (no sample file, no sign.json, no DB row).
+if ($importId !== null) {
+    $filename = 'sample_i' . $importId . '.json';
+    $path     = $resolvedLabelDir . DIRECTORY_SEPARATOR . $filename;
+    if (is_file($path)) {
+        mysqli_close($conn);
+        echo json_encode([
+            'success'      => true,
+            'duplicate'    => true,
+            'label'        => $label,
+            'set'          => $set,
+            'signLanguage' => $set,
+            'file'         => 'saved_gestures/' . $label . '/' . $filename,
+            'frameCount'   => count($frames),
+        ]);
+        exit;
+    }
+}
+
 if ($isV3) {
     $inputBody = is_array($body['input'] ?? null) ? $body['input'] : [];
     $rectBody  = is_array($inputBody['contentRect'] ?? null) ? $inputBody['contentRect'] : [];
@@ -577,6 +615,13 @@ if ($isV3) {
         ],
         'frames'       => $frames,
     ];
+    // Importer fields, only when sent (kept ahead of the long frames list).
+    if ($signer !== null || $importId !== null) {
+        unset($recording['frames']);
+        if ($signer !== null)   $recording['signer']   = $signer;
+        if ($importId !== null) $recording['importId'] = $importId;
+        $recording['frames'] = $frames;
+    }
 } else {
     $recording = [
         'label'       => $label,
@@ -593,12 +638,24 @@ if ($isV3) {
 // same string is also written to gesture_recordings.landmark_json. v2's shape/format stays
 // byte-for-byte pretty-printed as before — only the new v3 path is stored compact.
 $encoded = json_encode($recording, $isV3 ? 0 : JSON_PRETTY_PRINT);
+// Import saves only: if the request ends before the final success response (sign.json or a DB step
+// failed), remove the sample file again -- otherwise a retry of the same rep would find it and be
+// answered "duplicate" with its sign.json / DB row never written. Nothing is registered without importId.
+$importSaved = false;
+if ($importId !== null) {
+    register_shutdown_function(function () use (&$importSaved, $path) {
+        if (!$importSaved && is_file($path)) {
+            @unlink($path);
+        }
+    });
+}
 if ($encoded === false || file_put_contents($path, $encoded, LOCK_EX) === false) {
     fail('Unable to write gesture sample', 500);
 }
 
 // sign.json (set + texts) before any DB write -- disk is the source of truth.
 if (!write_sign_json($resolvedLabelDir, $label, $set, $textEn, $textFil)) {
+    if ($importId !== null) @unlink($path); // a retry of this import must be a real retry
     fail('Unable to write sign.json', 500);
 }
 
@@ -696,6 +753,8 @@ $dbRecordingId = save_gesture_recording_to_db(
 );
 
 mysqli_close($conn);
+
+$importSaved = true; // everything is written: the shutdown guard above keeps the sample file
 
 echo json_encode([
     'success'          => true,

@@ -70,6 +70,9 @@
 
     // file: a video File/Blob. opts: {video (an <video> to use, kept for display afterwards),
     // onFrame(index, total, results, canvas), signal}. Resolves {frames, fps, video:{w,h,durationMs}}.
+    // opts.range {startMs, endMs} (bulk import): only the grid times k/FPS with
+    // startMs <= k*1000/FPS <= endMs are sought; onFrame then counts within the range and the
+    // result also has firstFrame (the k of frames[0]; null when the range holds no grid time).
     async function extract(file, opts) {
       opts = opts || {};
       var signal = opts.signal || null;
@@ -101,9 +104,17 @@
       var ctx = canvas.getContext('2d');
       var times = window.VideoLandmarks.seekTimes(duration, FPS);
       if (times.length > 0 && times[times.length - 1] >= duration) times[times.length - 1] = Math.max(0, duration - 0.001);
+      var first = 0, end = times.length;   // the grid indices walked: first .. end - 1
+      if (opts.range) {
+        if (!isFinite(opts.range.startMs) || !isFinite(opts.range.endMs) || opts.range.startMs === null || opts.range.endMs === null) {
+          throw new Error('range needs startMs and endMs');
+        }
+        while (first < end && first * 1000 / FPS < opts.range.startMs) first++;
+        while (end > first && (end - 1) * 1000 / FPS > opts.range.endMs) end--;
+      }
       if (holistic.reset) holistic.reset();
       var frames = [];
-      for (var k = 0; k < times.length; k++) {
+      for (var k = first; k < end; k++) {
         if (signal && signal.aborted) throw abortError();
         var seeked = waitEvent(video, 'seeked', signal);
         video.currentTime = times[k];
@@ -113,9 +124,11 @@
         await holistic.send({ image: canvas });
         var r = last || {};
         frames.push(window.AvatarClip.packFrame(r));
-        if (opts.onFrame) opts.onFrame(k, times.length, r, canvas);
+        if (opts.onFrame) opts.onFrame(k - first, end - first, r, canvas);
       }
-      return { frames: frames, fps: FPS, video: { w: vw, h: vh, durationMs: Math.round(duration * 1000) } };
+      var out = { frames: frames, fps: FPS, video: { w: vw, h: vh, durationMs: Math.round(duration * 1000) } };
+      if (opts.range) out.firstFrame = frames.length ? first : null;
+      return out;
     }
 
     return { init: init, extract: extract };

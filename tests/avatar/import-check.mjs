@@ -18,7 +18,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { launchChrome } from '../video-capture/cdp.mjs';
-import { save, cleanZz, dir, samples, repo, saved } from '../sign-texts/api-helper.mjs';
+import { save, cleanZz, dir, samples, repo, saved, callApi } from '../sign-texts/api-helper.mjs';
 import { Clip, SAMPLE_JSON } from './helper.mjs';
 
 const BASE = 'http://localhost/SKR/';
@@ -221,6 +221,8 @@ try {
   await c.close();
   fs.rmSync(tmp, { recursive: true, force: true });
   cleanZz();
+  // a Save with Signer "P03" records a hand pick in the bulk importer's cache (2026-10-13): remove ours
+  callApi('bulk_import.php', { body: { action: 'set_picks', picks: { [KEY]: null, [KEY2]: null } } });
 }
 const left = fs.readdirSync(saved).filter((d) => d.startsWith('zz_'));
 check('zz probes removed', left.length === 0, J(left));
