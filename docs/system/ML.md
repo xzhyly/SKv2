@@ -110,3 +110,17 @@ the kiosk's Let's Talk screens. `knnPredict`, `cosineSimilarity` and `trainModel
 - Whether `js/main.js` or `js/dist/build.js` contain inference calls — both are
   out of scope (dead code slated for deletion, see `docs/system/DEAD_CODE.md`) and
   were not read.
+
+## Bulk-imported samples (2026-10-13/14)
+
+`bulk-import.html` adds recognition samples but no inference code. Its Hands pass and segmentation are
+the live capture's own calls (`js/video-landmarks.js`, `js/gesture-data.js` `createVideoDetector`,
+`js/capture-core.js`), and the samples are v3 files that load through the same
+`recordingToFeatureRows()` (at most 30 rows per sample). `knnPredict`, `cosineSimilarity` and `trainModel`
+are unchanged. The page's "knnPredict (estimate)" is its own function with the same shape, run on a
+synthetic model; the kiosk's function is not loaded there.
+
+Measured on this laptop, the kiosk's `knnPredict` text (`js/sign-to-text-ui.js:193-243`) run in node
+on a JSON round-tripped model: 1.1-1.5 ms at 2,074 rows, 14-15 ms at 24,034, 37-38 ms at 58,560 and
+53-62 ms at 87,840 rows. (The Step 1 report's 35 ms / 1.6 s figures were wrong: they were taken inside a
+node `vm` context, which alone is 6-7 times slower, on a busy machine.) The Pi is not measured.

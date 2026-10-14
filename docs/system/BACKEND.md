@@ -853,3 +853,42 @@ at step 2 with nothing moved and no `text_en` column. It clones a scratch databa
   static `avatar.json`, downloaded by the browser as `<key>.avatar.json`; an imported file is converted in
   the browser and saved through the same `avatar_clip.php` `save` action, which sets `key` and `createdAt`
   itself. The files stay the source of truth.
+
+## Bulk video importer (2026-10-13/14)
+
+No schema change and no direct DB write: the database follows `save_gesture.php` exactly as for a live
+recording. A mysqldump was taken before the phase:
+`E:\ACADSS\IOT\backups\2026-10-13-bulk-import\sining_kamay_db_before-bulk-import.sql` (6,022,767 bytes),
+with a copy of `saved_gestures` (249 files).
+
+- **`php/api/save_gesture.php`, two optional fields for v3 samples only** (a request without them, and
+  any v2 request, is stored byte for byte as before: `tests/bulk-import/save-import.test.mjs`):
+  - `signer`: `P01`..`P99` (upper case), else 400 "signer must be P01..P99". Stored as `signer`.
+  - `importId`: 32 lower-case hex characters, else 400. Stored as `importId`; the file is named
+    `sample_i<importId>.json`. If that file already exists the answer is 200 `{success, duplicate:true,
+    label, set, signLanguage, file, frameCount}` and nothing is written (no file, no `sign.json`, no DB
+    row). The set-collision 409 is still checked first.
+  - For an import save only, a shutdown guard removes the sample file again if the request ends before
+    its success response (a failed `sign.json` write or DB step), so a retry is a real retry and not a
+    false "duplicate".
+  - The importer computes `importId` = first 32 hex of SHA-256 of `name|size|repIndex`.
+- **`php/api/bulk_import.php`** (new; files only, no DB, no auth: DEBT 72). Everything lives under the
+  git-ignored `bulk_import_cache/`:
+  - `videos/<videoId>.meta.json` (small: file, parsed name, Hands summary, segmentation, repetitions,
+    best repetition, candidate state) and `videos/<videoId>.hands.json` (each repetition's v3 frames).
+    `videoId` = first 32 hex of SHA-256 of `name|size|lastModified`.
+  - `candidates/<key>/<SIGNER>.json` (`{videoId, repIndex, savedAt, set, clip}`, the clip is
+    `sk_avatar_clip_v1`, `set` is the set in the video's file name) and `<SIGNER>.info.json` (the summary
+    the listing reads). A candidate whose set differs from its sign's set is never used as that sign's
+    clip.
+  - `picks.json`: `{key: {signer, by: "hand"|"default", at}}`, written under an exclusive lock.
+  - GET `?action=index` | `hands&id=` | `candidates[&key=]` | `candidate&key=&signer=` | `picks`.
+  - POST `{action: put_video | put_candidate | delete_video | delete_candidates | set_picks}`.
+    Body limit 8 MB for `put_video`, 1 MB otherwise. ids, keys and signers are validated before any
+    path is built (key: `clean_label(key) === key`, at most 100 characters, not a Windows device name).
+  - Measured by the task reviewer on a synthetic cache: `index` over 1,000 videos 1.6-1.8 s;
+    `candidates` over 1,053 entries 1.4-1.6 s.
+- **Videos never reach the server.** The page reads them through object URLs; the only requests are JSON
+  to `bulk_import.php`, `save_gesture.php`, `signs.php` and `avatar_clip.php`.
+- **The cache never goes to the Pi** (`.gitignore`: `bulk_import_cache/`). Imported samples and chosen
+  clips are ordinary files under the tracked `saved_gestures/`; see DEBT 116 before committing them.

@@ -952,6 +952,91 @@ below. None of that ran.
     (1240-8840 ms); Let's Talk played the clip on the avatar (8.35 s, 0 videos); 84 requests, all localhost;
     2 POSTs (the two saves); no page scroll, every control >= 44 px, no label cut off; 0 console errors.
 
+### Bulk video importer (`bulk-import.html`, 2026-10-13/14)
+
+Reports: `docs/reports/2026-10-13-bulk-import-step1.md`, `docs/reports/2026-10-13-bulk-import-final.md`;
+decisions in `DECISIONS.md` ("bulk video importer"). **Laptop only.** Nothing on the dashboard, Let's
+Talk, Train Gestures, Reports or Avatar clips links to the page (checked by
+`tests/bulk-import/verify-e2e.mjs`: 31 pages and scripts searched); it is opened by typing its address.
+Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wide), not for 1024x600.
+
+- **Scripts:** `js/lib/holistic/holistic.js`, `js/lib/mediapipe/hands.js`, `js/capture-core.js`,
+  `js/gesture-data.js`, `js/video-landmarks.js`, `js/avatar-rig.js`, `js/avatar-clip.js`,
+  `js/avatar-retarget.js`, `js/avatar-extract.js`, `js/bulk-import-core.js` (pure: names, best
+  repetition, candidate, row status, projection, default-signer assignment, imbalance),
+  `js/bulk-import-ui.js`. The kiosk's classifier files are not loaded.
+- **PIN** pad as on Avatar clips (same PIN, same 10-minute `sessionStorage` unlock).
+- **Start-up order matters:** the Holistic extractor is initialised first, and only then
+  `GestureDataRecorder.preloadMediaPipe()` runs, because `js/gesture-data.js:206-225` patches
+  `WebAssembly.validate` to force non-SIMD and the SIMD-only Holistic then refuses to start (measured in
+  the Step 1 probe: `NO_SIMD`). A failed load shows the error and a Retry button.
+- **Five steps** (a step bar; state kept in one object, `window.BulkImport.state`):
+  1. **Folder.** `<input type="file" webkitdirectory>`; files are only read locally. Each name is parsed
+     as `<SET>_<label>_<SIGNER>.<ext>` (SET ESL/FSL/BOTH; SIGNER P01..P99; the label is the rest; the key
+     is `cleanLabel(label)`). A name that does not match is listed under Problems, never guessed; junk
+     such as `desktop.ini` is ignored. Two lists, remembered in `localStorage`, editable any time:
+     **Signers used for recognition** (default the first 2 found) and **Avatar signers** (ordered: the
+     default signer, then fallbacks; default the first 3 found).
+  2. **Extract** (Start / Pause / Resume, progress, ETA, preview). Per video:
+     - the Hands pass and the segmentation are the live capture's own calls
+       (`createVideoDetector`, `extractVideoLandmarks` at 15 fps, `segmentFrames` with its constants), for
+       EVERY video; the result is written to the cache at once;
+     - the best repetition is chosen from the Hands result (most frames with the needed hands; two hands
+       are "needed" when at least half of the repetition frames have two);
+     - only for a signer in the avatar list: Holistic runs on that repetition's window only (middle of
+       the rest before it to middle of the rest after it), and the trimmed clip is stored as that sign
+       and signer's candidate;
+     - a video of 60 s or longer gets no candidate; two files of one sign and signer: the first by file
+       name makes the candidate, a later one takes over only if the earlier ones gave none.
+     Re-opening the same folder skips finished videos (identity: name + size + modified time). A signer
+     added to the avatar list later gets only the Holistic step (the Hands result is reused). Pause
+     drops the step in progress; a cache that cannot be read or written stops or pauses the queue.
+  3. **Review.** One row per video (file, label -> key, set, signer, repetitions, status, checkbox) with
+     filters All / Problems / New signs / To import. Exactly 3 repetitions = OK; any other count is a
+     problem row that can be ticked to import the repetitions found. A label that exists with another
+     set is "exists as <SET>" and cannot be imported. A new sign shows its draft texts for editing. Rows
+     of signers outside the recognition list are not imported (their Hands result stays cached). A box
+     shows, per model, the rows now, the rows this import adds and the total, and an estimated
+     `knnPredict` time measured in this page with a copy of the algorithm's shape on a synthetic model
+     ("estimate, this laptop's Chrome. The Pi is slower."). Nothing is written before Import.
+  4. **Import.** One POST per repetition to `php/api/save_gesture.php` (v3, `source "video-import"`,
+     `repIndex`, `signer`, `importId`); no text is sent, so a new sign's key is the file's label, and its
+     edited texts are set through `signs.php` right after its first sample. A server error pauses with
+     Resume; importing the same video again adds nothing. The model cache is invalidated as the live
+     capture does. The summary lists samples added per sign, duplicates skipped, new signs, videos not
+     imported by reason, every sign's sample count with a warning for signs below half the median, and
+     "Now run Compile (Train AI) on Train Gestures for ESL and for FSL."
+  5. **Avatar.** Default signer + priority list (the same avatar list), "Keep signs I picked by hand"
+     (on), a table of what Apply will do, **Apply to all signs** (one `avatar_clip.php` save per sign,
+     one `set_picks` at the end), and a summary: signs per signer, fallbacks, no clip, left alone, not
+     imported yet, of another set, failed. Apply re-reads the signs and the cache first and stops if they
+     changed since the table was shown. A candidate made from a video of another set than the sign's is
+     never used ("candidate P01 is ESL, the sign is FSL — not used").
+- **Measured** (`tests/bulk-import/verify-e2e.mjs`, 38/38 PASS, every non-localhost host blocked; folder of
+  8 videos: 2 signers x 3 synthetic signs, one 2-repetition video, the owner's real 1280x720 17.8 s video,
+  plus one bad file name and one junk file): extraction 143 s for all 8; real video: Hands pass 19.6 s
+  (267 frames), Holistic on the best repetition's window 17.0 s (126 frames), 3 repetitions, an 85-frame
+  candidate; 21 samples imported from 7 videos, 0 on re-import (21 duplicates); Apply set 3 signs to P01,
+  left the hand-picked one alone, 1 not imported yet; Train AI "Complete! — 126 gestures ready"; Predict
+  on the fake camera showed "Zz bulk one"; 207 requests, all localhost; 70 POSTs, all JSON, largest 112 KB
+  against 5,391 KB of videos; no video file written under the repo or `C:\xampp`; 0 console errors.
+  Kill mid-extraction, Pause / Resume and cache failures: `tests/bulk-import/extract-check.mjs` (85 PASS).
+
+### Avatar clips: Candidates panel (2026-10-14)
+
+- The selected-sign line now ends with a **Candidates (n)** button (measured at 1024x600: 352,416 144x44;
+  the sign list is 472x290). It opens a panel exactly over the sign list (24,118 472x290) listing the
+  bulk importer's candidates for that sign by signer, with frames, **Preview** (plays it on the avatar)
+  and **Use this** (saves it through `avatar_clip.php` and records the sign as picked by hand). A row is
+  marked "in use" only when the saved clip really is that candidate. Each row shows the set of its video;
+  "Use this" is disabled for a candidate of another set than the sign's.
+- Saving a clip from a video or a JSON records a hand pick when the Signer field is `P01`..`P99`,
+  otherwise removes any pick (a sign with a clip and no pick already counts as picked by hand); Delete
+  removes the pick. These calls never delay or fail the save or the delete.
+- With no candidates, or with `php/api/bulk_import.php` failing, the button is disabled and the page works
+  as before (`tests/bulk-import/candidates-panel-check.mjs`, 41 PASS; `tests/avatar/admin-check.mjs` 22 PASS
+  and `tests/avatar/import-check.mjs` 31 PASS still hold: no page scroll, every control >= 44 px).
+
 ### 4. Key decisions and why
 
 - Speech recognition is hard-forced to the Vosk offline adapter "to ensure 100%

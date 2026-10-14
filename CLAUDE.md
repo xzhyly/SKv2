@@ -98,6 +98,15 @@ clip per sign from a video or an imported landmark JSON, saved as
 the avatar when its sign has a clip and as video otherwise — see
 `docs/system/UI.md` ("Avatar clips", Part 3 3e).
 
+`bulk-import.html` (laptop only, same PIN; **no kiosk page links to it** — open it
+by typing `http://localhost/SKR/bulk-import.html`) turns a folder of videos named
+`<SET>_<label>_<SIGNER>.<ext>` into recognition samples (through
+`php/api/save_gesture.php`) and avatar clip candidates. Its cache and the
+candidates live in the git-ignored `bulk_import_cache/` and never go to the Pi.
+The kiosk must not receive bulk-imported samples before the compact-model phase
+(`docs/system/DEBT.md` item 116) — see `docs/system/UI.md` ("Bulk video importer")
+and `docs/system/BACKEND.md`.
+
 `talk.html` is the "Let's Talk" two-way conversation screen (see
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing
 screen is real**: live camera + MediaPipe + the k-NN, output going through the

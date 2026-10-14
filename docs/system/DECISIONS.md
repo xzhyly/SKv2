@@ -1722,3 +1722,84 @@ Source: the owner's task prompt (decisions 1-9, settled) and `docs/reports/2026-
 - **`extractor-check.mjs`:** the no-cues copy needs `-map_metadata -1`, because the ffmpeg-built file carries
   a per-stream `DURATION` tag that ffmpeg would otherwise write into the piped copy (measured: without it
   the copy's duration is 12, not Infinity, and the Infinity-branch check fails).
+
+## Decisions made during the bulk video importer phase (2026-10-13/14)
+
+Source: the owner's task prompt (decisions 1-14), the approved proposal
+`docs/reports/2026-10-13-bulk-import-step1.md`, the owner's answers to it, and the final report
+`docs/reports/2026-10-13-bulk-import-final.md`.
+
+### Owner decisions
+
+- **Laptop only.** `bulk-import.html`, same PIN; nothing on a kiosk screen links to it. The Pi only gets
+  the resulting files through git.
+- **File name** `<SET>_<label>_<SIGNER>.<ext>`; files that do not match are problems, never guessed.
+- **Sign mapping:** label -> key by the `cleanLabel` rule; unknown label = new sign with editable draft
+  texts; existing with another set = problem.
+- **Files are the source of truth;** import through `save_gesture.php` and `avatar_clip.php`; no direct DB
+  write; no schema change.
+- **Samples:** v3, exactly like a live capture, plus `source "video-import"`, `repIndex`, signer.
+- **Repetitions:** the existing segmenter and constants; exactly 3 = OK; otherwise a problem row the owner
+  can import with the repetitions found, or skip.
+- **Recognition signers (answer to Q1):** a list, default the first 2 signers found. The Hands pass still
+  runs for every video and stays in the cache, so signers can be added later without re-extraction. The
+  projected rows per model and a projected `knnPredict` time are shown before Import.
+- **Avatar candidates (answer to Q7):** the best repetition is chosen from the Hands pass; Holistic runs
+  only on that repetition's window and only for signers in the avatar priority list (chosen before
+  extraction, editable; a signer added later gets only the Holistic step). `js/avatar-extract.js` may take
+  a time range; its full-video output must stay byte-identical.
+- **Default signer + priority list + "Apply to all signs"**, "Keep signs I picked by hand" on by default,
+  a summary after.
+- **Per-sign override** on `avatar-clips.html`; using it marks the sign as picked by hand.
+- **Resume:** each video cached as soon as it is done; identity = name + size + modified time.
+- **Review before import;** import idempotent by a hash of file name + size + repetition.
+- **Summary** with per-sign counts, an imbalance warning, and a Compile reminder for ESL and FSL.
+- **Videos are never uploaded or stored.** **No security work** (DEBT 72 stays open).
+- **Other answers:** `save_gesture.php` gains `signer` and `importId`; new `php/api/bulk_import.php` and
+  `bulk_import_cache/`; the page is built for a laptop screen; imbalance warning below half the median; a
+  video of 60 s or longer gives samples but no candidate; a new sign gets no display clip.
+- **Next phase is the keyframes / compact model; the kiosk must not get the imported data before it.**
+
+### Build decisions
+
+- **Hands and Holistic share one page, in a fixed order.** `js/gesture-data.js:206-225` patches
+  `WebAssembly.validate`; Holistic must be initialised before it runs. Two iframes also worked in the
+  probe but were not needed.
+- **The Hands result is cached before the Holistic step,** so a Holistic failure or a Pause never throws
+  away a finished Hands pass.
+- **A sample's identity is in its file name** (`sample_i<importId>.json`): the duplicate check is one
+  `is_file()`, and every reader already matches `sample_*.json`.
+- **A failed import save removes its own sample file** (shutdown guard), so a retry cannot be answered
+  "duplicate" with its `sign.json` or DB row missing.
+- **A new sign is created with its label only,** then its edited texts are set through `signs.php` right
+  after its first sample. Sending the texts with the sample would let `save_gesture.php` derive the key
+  from the text.
+- **Best repetition:** two hands are "needed" when at least half of the repetition frames have two; the
+  score is the number of frames with the needed hands; ties go to the earlier repetition. When the
+  segmentation failed, the last repetition's window ends 1000 ms after it (the rest the segmenter
+  guarantees), so an unfinished following sign is never inside the window.
+- **"Already imported" wins over "not 3 repetitions"** in the Review: a fully imported 2-repetition video is
+  shown as done, not as a problem with a live checkbox.
+- **The first file of a new key defines its set;** a later file with another set is "set differs".
+- **Two files of one sign and signer:** the first by file name makes the candidate; a later one takes over
+  only when the earlier ones gave none. Nothing about the duplicate is stored in the cache.
+- **A sign with a clip and no entry in `picks.json` counts as picked by hand** (it was made on Avatar
+  clips). A pick by hand without a clip does not.
+- **Apply writes the picks once, at the end,** re-reads the signs and the cache before it starts and before
+  a Resume, and stops when they changed since the table was shown.
+- **A candidate carries the set of its video;** a candidate of another set than the sign's is not used.
+- **The time estimate is the page's own copy of the algorithm's shape,** timed on a synthetic model at the
+  current and the projected size; the kiosk's `knnPredict` is not loaded on the page. A test compares the
+  two within a factor of 2.
+- **Cache errors stop the queue** (a dead Apache would otherwise extract every remaining video for
+  nothing); a 4xx for one video fails only that video.
+- **`avatar-extract.js` rejects a range with a missing or non-numeric bound** instead of processing the
+  whole video.
+- **The "kiosk row count" includes `start` and `stop` in both models,** as `js/sign-to-text-ui.js:118` does.
+
+### Correction to the Step 1 report
+
+The Step 1 report said one `knnPredict` call would take about 1.6 s on this laptop after a full import
+(35 ms today). Both figures were wrong: they were measured inside a node `vm` context (6-7 times slower by
+itself) on a busy machine. Re-measured: 1.1-1.5 ms today and 53-62 ms at 87,840 rows (`ML.md`). The ratio
+(about 45 times) holds; the Pi is not measured. The owner's Q1 answer was given on the wrong figure.

@@ -1536,6 +1536,59 @@ so a later session does not re-litigate them:
 114. **Low severity, open (avatar phase): the extracted face is not used.** Facial expressions are out of
      scope; the head only rolls and shifts from the ears and nose.
 
+116. **High, open (bulk importer, 2026-10-14; owner decision): the kiosk must not receive bulk-imported
+     samples before the keyframes / compact-model phase.** Projections from measured values: 2 signers
+     add about 21,960 training rows to today's 2,047; all 8 add about 87,840. Per sample the dataset
+     download grows by about 38 KB (every page that loads the model downloads every frame:
+     `php/api/save_gesture.php` GET), and the k-NN model no longer fits in `localStorage` (DEBT 94).
+     `knnPredict` on this laptop: 1.1-1.5 ms today, 53-62 ms at 87,840 rows (`ML.md`); the Pi is not
+     measured. Imported samples are ordinary tracked files under `saved_gestures/`: do not commit or
+     copy them to the Pi until that phase is done.
+117. **Medium, open (bulk importer): the Review step downloads the whole dataset, frames included, each
+     time it opens and after each import** (`js/bulk-import-ui.js`, `loadReviewData`). 3.48 MB today
+     (measured in Step 1); projected about +27 MB with 2 signers and +109 MB with 8. With a large dataset
+     the GET may exceed PHP's `memory_limit` (512M here; not measured), and Import stays disabled when it
+     fails. A names-only listing would remove the need.
+118. **Low, open (bulk importer): never run at full scale or in a visible browser.** Every check ran in
+     headless Chrome on at most 10 small videos. Not measured: a folder of about 960 videos (table
+     redraws, a multi-hour run), the real folder dialog with a mouse, laptop sleep during a run. The
+     projected extraction time for 960 videos (final report) is arithmetic from one real video.
+119. **Low, open (bulk importer): paths implemented but not exercised by any test:** a detector timeout
+     pausing the queue; a 4xx from a cache POST or from `save_gesture.php` other than 409; a failed text
+     update; a video of 60 s or longer; the `beforeunload` warning; extraction blocked during an Apply.
+120. **Low, open (bulk importer): identity edge cases.** `importId` is name + size + repetition (owner
+     decision), so a re-recorded video with the same name and byte size reads "already imported". Two
+     simultaneous POSTs with the same `importId` could both pass the `is_file()` check (the importer
+     posts one at a time). A tab closed in the middle of "Apply to all signs" leaves the signs saved so
+     far with a clip and no pick, so they then count as picked by hand.
+121. **Low, open (bulk importer): rest means "no hand detected".** The segmenter needs 1 s without a
+     detected hand before, between and after the signs. In the one real video the hands left the
+     picture. Hands held still but visible may still be detected; not measured.
+122. **Low, open (bulk importer): `avatar-clips.html` now calls `php/api/bulk_import.php`.** On a machine
+     with no cache the listing is empty and the page works as before, but a Save with a `P01`..`P99`
+     signer creates `bulk_import_cache/picks.json` there too (git-ignored, harmless).
+124. **Medium, open, pre-existing (found 2026-10-14, avatar phase code): the avatar's first movement can
+     jump when a clip's first frame has no hand.** `tests/avatar/talk-avatar-check.mjs`'s "blend
+     continuity" check (limit 60 px per 40 ms) failed in 2 of 3 runs. Holistic's output varies between
+     runs, and the auto-trim then starts one frame earlier or later. Measured over repeated extractions
+     of `assets/signs/en/hello.webm`: when the trim starts on a frame with a hand, the rest -> sign
+     transition lasts 700 ms and moves at most 43-45 px per 40 ms; when it starts one frame before the
+     hand appears, the transition lasts 350-402 ms and moved 40-155 px. With the committed (pre-phase)
+     files 1 of 6 extractions exceeded 60 px (74.7); with this phase's files 2 of 6 (107.7, 154.8). The
+     cause is in the retargeting / timeline (hand gap fill at a clip's first frame), which this phase
+     must not change. Bulk-made candidates are trimmed by the same auto-trim.
+125. **Low, open (bulk importer, whole-phase review):** (a) "Use this" on Avatar clips checks a candidate's
+     set from the listing, not from the file it then fetches, so a candidate replaced by another-set
+     video in another tab between listing and click would be saved. (b) With `ESL_x_P01` and `FSL_x_P01`
+     in one folder and `x` existing as FSL, the ESL file is first by name and owns the P01 candidate; it
+     is not used, and the FSL file never makes one, so the sign gets no P01 clip (listed under "of
+     another set"). (c) After a Resume, an avatar signer ticked during the pause is only applied to the
+     earlier videos by pressing Start again (a status line says so; not covered by a test).
+123. **Low, open (bulk importer): extraction speed depends heavily on what else the laptop is doing.**
+     The same video measured 71 ms per frame (Hands) and 129 ms (Holistic) on a quiet machine, and 2 to
+     5 times more in the Step 1 probe while other tests were running. The cause of the slow runs was not
+     isolated beyond "machine load".
+
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead
 endpoints" list) was considered as a place to store the new category and

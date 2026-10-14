@@ -270,6 +270,22 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 | `tests/avatar/admin-check.mjs`, `talk-avatar-check.mjs`, `import-check.mjs` | Browser checks (offline extraction; Let's Talk; Import / Export JSON, 2026-10-13) |
 | `tests/avatar/bench.html`, `tests/avatar/pi-bench.sh` | Frame-rate bench; the Pi run script |
 
+### Bulk video importer files (new 2026-10-13/14)
+
+| File | Owns |
+|---|---|
+| `bulk-import.html`, `css/bulk-import.css`, `js/bulk-import-ui.js` | Laptop-only page: PIN; Folder / Extract / Review / Import / Avatar steps |
+| `js/bulk-import-core.js` | Pure helpers: file-name parsing, best repetition and its window, candidate clip, row status, row projection, default-signer assignment, imbalance |
+| `php/api/bulk_import.php` | Cache, candidates and picks under the git-ignored `bulk_import_cache/` (files only, no DB) |
+| `php/api/save_gesture.php` (changed) | Optional v3 fields `signer` and `importId`; duplicate answer |
+| `js/avatar-extract.js` (changed) | `opts.range {startMs, endMs}`; full-video behaviour unchanged |
+| `avatar-clips.html`, `css/avatar-clips.css`, `js/avatar-clips-ui.js` (changed) | Candidates panel; hand picks |
+| `tests/bulk-import/core.test.mjs`, `save-import.test.mjs`, `cache-endpoint.test.mjs` | Node tests: core module (52), `save_gesture.php` fields (16), cache endpoint (11) |
+| `tests/bulk-import/extract-range-check.mjs`, `extract-range.page.html` | Old against new extractor with a deterministic fake Holistic (30 checks) |
+| `tests/bulk-import/extract-check.mjs`, `import-flow-check.mjs`, `avatar-step-check.mjs`, `candidates-panel-check.mjs` | Browser checks per step (85 / 85 / 43 / 41 checks) |
+| `tests/bulk-import/verify-e2e.mjs` | The phase's end-to-end verification on one folder (38 checks) |
+| `tests/bulk-import/folder.mjs`, `avatar-fixture.mjs` | Shared helpers: the ffmpeg-built test folder; candidate fixtures |
+
 Load order in `talk.html`: ... `js/talk-signing.js`, then `avatar-rig`, `avatar-clip`, `avatar-retarget`,
 `avatar-timeline`, `avatar-renderer`, `avatar-store`, `avatar-player`, then `js/sign-player.js`,
 `js/talk-speaking.js`, `js/talk-history.js`. New over-5 MB files: `holistic_solution_packed_assets.data`
