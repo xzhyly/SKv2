@@ -232,7 +232,8 @@ videos):
 
 Every fixed count from 3 to 20 rows per sample lost more than 2 points on at least one set. Trimming
 200 ms of entering/leaving frames (DEBT 88) matched even spacing on T2 but scored 2.5 / 1.7 points lower on T2r
-(10 / 15 rows), and centred spacing was within about 1 point of even spacing at the same count; farthest-point and k-medoids selection scored worse than even spacing. `knnPredict`
+(10 / 15 rows), and centred spacing was within about 1 point of even spacing on T2 but 3.3 points lower on T2r at 15 rows
+(81.0 against 84.3); farthest-point and k-medoids selection scored worse than even spacing. `knnPredict`
 scores a sign by the mean of its 5 best rows, so with one sample per sign fewer rows mean fewer close
 matches.
 
