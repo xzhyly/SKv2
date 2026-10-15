@@ -7,7 +7,7 @@
 //      (an operator typing the gesture name);
 //   2. open the recording mode -> ms until START is enabled (first open); Cancel;
 //   3. open again -> ms until START is enabled (second open); Cancel;
-//   4. Step 2: Train AI -> ms until "Complete!/Up to date";
+//   4. Step 2: Compile -> ms until "Complete!" (models/knn_*.bin backed up and restored);
 //   5. Step 3: Enable Camera -> ms until live hand results flow; then 10 s of Predict, counting
 //      polls that show a predicted word;
 //   6. console errors / uncaught exceptions over the whole run.
@@ -19,6 +19,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome } from './cdp.mjs';
 import { buildY4m } from './fake-camera.mjs';
+// Step 2 presses Compile, which rewrites the real models/knn_*.bin: back them up, restore after.
+import { guardModels } from '../compact-model/model-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -26,6 +28,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const tmp = mkdtempSync(path.join(__dirname, '.tmp-startup-'));
 let chrome = null;
 const out = {};
+const modelGuard = guardModels();
 try {
   const y4m = buildY4m(tmp);
   chrome = await launchChrome({
@@ -87,6 +90,8 @@ try {
 } catch (e) {
   out.error = e && e.stack ? e.stack : String(e);
 } finally {
+  // Model files first: a failing close below must not skip the restore.
+  console.log(modelGuard.restore().line);
   if (chrome) await chrome.close();
   rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
 }

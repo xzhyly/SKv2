@@ -298,8 +298,28 @@ function build_categories_map($conn, $signs) {
     return $categories;
 }
 
+// labels=a,b,c (compact-model phase): limit the listing to these sign keys, so Train Gestures'
+// Compile can read frames a batch of signs at a time (the full listing with frames runs out of PHP
+// memory at ~732 v3 samples). Each key must already be a clean_label() key; at most 200 keys.
+// Returns null when the option is absent, else a set (key => true). Invalid -> 400 JSON error.
+const LIST_LABELS_MAX = 200;
+function listing_label_filter() {
+    if (!isset($_GET['labels'])) return null;
+    $raw = $_GET['labels'];
+    if (!is_string($raw) || $raw === '') fail('labels must be a comma-separated list of sign keys');
+    $keys = explode(',', $raw);
+    if (count($keys) > LIST_LABELS_MAX) fail('labels may name at most ' . LIST_LABELS_MAX . ' sign keys');
+    $set = [];
+    foreach ($keys as $key) {
+        if ($key === '' || clean_label($key) !== $key) fail('Invalid sign key in labels: "' . $key . '"');
+        $set[$key] = true;
+    }
+    return $set;
+}
+
 function list_samples($defaultRoot) {
     global $conn;
+    $labelFilter = listing_label_filter();   // checked before any sync work
     // Skip sync when no_sync is set (used by sign-to-text and voice pages for fast startup)
     if (!isset($_GET['no_sync'])) {
         // Disk is source of truth: sync disk → DB (adds new, deletes stale phantom rows)
@@ -316,6 +336,9 @@ function list_samples($defaultRoot) {
 
     $gestures = [];
     $signs = [];
+    // summary=1 (compact-model phase): the same listing without each sample's `frames` (Train
+    // Gestures' dataset table and Step 2 card need names and counts only). Works with no_sync.
+    $summary = isset($_GET['summary']) && $_GET['summary'] !== '0';
 
     foreach ($folders as $folder) {
         $dirPath = realpath(__DIR__ . '/../../' . $folder);
@@ -323,6 +346,7 @@ function list_samples($defaultRoot) {
 
         foreach (glob($dirPath . '/*', GLOB_ONLYDIR) ?: [] as $labelDir) {
             $label = basename($labelDir);
+            if ($labelFilter !== null && !isset($labelFilter[$label])) continue;
             $files = glob($labelDir . '/sample_*.json') ?: [];
 
             if (!isset($gestures[$label])) {
@@ -335,7 +359,7 @@ function list_samples($defaultRoot) {
             foreach ($files as $file) {
                 $json = json_decode(file_get_contents($file), true);
                 if (is_array($json)) {
-                    $gestures[$label][] = [
+                    $entry = [
                         'file' => $folder . '/' . $label . '/' . basename($file),
                         'label' => $json['label'] ?? $label,
                         'frames' => $json['frames'] ?? [],
@@ -343,7 +367,12 @@ function list_samples($defaultRoot) {
                         'createdAt' => $json['createdAt'] ?? null,
                         'signLanguage' => $json['signLanguage'] ?? $json['sign_language'] ?? 'ESL',
                     ];
+                    if ($summary) {
+                        unset($entry['frames']);
+                    }
+                    $gestures[$label][] = $entry;
                 }
+                unset($json, $entry);   // free the decoded sample before reading the next one
             }
         }
     }

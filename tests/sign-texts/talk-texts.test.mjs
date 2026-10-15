@@ -1,6 +1,8 @@
 // Unit tests (node:vm) for Task 6 of the sign-texts phase: Let's Talk reads the sign texts.
 //   - js/sign-to-text-ui.js translateGestureLabel prefers GestureDataRecorder.getSignText
-//   - js/sign-to-text-ui.js mergeSavedGestureSamples accepts BOTH signs for either model
+//   - the compiled model (js/knn-compile.js) accepts BOTH signs for either model (this test moved
+//     here from the retired mergeSavedGestureSamples, compact-model phase)
+//   - js/sign-to-text-ui.js autoTrainForTranslate loads the model through KnnModelStore only
 //   - js/sign-player.js registers signs.php texts in the right language maps and plays an
 //     assets/-relative path as-is (observed through a fake <video>, so no new export is needed)
 // SIGN_TEXTS_ROOT=<dir> loads another copy of js/ (used to show the tests fail on HEAD).
@@ -10,17 +12,23 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.SIGN_TEXTS_ROOT || path.join(here, '..', '..');
 const read = (f) => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');
+const KnnCompile = createRequire(import.meta.url)(path.join(ROOT, 'js', 'knn-compile.js'));
+const plain = (v) => JSON.parse(JSON.stringify(v)); // vm objects are cross-realm
 
 // ── sign-to-text-ui.js ──
-function loadUi({ recorder, rows = [], lang = 'en' } = {}) {
+function loadUi({ recorder, store, lang = 'en', log = { fetched: [], logs: [], warns: [] } } = {}) {
   const stubEl = () => ({ style: {}, classList: { add() {}, remove() {} }, addEventListener() {}, appendChild() {}, querySelector: () => null });
-  const window = { addEventListener() {}, GestureDataRecorder: recorder, loadGestureDatasetForTraining: async () => rows };
+  const fetch = async (u) => { log.fetched.push(String(u)); throw new Error('fetch must not be called'); };
+  const window = { addEventListener() {}, GestureDataRecorder: recorder, KnnModelStore: store, fetch,
+    loadGestureDatasetForTraining: async () => { log.fetched.push('loadGestureDatasetForTraining'); return []; } };
+  const quiet = { ...console, log: (...a) => log.logs.push(a.join(' ')), warn: (...a) => log.warns.push(a.map(String).join(' ')) };
   const ctx = {
-    window, console, setTimeout, clearTimeout, performance: { now: () => 0 },
+    window, console: quiet, fetch, setTimeout, clearTimeout, performance: { now: () => 0 },
     document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener() {}, createElement: stubEl, readyState: 'complete', body: stubEl() },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     navigator: {}, location: { search: '' }, URLSearchParams,
@@ -29,7 +37,8 @@ function loadUi({ recorder, rows = [], lang = 'en' } = {}) {
   ctx.globalThis = ctx;
   ctx.GestureDataRecorder = recorder; // in a browser window is the global object
   vm.createContext(ctx);
-  vm.runInContext(read('sign-to-text-ui.js') + '\n;globalThis.__t = { translateGestureLabel, mergeSavedGestureSamples, setLang(l){ signLang = l; }, trainData: () => trainData };', ctx);
+  vm.runInContext(read('sign-to-text-ui.js') + '\n;globalThis.__t = { translateGestureLabel, autoTrainForTranslate, setLang(l){ signLang = l; },' +
+    ' reset(){ modelTrained = false; knnModel = null; }, get: () => ({ knnModel, activeLabels, modelTrained, activeFeatureSize }) };', ctx);
   ctx.__t.setLang(lang);
   return ctx.__t;
 }
@@ -52,19 +61,101 @@ test('translateGestureLabel falls back to the old body when no sign text or no r
   }
 });
 
-test('mergeSavedGestureSamples: ESL model takes ESL+BOTH, FSL model takes FSL+BOTH, start/stop always', async () => {
+test('compiled model membership: ESL takes ESL+BOTH, FSL takes FSL+BOTH, start/stop always', () => {
+  // The same four rows the retired mergeSavedGestureSamples test used, as a listing.
   const rows = [
-    { label: 'a_esl', features: [1], signLanguage: 'ESL' },
-    { label: 'b_both', features: [2], signLanguage: 'BOTH' },
-    { label: 'c_fsl', features: [3], signLanguage: 'FSL' },
-    { label: 'start', features: [4], signLanguage: 'FSL' },
+    { label: 'a_esl', features: 1, signLanguage: 'ESL' },
+    { label: 'b_both', features: 2, signLanguage: 'BOTH' },
+    { label: 'c_fsl', features: 3, signLanguage: 'FSL' },
+    { label: 'start', features: 4, signLanguage: 'FSL' },
   ];
-  const esl = loadUi({ rows, lang: 'en' });
-  await esl.mergeSavedGestureSamples();
-  assert.deepEqual(Object.keys(esl.trainData()).sort(), ['a_esl', 'b_both', 'start', 'stop']);
-  const fsl = loadUi({ rows, lang: 'fil' });
-  await fsl.mergeSavedGestureSamples();
-  assert.deepEqual(Object.keys(fsl.trainData()).sort(), ['b_both', 'c_fsl', 'start', 'stop']);
+  const gestures = {};
+  rows.forEach((r) => { gestures[r.label] = [{ file: r.label + '.json', signLanguage: r.signLanguage, rows: [new Array(126).fill(r.features)] }]; });
+  const toRows = (sample) => sample.rows;
+  for (const r of rows) {
+    assert.equal(KnnCompile.inModel('ESL', r.label, r.signLanguage), r.label !== 'c_fsl', 'ESL ' + r.label);
+    assert.equal(KnnCompile.inModel('FSL', r.label, r.signLanguage), r.label !== 'a_esl', 'FSL ' + r.label);
+  }
+  assert.equal(KnnCompile.inModel('ESL', 'stop', 'FSL'), true);
+  assert.equal(KnnCompile.inModel('FSL', 'stop', 'ESL'), true);
+  const esl = KnnCompile.buildModel({ gestures, signs: {}, lang: 'ESL', toRows });
+  assert.deepEqual(Object.keys(esl.model).sort(), ['a_esl', 'b_both', 'start']);
+  assert.deepEqual(esl.header.labels.map((l) => l.key), ['a_esl', 'b_both', 'start']);
+  const fsl = KnnCompile.buildModel({ gestures, signs: {}, lang: 'FSL', toRows });
+  assert.deepEqual(Object.keys(fsl.model).sort(), ['b_both', 'c_fsl', 'start']);
+  // 'stop' has no samples here, so it is in neither file (the old in-memory model kept an empty
+  // 'stop' key, which knnPredict scored 0); with a sample it is in both.
+  gestures.stop = [{ file: 'stop.json', signLanguage: 'ESL', rows: [new Array(126).fill(5)] }];
+  assert.ok('stop' in KnnCompile.buildModel({ gestures, signs: {}, lang: 'FSL', toRows }).model);
+  assert.ok('stop' in KnnCompile.buildModel({ gestures, signs: {}, lang: 'ESL', toRows }).model);
+});
+
+// A stub KnnModelStore: load(lang) resolves the model given for that language (or rejects).
+function stubStore(byLang) {
+  const calls = [];
+  return {
+    calls,
+    load: async (lang) => {
+      calls.push(lang);
+      const m = byLang[lang];
+      if (!m || m instanceof Error) throw (m || new Error('no model for ' + lang));
+      const labels = Object.keys(m);
+      return {
+        header: { lang, rowCount: labels.reduce((n, k) => n + m[k].length, 0), labels: labels.map((k) => ({ key: k, set: 'BOTH', textEn: k + ' en', textFil: k + ' fil' })) },
+        model: m, labels, source: 'network', bytes: 1, etag: '"x"',
+      };
+    },
+  };
+}
+const row = (v) => new Array(126).fill(v);
+
+test('autoTrainForTranslate loads ESL for en and FSL for fil through KnnModelStore, never fetch', async () => {
+  const ESL = { a: [row(1)], hello: [row(2), row(3)], start: [row(4)] };
+  const FSL = { kain: [row(5)], start: [row(4)] };
+  const store = stubStore({ ESL, FSL });
+  const signCalls = [];
+  const recorder = { getSignText: () => null, setModelSigns: (l) => signCalls.push(plain(l)) };
+  const log = { fetched: [], logs: [], warns: [] };
+  const ui = loadUi({ recorder, store, lang: 'en', log });
+  assert.equal(await ui.autoTrainForTranslate(), true);
+  let st = ui.get();
+  assert.equal(st.knnModel, ESL);
+  assert.deepEqual(plain(st.activeLabels), ['a', 'hello', 'start']);
+  assert.equal(st.modelTrained, true);
+  assert.equal(st.activeFeatureSize, 126);
+  assert.deepEqual(signCalls[0].map((l) => l.key), ['a', 'hello', 'start']);
+  assert.ok(log.logs.includes('[KNN] ESL model: 4 rows, 3 labels (network)'), JSON.stringify(log.logs));
+  // already trained: no second load
+  assert.equal(await ui.autoTrainForTranslate(), true);
+  assert.deepEqual(store.calls, ['ESL']);
+  // switch to Filipino the way talk-signing.js does
+  ui.setLang('fil'); ui.reset();
+  assert.equal(await ui.autoTrainForTranslate(), true);
+  st = ui.get();
+  assert.equal(st.knnModel, FSL);
+  assert.deepEqual(plain(st.activeLabels), ['kain', 'start']);
+  assert.deepEqual(store.calls, ['ESL', 'FSL']);
+  assert.equal(signCalls.length, 2);
+  assert.deepEqual(log.fetched, []);
+  assert.deepEqual(log.warns, []);
+});
+
+test('autoTrainForTranslate returns false for a rejected load, a 1-label model and no store', async () => {
+  const log = { fetched: [], logs: [], warns: [] };
+  const rejected = loadUi({ store: stubStore({ ESL: new Error('[KnnModelStore] ESL model unavailable: HEAD failed; no stored copy') }), log });
+  assert.equal(await rejected.autoTrainForTranslate(), false);
+  assert.equal(rejected.get().modelTrained, false);
+  assert.ok(log.warns.some((w) => w.includes('ESL model unavailable')), JSON.stringify(log.warns));
+
+  const one = loadUi({ store: stubStore({ FSL: { start: [row(1)] } }), lang: 'fil', log, recorder: {} });
+  assert.equal(await one.autoTrainForTranslate(), false);
+  assert.equal(one.get().modelTrained, false);
+  assert.deepEqual(plain(one.get().activeLabels), ['start']);
+
+  const none = loadUi({ log });
+  assert.equal(await none.autoTrainForTranslate(), false);
+  assert.ok(log.warns.some((w) => w.includes('knn-model-store.js is not loaded')), JSON.stringify(log.warns));
+  assert.deepEqual(log.fetched, []);
 });
 
 // ── sign-player.js ──

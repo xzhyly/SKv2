@@ -147,9 +147,15 @@ async function main() {
     s2 = await ev(`({ lang: modelLanguage() })`);
     check('Step 1 Both -> Step 2 toggle defaults to ESL', s2.lang === 'ESL', JSON.stringify(s2));
     await ev(`document.querySelector('input[name="trainModelLang"][value="FSL"]').click(); true`);
-    await sleep(150);
-    const sw = await ev(`({ lang: modelLanguage(), trained: modelTrained, next: document.getElementById('step2NextBtn').style.display, merged: savedGestureSamplesMerged })`);
-    check('switching to FSL with no cached FSL model -> untrained, merged flag reset', sw.lang === 'FSL' && sw.trained === false && sw.next === 'none' && sw.merged === false, JSON.stringify(sw));
+    // compact-model phase: the toggle loads models/knn_FSL.bin (KnnModelStore); it used to leave
+    // the page untrained until Train was pressed.
+    let sw = null;
+    for (let i = 0; i < 40; i++) {
+      await sleep(150);
+      sw = await ev(`({ lang: modelLanguage(), trained: modelTrained, next: document.getElementById('step2NextBtn').style.display, status: (document.getElementById('modelStatusLine') || {}).textContent || '' })`);
+      if (sw.trained && /^FSL model:|^Model out of date: run Compile$/.test(sw.status)) break;
+    }
+    check('switching to FSL loads the FSL model file -> trained; status names FSL (or says out of date when the file is stale)', sw.lang === 'FSL' && sw.trained === true && /^FSL model:|^Model out of date: run Compile$/.test(sw.status), JSON.stringify(sw));
 
     console.log('--- text lookup ---');
     const tx = await ev(`({

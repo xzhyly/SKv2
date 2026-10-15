@@ -32,7 +32,8 @@
 //     request, and Redo returns to Ready;
 //   - 0 console errors / uncaught exceptions;
 //   - the test label (zz_video_capture_t5) is deleted afterwards (delete_gesture);
-//   - Train AI (Step 2) still completes after the removals.
+//   - Compile (Step 2, was Train AI) still completes after the removals (the model files it
+//     writes are backed up and restored byte for byte).
 //
 // (Overlap is checked pairwise between every visible one of: prompt, dots, hand indicator, REC,
 // hint, Cancel, chip, message, progress bar and the action-button column.)
@@ -43,6 +44,7 @@ import { mkdtempSync, rmSync, statSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome } from './cdp.mjs';
+import { guardModels } from '../compact-model/model-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -185,6 +187,7 @@ async function main() {
     const y4m = buildY4m(tmpDir);
     console.log(`fake camera file: ${statSync(y4m).size} bytes`);
     chrome = await launchChrome({
+      port: Number(process.env.CDP_PORT || 9333), // CDP_PORT: run beside another check on 9333
       extraArgs: [
         '--use-fake-device-for-media-stream',
         '--use-fake-ui-for-media-stream',
@@ -365,7 +368,7 @@ async function main() {
     console.log('  state log:', JSON.stringify(done.states));
     check('Done toast', done.toast === `3 samples saved for “${LABEL}”.`, done.toast);
     check('sample line: 3 samples, frames === sum of the 3 saved samples, Train AI note',
-      done.line2.samples === 3 && done.line2.frames === done.savedFrames && /Run Train AI/.test(done.line), `${done.line} (saved frames sum ${done.savedFrames})`);
+      done.line2.samples === 3 && done.line2.frames === done.savedFrames && /Run Compile/.test(done.line), `${done.line} (saved frames sum ${done.savedFrames})`);
     check('Done: caches invalidated once, reloadDataset once',
       done.reloads === 1 && JSON.stringify(done.removeModel) === '["indexeddb://sining-kamay-model-ESL"]' && done.labelsKey === null,
       JSON.stringify({ reloads: done.reloads, removeModel: done.removeModel, labelsKey: done.labelsKey }));
@@ -512,21 +515,28 @@ async function main() {
     }
 
     if (chrome) {
+      // Compact-model phase: Train AI is Compile, which writes models/knn_<LANG>.bin; both model
+      // files are backed up here and restored byte for byte below.
+      const models = guardModels();
       try {
-        console.log('--- Train AI (Step 2) ---');
+        console.log('--- Compile (Step 2, was Train AI) ---');
         await chrome.evaluate(`window.reloadDataset().then(() => true)`);
-        await chrome.evaluate(`trClickPill(2); showStepContent(2); document.getElementById('trainBtn').click(); true`);
+        await chrome.evaluate(`trClickPill(2); showStepContent(2); window.lastCompile = null; document.getElementById('trainBtn').click(); true`);
         const t0 = Date.now();
         let label = '';
         while (Date.now() - t0 < 300000) {
-          label = await chrome.evaluate(`document.getElementById('epochLabel').textContent`);
-          if (/^(Complete!|Up to date)/.test(label)) break;
+          if (await chrome.evaluate(`!!window.lastCompile && !compileRunning`)) break;
           await sleep(500);
         }
-        check('Train AI completes', /^(Complete!|Up to date)/.test(label), `${label} (${Date.now() - t0} ms)`);
+        label = await chrome.evaluate(`document.getElementById('epochLabel').textContent`);
+        check('Compile completes', /^Complete!/.test(label), `${label} (${Date.now() - t0} ms)`);
       } catch (e) {
         failures++;
-        console.log('  FAIL  Train AI: ' + e.message);
+        console.log('  FAIL  Compile: ' + e.message);
+      } finally {
+        const r = models.restore();
+        console.log('  models: ' + r.line);
+        check('model files restored byte for byte', r.ok);
       }
       const errors = chrome.getConsoleErrors();
       const exceptions = chrome.getExceptions();

@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><title>knn model store check</title>
+<!-- Same trick as tests/video-capture/extractor.page.html: relative URLs (the two scripts, and the
+     model URLs the driver passes) resolve as they would from a page at http://localhost/SKR/. -->
+<base href="/SKR/">
+<!-- No favicon request: check 9 asserts the page requests nothing but its scripts and model files. -->
+<link rel="icon" href="data:,">
+<script>
+// Counts console.warn calls (cdp.mjs only exposes errors) so the driver can assert exactly one
+// warning per fallback load. Installed before js/knn-model-store.js loads.
+window.__warns = [];
+(function () {
+  var orig = console.warn;
+  console.warn = function () {
+    window.__warns.push(Array.prototype.map.call(arguments, String).join(' '));
+    return orig.apply(console, arguments);
+  };
+})();
+</script>
+<script src="js/knn-compile.js"></script>
+<script src="js/knn-model-store.js"></script>
+</head>
+<body>
+<script>
+// Driven by tests/compact-model/store-check.mjs over CDP. Every function returns a plain
+// JSON-serializable value (Runtime.evaluate returnByValue).
+
+window.takeWarns = function () {
+  var w = window.__warns.slice();
+  window.__warns.length = 0;
+  return w;
+};
+
+// One KnnModelStore.load(). withRows: also return every row in header order (for the
+// Math.fround comparison in node). Never throws: a rejection comes back as { ok: false, error }.
+window.runLoad = async function (lang, url, dbName, withRows) {
+  var opts = { dbName: dbName };
+  if (url) opts.url = url;
+  var t0 = performance.now();
+  try {
+    var r = await window.KnnModelStore.load(lang, opts);
+    var ms = performance.now() - t0;
+    var out = {
+      ok: true,
+      ms: ms,
+      source: r.source,
+      bytes: r.bytes,
+      etag: r.etag,
+      labels: r.labels,
+      headerLabels: r.header.labels.map(function (L) { return L.key; }),
+      rowCount: r.header.rowCount,
+      modelRowCount: Object.keys(r.model).reduce(function (s, k) { return s + r.model[k].length; }, 0),
+      lang: r.header.lang,
+      buildDate: r.header.buildDate,
+      rowsArePlainArrays: Object.keys(r.model).every(function (k) {
+        return r.model[k].every(function (row) { return Array.isArray(row) && row.length === 126; });
+      })
+    };
+    if (withRows) out.rows = r.labels.map(function (k) { return r.model[k]; });
+    return out;
+  } catch (e) {
+    return { ok: false, ms: performance.now() - t0, error: e && e.message, labels: [], rows: [] };
+  }
+};
+
+window.storedInfo = function (dbName) {
+  return window.KnnModelStore.info({ dbName: dbName });
+};
+
+window.removeStored = function (lang, dbName) {
+  return window.KnnModelStore.remove(lang, { dbName: dbName });
+};
+
+function openDb(dbName) {
+  return new Promise(function (resolve, reject) {
+    var req = indexedDB.open(dbName, 1);
+    req.onupgradeneeded = function () { req.result.createObjectStore('models'); };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error); };
+  });
+}
+
+// Overwrites the stored buffer of `lang` (keeping etag/length/lastModified, so the next HEAD still
+// matches) with `n` bytes that are not a model file. Returns the entry's etag.
+window.corruptStored = async function (lang, dbName, n) {
+  var db = await openDb(dbName);
+  try {
+    var tx = db.transaction('models', 'readwrite');
+    var st = tx.objectStore('models');
+    var entry = await new Promise(function (res, rej) {
+      var g = st.get(lang);
+      g.onsuccess = function () { res(g.result); };
+      g.onerror = function () { rej(g.error); };
+    });
+    if (!entry) throw new Error('no stored ' + lang + ' entry to corrupt');
+    var junk = new Uint8Array(n || 64);
+    for (var i = 0; i < junk.length; i++) junk[i] = (i * 37 + 11) & 255;
+    entry.buffer = junk.buffer;
+    st.put(entry, lang);
+    await new Promise(function (res, rej) { tx.oncomplete = res; tx.onerror = function () { rej(tx.error); }; });
+    return entry.etag;
+  } finally {
+    db.close();
+  }
+};
+
+// Makes window.indexedDB throw (as a blocked/private profile would) until restoreIndexedDB().
+window.breakIndexedDB = function () {
+  window.__idbDesc = Object.getOwnPropertyDescriptor(window, 'indexedDB') ||
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(window), 'indexedDB');
+  Object.defineProperty(window, 'indexedDB', {
+    configurable: true,
+    get: function () { throw new DOMException('test: IndexedDB disabled', 'SecurityError'); }
+  });
+  var threw = false;
+  try { void window.indexedDB; } catch (e) { threw = true; }
+  return threw;
+};
+window.restoreIndexedDB = function () {
+  delete window.indexedDB;
+  if (!('indexedDB' in window) && window.__idbDesc) Object.defineProperty(window, 'indexedDB', window.__idbDesc);
+  return typeof window.indexedDB.open === 'function';
+};
+
+window.deleteDb = function (dbName) {
+  return new Promise(function (resolve) {
+    var req = indexedDB.deleteDatabase(dbName);
+    req.onsuccess = function () { resolve(true); };
+    req.onerror = function () { resolve(false); };
+    req.onblocked = function () { resolve(false); };
+  });
+};
+</script>
+</body>
+</html>

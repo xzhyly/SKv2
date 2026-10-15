@@ -5,14 +5,11 @@ function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '
 
 let stream = null, modelTrained = false, tfModel = null, knnModel = null;
 let currentStep = 4; // standalone translator behaves as step 4
-const trainData = { start: [], stop: [] };
 let translatedWords = [], wordIndex = 0, currentGesture = null, signLang = 'en';
 const GESTURE_HOLD_MS = 500;
 let customWords = [];
 let lastDetected = null, holdStart = null;
 let predictionHistory = [];
-let savedGestureSamplesMerged = false;
-let lastLoadedLanguage = null;
 let activeFeatureSize = 126;
 let activeLabels = ['start', 'stop'];
 const EPOCHS = 50;
@@ -98,98 +95,6 @@ window.showToast = showToast;
 
 function jitterFeatures(features,amount=0.015){return features.map(v=>v+((Math.random()*2-1)*amount))}
 
-async function mergeSavedGestureSamples() {
-  const targetLang = signLang === 'fil' ? 'FSL' : 'ESL';
-  if (savedGestureSamplesMerged && lastLoadedLanguage === targetLang) return;
-  if (typeof window.loadGestureDatasetForTraining !== 'function') return;
-  try {
-    const rows = await window.loadGestureDatasetForTraining(true); // Pass true to skip heavy PHP disk-to-db syncs
-    // Reset trainData so we don't duplicate on reload
-    for (const key in trainData) {
-      if (key !== 'start' && key !== 'stop') delete trainData[key];
-    }
-    trainData.start = [];
-    trainData.stop = [];
-    
-    let loadedCount = 0;
-    rows.forEach(({label,features,signLanguage}) => {
-      const itemLang = signLanguage || 'ESL';
-      // Load if language matches OR if it's the control gestures 'start' or 'stop' (shared across languages)
-      if (itemLang === targetLang || itemLang === 'BOTH' || (label === 'start' || label === 'stop')) {
-        if (!trainData[label]) trainData[label] = [];
-        trainData[label].push(features);
-        loadedCount++;
-      }
-    });
-    // Sync cached labels with database on load to avoid phantom gestures
-    try {
-      const cachedLabelsRaw = localStorage.getItem(`sining_kamay_labels_${targetLang}`);
-      if (cachedLabelsRaw) {
-        const cachedLabels = JSON.parse(cachedLabelsRaw);
-        // Find if any cached label is completely missing from current trainData
-        const validCached = cachedLabels.filter(label => trainData[label] && trainData[label].length > 0);
-        
-        const cachedKnnRaw = localStorage.getItem(`sining_kamay_knn_${targetLang}`);
-        if (cachedKnnRaw) {
-          const cachedKnn = JSON.parse(cachedKnnRaw);
-          const totalCachedFrames = Object.values(cachedKnn).flat().length;
-          const totalDbFrames = loadedCount;
-          
-          if (validCached.length !== cachedLabels.length || totalCachedFrames !== totalDbFrames) {
-            console.log(`[KNN] Cache mismatch (Labels: ${validCached.length} vs ${cachedLabels.length}, Frames: ${totalCachedFrames} vs DB ${totalDbFrames}). Rebuilding model...`);
-            localStorage.removeItem(`sining_kamay_knn_${targetLang}`);
-            localStorage.removeItem(`sining_kamay_labels_${targetLang}`);
-            knnModel = null;
-            activeLabels = ['start', 'stop'];
-            modelTrained = false;
-            
-            // Rebuild model from DB directly
-            const rebuiltKnn = {};
-            const rebuiltLabels = [];
-            for (const label in trainData) {
-              const allFrames = trainData[label].filter(f => Array.isArray(f) && f.length === 126);
-              if (allFrames.length > 0) {
-                rebuiltKnn[label] = allFrames;
-                rebuiltLabels.push(label);
-              }
-            }
-            if (rebuiltLabels.length >= 2) {
-              knnModel = rebuiltKnn;
-              activeLabels = rebuiltLabels;
-              modelTrained = true;
-              try {
-                localStorage.setItem(`sining_kamay_knn_${targetLang}`, JSON.stringify(knnModel));
-                localStorage.setItem(`sining_kamay_labels_${targetLang}`, JSON.stringify(activeLabels));
-              } catch (e) {
-                console.warn("[KNN] LocalStorage quota exceeded. Using in-memory model instead:", e);
-              }
-              console.log(`[KNN] Model rebuilt successfully from DB.`, activeLabels);
-            }
-          } else {
-            // Cache is up to date, load it
-            knnModel = cachedKnn;
-            activeLabels = validCached;
-            modelTrained = true;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[KNN] Failed to sync cache on merge:', e);
-    }
-
-    if (loadedCount) showToast(`Loaded ${loadedCount} saved landmark frames for ${targetLang}`);
-    savedGestureSamplesMerged = true;
-    lastLoadedLanguage = targetLang;
-  } catch(err){
-    console.warn('Saved gesture dataset unavailable:',err);
-    const dot = document.getElementById('tlDbStatusDot');
-    if (dot) {
-      dot.classList.remove('connected');
-      dot.title = "Database connection error: " + err.message;
-    }
-  }
-}
-
 function cosineSimilarity(a, b) {
   let dot = 0, magA = 0, magB = 0;
   for (let i = 0; i < a.length; i++) {
@@ -242,76 +147,30 @@ function knnPredict(features) {
   return { label: bestLabel, confidence: normalized[bestLabel], scores: normalized };
 }
 
-function loadKnnFromCache(targetLang) {
-  try {
-    const knnData   = localStorage.getItem(`sining_kamay_knn_${targetLang}`);
-    const labelsData = localStorage.getItem(`sining_kamay_labels_${targetLang}`);
-    if (knnData && labelsData) {
-      const parsedKnn = JSON.parse(knnData);
-      const parsedLabels = JSON.parse(labelsData);
-      const size = (Object.values(parsedKnn)[0]?.[0]?.length) || 126;
-      
-      if (typeof window.extractLandmarkFeatures === 'function' && size !== 126) {
-        console.warn(`[KNN] Cached model has feature size ${size} but landmarks (126) are supported. Discarding cache.`);
-        localStorage.removeItem(`sining_kamay_knn_${targetLang}`);
-        localStorage.removeItem(`sining_kamay_labels_${targetLang}`);
-        return false;
-      }
-      
-      knnModel = parsedKnn;
-      activeLabels = parsedLabels;
-      activeFeatureSize = size;
-      modelTrained = true;
-      return true;
-    }
-  } catch(e) {
-    console.warn('[KNN] Failed to load cached model:', e);
-  }
-  return false;
-}
-
-async function buildKnnFromDatabase(targetLang) {
-  await mergeSavedGestureSamples();
-  const localKnn = {};
-  const labels = [];
-  
-  for (const label in trainData) {
-    const allFrames = trainData[label].filter(f => Array.isArray(f) && f.length === 126);
-    if (allFrames.length > 0) {
-      localKnn[label] = allFrames;
-      labels.push(label);
-    }
-  }
-  
-  if (labels.length >= 2) {
-    knnModel = localKnn;
-    activeLabels = labels;
-    activeFeatureSize = 126;
-    modelTrained = true;
-    
-    try {
-      localStorage.setItem(`sining_kamay_knn_${targetLang}`, JSON.stringify(knnModel));
-      localStorage.setItem(`sining_kamay_labels_${targetLang}`, JSON.stringify(activeLabels));
-    } catch (e) {
-      console.warn("[KNN] LocalStorage quota exceeded. Using in-memory model instead:", e);
-    }
-    console.log(`[KNN] Successfully compiled model from DB for ${targetLang}. Labels:`, activeLabels);
-    return true;
-  }
-  
-  console.warn(`[KNN] Could not compile model from DB: less than 2 valid gesture labels found.`);
-  return false;
-}
-
 async function autoTrainForTranslate() {
+  // The model is the compiled file models/knn_<LANG>.bin (js/knn-model-store.js: one HEAD, then
+  // IndexedDB or one GET). Nothing here reads save_gesture.php or a localStorage model.
   if (modelTrained) return true;
   const targetLang = signLang === 'fil' ? 'FSL' : 'ESL';
-  
-  if (loadKnnFromCache(targetLang)) {
-    return true;
+  try {
+    const store = window.KnnModelStore;
+    if (!store || typeof store.load !== 'function') throw new Error('js/knn-model-store.js is not loaded');
+    const result = await store.load(targetLang);
+    // The language changed while the file loaded: this result belongs to the other language.
+    if ((signLang === 'fil' ? 'FSL' : 'ESL') !== targetLang) return false;
+    const rec = window.GestureDataRecorder;
+    if (rec && typeof rec.setModelSigns === 'function') rec.setModelSigns(result.header.labels);
+    console.log(`[KNN] ${targetLang} model: ${result.header.rowCount} rows, ${result.labels.length} labels (${result.source})`);
+    knnModel = result.model;
+    activeLabels = result.labels;
+    activeFeatureSize = 126;
+    modelTrained = activeLabels.length >= 2;
+    if (!modelTrained) console.warn(`[KNN] ${targetLang} model has fewer than 2 labels: not usable`);
+    return modelTrained;
+  } catch (e) {
+    console.warn(`[KNN] ${targetLang} model unavailable:`, e);
+    return false;
   }
-  
-  return await buildKnnFromDatabase(targetLang);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -827,27 +686,7 @@ function tlSaveLog(){
 
 // Startup
 window.addEventListener('DOMContentLoaded', async () => {
-  // Pre-load default language cache (ESL by default) on startup for instant ready state
-  const initLang = (signLang === 'fil' ? 'FSL' : 'ESL');
-  if (loadKnnFromCache(initLang)) {
-    console.log(`[KNN] Preloaded cached model for ${initLang} — ${activeLabels.length} gestures ready`);
-    tlModelReady = true;
-    
-    // Set UI states immediately so there is no loading delays
-    const dot = document.getElementById('tlDbStatusDot');
-    if (dot) {
-      dot.className = 'tl-title-dot connected';
-      dot.title = `Database connected & ${initLang} model ready (cached)!`;
-    }
-    const b1 = document.getElementById('tlTranslateBtn1');
-    if (b1) {
-      b1.disabled = false;
-      b1.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> START';
-    }
-    const overlay = document.getElementById('tlAiLoadingOverlay1');
-    if (overlay) overlay.style.display = 'none';
-  }
-
+  // The k-NN model is loaded by autoTrainForTranslate() (talk-loader.js "gestures" item).
   // Initialize skeleton toggle preference on startup
   window.showSkeleton = localStorage.getItem('sining_kamay_show_skeleton') !== 'false';
   const toggleBtn = document.getElementById('tlSkeletonToggle');

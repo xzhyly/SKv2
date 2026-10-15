@@ -99,10 +99,10 @@ const three1 = byName('ESL_zz_bulk_three_P01.webm'), three2 = byName('ESL_zz_bul
 const tworeps = byName(`ESL_${TWO_REPS_KEY}_P01.webm`);
 const IDS = videos.map((v) => v.id).concat([both.id, fsl.id]);
 const KEYS = [...new Set(videos.map((v) => v.key))].sort().concat([both.key, fsl.key]);
-// The kiosk's cosineSimilarity + knnPredict, as text (js/sign-to-text-ui.js:193-243).
+// The kiosk's cosineSimilarity + knnPredict, as text (js/sign-to-text-ui.js, up to autoTrainForTranslate).
 const kioskText = (() => {
   const lines = fs.readFileSync(path.join(REPO_ROOT, 'js', 'sign-to-text-ui.js'), 'utf8').split(/\r?\n/);
-  return lines.slice(lines.findIndex((l) => l.startsWith('function cosineSimilarity')), lines.findIndex((l) => l.startsWith('function loadKnnFromCache'))).join('\n');
+  return lines.slice(lines.findIndex((l) => l.startsWith('function cosineSimilarity')), lines.findIndex((l) => l.startsWith('async function autoTrainForTranslate'))).join('\n');
 })();
 // The rows each kiosk model holds, counted here from the saved samples: a sign's rows are in the
 // ESL model when its set is ESL or BOTH, in the FSL model when FSL or BOTH; "start" and "stop"

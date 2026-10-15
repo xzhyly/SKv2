@@ -66,7 +66,7 @@ async function main() {
     await ev(`showStepContent(1); true`);
     check('startup dataset load sees the probe', await waitFor(`!!GestureDataRecorder.getSigns().${KEY} && document.getElementById('datasetCount').textContent !== '0 gestures'`, 600));
     await sleep(400);
-    await ev(`window.__toasts = []; (() => { const o = window.showToast; window.showToast = function (m) { window.__toasts.push(String(m)); return o.apply(this, arguments); }; })(); window.__reloaded = 0; (() => { const o = window.reloadDataset; window.reloadDataset = async function () { const r = await o.apply(this, arguments); window.__reloaded++; return r; }; })(); true`);
+    await ev(`window.__toasts = []; (() => { const o = window.showToast; window.showToast = function (m) { window.__toasts.push(String(m)); return o.apply(this, arguments); }; })(); window.__reloaded = 0; (() => { const o = window.reloadDataset; window.reloadDataset = async function () { const r = await o.apply(this, arguments); window.__reloaded++; return r; }; })(); window.__ms = 0; (() => { const f = window.fetch; window.fetch = function (u) { if (String(u).includes('model_status.php')) window.__ms++; return f.apply(this, arguments); }; })(); true`);
 
     console.log('--- table at 1024x600 ---');
     await openModal();
@@ -156,15 +156,16 @@ async function main() {
     check('edit panel without keyboard: no page scroll', noKbPanel.sw === 1024 && noKbPanel.sh === 600);
 
     console.log('--- save ESL -> Both ---');
-    await ev(`localStorage.setItem('sining_kamay_labels_FSL', '["zz_marker"]'); localStorage.setItem('sining_kamay_labels_ESL', '["zz_marker"]'); true`);
-    const labelsBefore = await ev(`!!localStorage.getItem('sining_kamay_labels_FSL')`);
+    // Compact-model phase: the edit no longer clears a localStorage model cache; reloadDataset()
+    // refreshes the model status instead. Membership changes show as out of date per language.
+    const stBefore = await ev(`({ ms: window.__ms, esl: modelStatus && modelStatus.models.ESL.stale, fsl: modelStatus && modelStatus.models.FSL.stale })`);
     await setText('dsEditFil', 'Zz Pagsubok?');
     await save();
     check('Save -> toast "Saved." and back to table', await waitSaved(), JSON.stringify(await toasts()));
     rs = await rows();
     check('row shows both texts and "Both"; same tab/search kept', rs.length === 1 && rs[0][0] === 'Zz Edit Probe' && rs[0][1] === 'Zz Pagsubok?' && rs[0][2] === 'Both', JSON.stringify(rs));
-    const caches = await ev(`({ fsl: localStorage.getItem('sining_kamay_labels_FSL'), esl: localStorage.getItem('sining_kamay_labels_ESL') })`);
-    check('ESL->Both clears only FSL model cache (ESL membership unchanged)', labelsBefore && caches.fsl === null && caches.esl === '["zz_marker"]', JSON.stringify(caches));
+    const st1 = await ev(`({ ms: window.__ms, esl: modelStatus.models.ESL.stale, fsl: modelStatus.models.FSL.stale, fslWhy: modelStatus.models.FSL.staleReason })`);
+    check('ESL->Both: model status refreshed; FSL now out of date (membership changed), ESL still out of date (the probe is in it)', st1.ms > stBefore.ms && stBefore.fsl === false && stBefore.esl === true && st1.fsl === true && st1.fslWhy === 'data' && st1.esl === true, JSON.stringify({ stBefore, st1 }));
     let sg = await get('signs.php');
     const sign1 = (sg.signs && (Array.isArray(sg.signs) ? sg.signs.find((s) => s.key === KEY || s.label === KEY) : sg.signs[KEY])) || null;
     check('signs.php GET: Both, both texts', sign1 && sign1.set === 'BOTH' && sign1.textEn === 'Zz Edit Probe' && sign1.textFil === 'Zz Pagsubok?', JSON.stringify(sign1));
@@ -179,7 +180,7 @@ async function main() {
     await ev(`showStepContent(1); true`);
     await waitFor(`!!GestureDataRecorder.getSigns().${KEY} && document.getElementById('datasetCount').textContent !== '0 gestures'`, 600);
     await sleep(400);
-    await ev(`window.__toasts = []; (() => { const o = window.showToast; window.showToast = function (m) { window.__toasts.push(String(m)); return o.apply(this, arguments); }; })(); window.__reloaded = 0; (() => { const o = window.reloadDataset; window.reloadDataset = async function () { const r = await o.apply(this, arguments); window.__reloaded++; return r; }; })(); true`);
+    await ev(`window.__toasts = []; (() => { const o = window.showToast; window.showToast = function (m) { window.__toasts.push(String(m)); return o.apply(this, arguments); }; })(); window.__reloaded = 0; (() => { const o = window.reloadDataset; window.reloadDataset = async function () { const r = await o.apply(this, arguments); window.__reloaded++; return r; }; })(); window.__ms = 0; (() => { const f = window.fetch; window.fetch = function (u) { if (String(u).includes('model_status.php')) window.__ms++; return f.apply(this, arguments); }; })(); true`);
     reloadsSeen = 0;
     await openModal(); await search('zz edit');
     rs = await rows();
@@ -192,7 +193,7 @@ async function main() {
     console.log('--- Both -> ESL keeps hidden text stored ---');
     await editFromRow();
     check('Both prefilled with stored texts', (await ev(`document.getElementById('dsEditFil').value`)) === 'Zz Pagsubok?' && (await ev(`document.getElementById('dsEditEn').value`)) === 'Zz Edit Probe');
-    await ev(`localStorage.setItem('sining_kamay_labels_FSL', '["zz_marker"]'); localStorage.setItem('sining_kamay_labels_ESL', '["zz_marker"]'); true`);
+    const ms2 = await ev(`window.__ms`);
     await pickSet('ESL');
     check('set ESL hides the Filipino field', !(await ev(`document.getElementById('dsEditFilGroup').offsetParent !== null`)));
     await save();
@@ -202,16 +203,15 @@ async function main() {
     sg = await get('signs.php');
     const sign3 = Array.isArray(sg.signs) ? sg.signs.find((s) => s.key === KEY || s.label === KEY) : sg.signs[KEY];
     check('signs.php GET: ESL but textFil still stored', sign3 && sign3.set === 'ESL' && sign3.textFil === 'Zz Pagsubok?', JSON.stringify(sign3));
-    const caches2 = await ev(`({ fsl: localStorage.getItem('sining_kamay_labels_FSL'), esl: localStorage.getItem('sining_kamay_labels_ESL') })`);
-    check('Both->ESL clears only the FSL cache', caches2.fsl === null && caches2.esl === '["zz_marker"]', JSON.stringify(caches2));
-    // text-only edit clears nothing
-    await ev(`localStorage.setItem('sining_kamay_labels_FSL', '["zz_marker"]'); true`);
+    const st2 = await ev(`({ ms: window.__ms, esl: modelStatus.models.ESL.stale, fsl: modelStatus.models.FSL.stale })`);
+    check('Both->ESL: model status refreshed; FSL up to date again (probe left the FSL model), ESL out of date', st2.ms > ms2 && st2.fsl === false && st2.esl === true, JSON.stringify(st2));
+    // text-only edit: status refreshed, nothing changes (texts are not in the fingerprint)
+    const ms3 = await ev(`window.__ms`);
     await editFromRow();
     await setText('dsEditEn', 'Zz Edit Probe');
     await save(); check('text-only Save -> "Saved."', await waitSaved());
-    const caches3 = await ev(`({ fsl: localStorage.getItem('sining_kamay_labels_FSL'), esl: localStorage.getItem('sining_kamay_labels_ESL') })`);
-    check('text-only edit clears no caches', caches3.fsl === '["zz_marker"]' && caches3.esl === '["zz_marker"]', JSON.stringify(caches3));
-    await ev(`localStorage.removeItem('sining_kamay_labels_FSL'); localStorage.removeItem('sining_kamay_labels_ESL'); true`);
+    const st3 = await ev(`({ ms: window.__ms, esl: modelStatus.models.ESL.stale, fsl: modelStatus.models.FSL.stale })`);
+    check('text-only edit: model status refreshed, FSL still up to date, ESL still out of date', st3.ms > ms3 && st3.fsl === false && st3.esl === true, JSON.stringify(st3));
 
     console.log('--- HTML injection ---');
     await editFromRow();

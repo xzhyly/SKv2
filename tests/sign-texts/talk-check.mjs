@@ -46,7 +46,7 @@ async function main() {
 
     console.log('--- k-NN models ---');
     const loadModel = (lang) => ev(`(async () => {
-      signLang = ${JSON.stringify(lang)}; modelTrained = false; knnModel = null; savedGestureSamplesMerged = false; lastLoadedLanguage = null;
+      signLang = ${JSON.stringify(lang)}; modelTrained = false; knnModel = null; // models come from models/knn_<LANG>.bin
       const ok = await autoTrainForTranslate();
       return { ok, labels: Object.keys(knnModel || {}), modelTrained };
     })()`);

@@ -8,8 +8,9 @@
 //   3  Re-import after a reload: 0 new samples.
 //   4  Default signer + priority + Apply to all: the summary matches the avatar.json files; a sign
 //      picked by hand is untouched; a candidate without a sign is "not imported yet".
-//   5  Train Gestures: the samples show in the dataset view; Train AI completes with them; Predict
-//      runs on a fake camera.
+//   5  Train Gestures: the samples show in the dataset view; Compile (was Train AI) completes with
+//      them (the 90-row per-sign budget applies); Predict runs on a fake camera. The model files
+//      Compile writes are backed up first and restored byte for byte.
 //   6  No request carries video bytes; no video file written under the repo or C:\xampp; the cache
 //      is git-ignored; no kiosk page links to bulk-import.html; 0 console errors.
 // Killing the tab mid-extraction, Pause / Resume and the candidate picker have their own checks
@@ -25,6 +26,7 @@ import { buildY4m } from '../video-capture/fake-camera.mjs';
 import { callApi, cleanZz, dir, samples, sql, liveCounts, saved, signsApi } from '../sign-texts/api-helper.mjs';
 import { buildTestFolder, REPO_ROOT, TWO_REPS_KEY, REAL_NAME } from './folder.mjs';
 import { ZZ_ONLY } from './avatar-fixture.mjs';
+import { guardModels } from '../compact-model/model-guard.mjs';
 
 const BASE = 'http://localhost/SKR/';
 const CACHE = path.join(REPO_ROOT, 'bulk_import_cache');
@@ -82,6 +84,8 @@ const cacheOthersBefore = fs.existsSync(CACHE) ? J(Object.keys(apiGet('action=in
 console.log(`test folder: ${videos.length} videos (${videos.map((v) => v.name).join(', ')}), 1 bad name, 1 junk file${real ? '' : ' — the real video is NOT on this machine'}`);
 
 let c = null, g = null;
+// Compile (section 5) writes the real models/knn_<LANG>.bin: backed up here, restored in finally.
+const models = guardModels();
 try {
   // ══ bulk-import.html (every other host blocked) ══
   c = await launchChrome({ port: 9491, width: 1366, height: 768, extraArgs: ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost'] });
@@ -225,7 +229,7 @@ try {
   check('bulk-import.html: 0 console errors', e1.length === 0, J(e1).slice(0, 400));
   await c.close(); c = null;
 
-  // ══ 5. Train Gestures: dataset view, Train AI, Predict (fake camera) ══
+  // ══ 5. Train Gestures: dataset view, Compile, Predict (fake camera) ══
   const y4m = buildY4m(tmp);
   g = await launchChrome({ port: 9492, extraArgs: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', `--use-file-for-fake-video-capture=${y4m}`] });
   const gv = (e) => g.evaluate(e);
@@ -242,16 +246,19 @@ try {
   check('dataset view: every imported sign is listed with its sample count and an avatar tick', signKeys.every((k) => ds[k] && ds[k].includes(String(samples(k).length)) && ds[k].includes('✓')), J(ds));
   await gv(`(()=>{const m=document.querySelector('.tr-ds-close, #datasetCloseBtn');m&&m.click(); if (typeof trCloseDatasetModal==='function') trCloseDatasetModal();})(); 1`);
   await gv(`window.reloadDataset ? window.reloadDataset().then(() => true) : true`);
-  await gv(`trClickPill(2); showStepContent(2); document.getElementById('trainBtn').click(); true`);
+  await gv(`trClickPill(2); showStepContent(2); window.lastCompile = null; document.getElementById('trainBtn').click(); true`);
   let epochLabel = '';
   const tTrain = Date.now();
-  while (Date.now() - tTrain < 300000) { epochLabel = await gv(`document.getElementById('epochLabel').textContent`); if (/^(Complete!|Up to date)/.test(epochLabel)) break; await sleep(500); }
-  check('Train AI (ESL) completes', /^(Complete!|Up to date)/.test(epochLabel), `${epochLabel} (${Date.now() - tTrain} ms)`);
-  const trainRows = await gv(`(()=>{const o={};${J(signKeys)}.forEach(k=>{o[k]=(typeof trainData!=='undefined'&&trainData[k])?trainData[k].length:-1;});return o;})()`);
-  const cacheRows = (k) => videos.filter((v) => v.key === k && v !== tworeps).reduce((a, v) => a + index[v.id].reps.reduce((b, r) => b + r.rows, 0), 0);
-  check('the model holds the imported signs with exactly the cached repetitions\' rows (at most 30 per sample)', signKeys.every((k) => trainRows[k] === cacheRows(k)), J(trainRows));
+  while (Date.now() - tTrain < 300000) { if (await gv(`!!window.lastCompile && !compileRunning`)) break; await sleep(500); }
+  epochLabel = await gv(`document.getElementById('epochLabel').textContent`);
+  check('Compile (ESL) completes', /^Complete!/.test(epochLabel), `${epochLabel} (${Date.now() - tTrain} ms)`);
+  // Rows per sign = the cached repetitions' rows (at most 30 per sample) after the per-sign budget
+  // (compact-model phase): total <= 90 keeps all, else each sample keeps max(3, floor(90 / n)) rows.
+  const cacheLists = (k) => videos.filter((v) => v.key === k && v !== tworeps).flatMap((v) => index[v.id].reps.map((r) => r.rows)).filter((n) => n > 0);
+  const cacheRows = (k) => { const l = cacheLists(k); const total = l.reduce((a, b) => a + b, 0); if (total <= 90) return total; const keep = Math.max(3, Math.floor(90 / l.length)); return l.reduce((a, b) => a + Math.min(b, keep), 0); };
   const inModel = await gv(`(()=>{const o={};${J(signKeys)}.forEach(k=>{o[k]=(typeof knnModel!=='undefined'&&knnModel&&knnModel[k])?knnModel[k].length:-1;});return o;})()`);
-  check('knnModel includes them', signKeys.every((k) => inModel[k] === cacheRows(k)), J(inModel));
+  check('the compiled model holds the imported signs with the cached repetitions\' rows after the 90-row budget', signKeys.every((k) => inModel[k] === cacheRows(k)),
+    J({ model: inModel, expected: Object.fromEntries(signKeys.map((k) => [k, cacheRows(k)])), perSample: Object.fromEntries(signKeys.map((k) => [k, cacheLists(k)])) }));
   await gv(`trGoToStep(3); showStepContent(3); true`);
   await sleep(600);
   await gv(`document.getElementById('enableCamBtn').click(); 1`);
@@ -284,6 +291,9 @@ try {
 } finally {
   if (c) await c.close();
   if (g) await g.close();
+  const mr = models.restore();
+  console.log('models: ' + mr.line);
+  check('model files restored byte for byte', mr.ok);
   cleanZz();
   cleanCache();
   fs.rmSync(tmp, { recursive: true, force: true });

@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compact model bench</title>
+<!-- No favicon request. -->
+<link rel="icon" href="data:,">
+<style>
+  body { margin: 0; background: #1b2540; color: #fff; font: 16px system-ui, Arial, sans-serif; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  #status { margin: 0 0 8px; }
+  pre { background: #0d1530; padding: 12px; border-radius: 8px; white-space: pre-wrap; font-size: 12px; margin: 0; max-height: 470px; overflow: auto; }
+</style>
+</head>
+<body>
+<!--
+  Compact recognition model bench (compact-model phase, Task 7). No camera, no PIN, no PHP, no
+  writes anywhere except its own IndexedDB database `sk_bench_models` (deleted before and after;
+  the kiosk's own `sining_kamay_models` is never opened). Measures on this machine:
+  1. KnnModelStore.load of models/knn_ESL.bin and knn_FSL.bin: cold (HEAD + GET + decode +
+     IndexedDB put, after removing the stored copy) and warm (HEAD + IndexedDB get + decode), 3 runs.
+  2. The kiosk's own knnPredict (text extracted from js/sign-to-text-ui.js at run time, unchanged)
+     per call, a freshly compiled instance for every (model, array kind) timing, on the real ESL/FSL models and on synthetic 122-label models of growing size built
+     from the real ESL rows: 10 warm-up calls, then 60 timed queries (real rows); median and p90 ms;
+     plain Array rows (what the kiosk uses) and Float32Array views; whether both give the same top-1.
+     Sizes stop growing once a median exceeds 1,000 ms (the rest are recorded as skipped).
+  3. navigator.storage.estimate(), hardwareConcurrency, userAgent.
+  Prints one console line "COMPACT_BENCH {json}" (or "COMPACT_BENCH_FAILED <reason>"), also shown
+  on the page; tests/compact-model/pi-bench.sh reads it from Chromium's log on the Pi, and
+  tests/compact-model/bench-check.mjs drives it on the laptop.
+  Options: ?quick (two synthetic sizes only, for the laptop check), ?stopms=N (stop threshold, default
+  1000; for bench-check.mjs's test of the stop rule), ?models=<folder> (read the two model files from
+  that repo-relative folder instead of models/; bench-check.mjs uses it for the frozen-fixture
+  models).
+-->
+<h1>Compact model bench</h1>
+<p id="status">Loading…</p>
+<pre id="out"></pre>
+<script src="../../js/knn-compile.js"></script>
+<script src="../../js/knn-model-store.js"></script>
+<script>
+(function () {
+  'use strict';
+  var params = new URLSearchParams(location.search);
+  var QUICK = params.has('quick');
+  var DB = 'sk_bench_models';
+  // ?models=<folder> (relative to the repo root, e.g. tests/compact-model/.tmp-bench-x) reads the two
+  // files from there instead of models/; only bench-check.mjs uses it, to pin the frozen-fixture
+  // models while the live models/ change with the dataset.
+  var MODELS_DIR = 'models';
+  var MODELS_ERROR = null; // reported by main() as COMPACT_BENCH_FAILED
+  if (params.has('models')) {
+    MODELS_DIR = params.get('models');
+    if (!/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/.test(MODELS_DIR) || /(^|\/)\.\.(\/|$)/.test(MODELS_DIR)) {
+      MODELS_ERROR = 'bad ?models= folder ' + JSON.stringify(MODELS_DIR);
+    }
+  }
+  var MODEL_URL = { ESL: '../../' + MODELS_DIR + '/knn_ESL.bin', FSL: '../../' + MODELS_DIR + '/knn_FSL.bin' };
+  var LOAD_RUNS = 3;
+  var WARMUP = 10;
+  var QUERIES = 60;
+  // A median above this stops the size list. ?stopms=N overrides it (only bench-check.mjs uses it,
+  // to test the rule on the laptop).
+  var STOP_MS = params.has('stopms') ? Math.max(0, +params.get('stopms') || 0) : 1000;
+  // Step 1 report section 4: today's ESL / budget 90 x 8 signers / x 2 signers / 14,140 /
+  // current rule x 2 signers / x 8 signers.
+  var SIZES = QUICK ? [2047, 9164] : [2047, 9164, 10196, 14140, 24007, 89887];
+  var SYN_LABELS = 122;
+
+  var statusEl = document.getElementById('status');
+  var out = document.getElementById('out');
+  var logLines = [];
+  function progress(text) {
+    statusEl.textContent = text;
+    logLines.push(text);
+    out.textContent = logLines.join('\n');
+  }
+  function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
+  function r2(x) { return Math.round(x * 100) / 100; }
+
+  function deleteDb(name) {
+    return new Promise(function (resolve) {
+      var req;
+      try { req = indexedDB.deleteDatabase(name); } catch (e) { resolve('error: ' + e.message); return; }
+      req.onsuccess = function () { resolve('deleted'); };
+      req.onerror = function () { resolve('error: ' + (req.error && req.error.message)); };
+      req.onblocked = function () { resolve('blocked'); };
+    });
+  }
+
+  function estimate() {
+    if (!navigator.storage || !navigator.storage.estimate) return Promise.resolve({ error: 'navigator.storage.estimate unavailable' });
+    return navigator.storage.estimate().then(function (e) {
+      return { usage: e.usage, quota: e.quota, usageMB: r2(e.usage / 1048576), quotaMB: r2(e.quota / 1048576) };
+    }, function (e) { return { error: String(e && e.message || e) }; });
+  }
+
+  // The kiosk's own cosineSimilarity + knnPredict, exactly the span tests/compact-model/fixtures.mjs
+  // makeKioskKnn() extracts: from the line starting `function cosineSimilarity` up to (not
+  // including) the line starting `async function autoTrainForTranslate`, behind a model setter.
+  // Returns a factory: make(tag) builds a FRESH instance per call. Every (model, array kind) timing
+  // gets its own, so V8 type feedback from one run (e.g. Float32Array rows) cannot slow another
+  // (the kiosk only ever feeds plain Arrays). The source differs only by a trailing comment with
+  // the tag, so V8's compilation cache cannot hand back the same compiled code (review 1: a second
+  // instance from the identical source did not isolate the runs).
+  function loadKioskKnn() {
+    return fetch('../../js/sign-to-text-ui.js', { cache: 'no-store' }).then(function (res) {
+      if (!res.ok) throw new Error('GET js/sign-to-text-ui.js returned ' + res.status);
+      return res.text();
+    }).then(function (text) {
+      var src = text.split('\n');
+      var a = src.findIndex(function (l) { return l.startsWith('function cosineSimilarity'); });
+      var b = src.findIndex(function (l, i) { return i > a && l.startsWith('async function autoTrainForTranslate'); });
+      if (a < 0 || b < 0) throw new Error('knnPredict text not found in js/sign-to-text-ui.js');
+      var span = src.slice(a, b).join('\n');
+      var made = 0;
+      return {
+        make: function (tag) {
+          made++;
+          // eslint-disable-next-line no-new-func
+          return new Function(span + '\n// bench instance ' + made + ': ' + tag +
+            '\nlet knnModel = null;\nreturn { set(m) { knnModel = m; }, predict: knnPredict };')();
+        },
+        count: function () { return made; }
+      };
+    });
+  }
+
+  // 1. Model load through the store, cold and warm.
+  async function benchLoad(lang) {
+    var res = { url: MODEL_URL[lang], cold: [], warm: [], coldSource: [], warmSource: [], bytes: null, rows: null, labels: null };
+    var last = null;
+    for (var i = 0; i < LOAD_RUNS; i++) {
+      await window.KnnModelStore.remove(lang, { dbName: DB });
+      var t0 = performance.now();
+      var c = await window.KnnModelStore.load(lang, { dbName: DB, url: MODEL_URL[lang] });
+      res.cold.push(r2(performance.now() - t0));
+      res.coldSource.push(c.source);
+      await tick();
+      var t1 = performance.now();
+      var w = await window.KnnModelStore.load(lang, { dbName: DB, url: MODEL_URL[lang] });
+      res.warm.push(r2(performance.now() - t1));
+      res.warmSource.push(w.source);
+      last = w;
+      await tick();
+    }
+    res.bytes = last.bytes;
+    res.rows = last.header.rowCount;
+    res.labels = last.header.labels.length;
+    progress(lang + ' load: cold ' + res.cold.join(' / ') + ' ms, warm ' + res.warm.join(' / ') + ' ms, ' +
+      res.bytes + ' bytes, ' + res.rows + ' rows, ' + res.labels + ' labels');
+    return { result: res, model: last.model, labels: last.labels };
+  }
+
+  // Float32Array views of one flat buffer, same values (the decoded rows are Float32 values).
+  function toViews(model, labels) {
+    var n = 0;
+    labels.forEach(function (k) { n += model[k].length; });
+    var flat = new Float32Array(n * 126);
+    var typed = {};
+    var o = 0;
+    labels.forEach(function (k) {
+      typed[k] = model[k].map(function (row) {
+        flat.set(row, o);
+        var v = flat.subarray(o, o + 126);
+        o += 126;
+        return v;
+      });
+    });
+    return typed;
+  }
+
+  function stats(list) {
+    var s = list.slice().sort(function (a, b) { return a - b; });
+    return { median: r2(s[s.length >> 1]), p90: r2(s[Math.floor(s.length * 0.9)]), max: r2(s[s.length - 1]) };
+  }
+
+  // On a fresh knnPredict instance: 10 warm-up calls, then one timed call per query. Returns the
+  // times and the top-1 label per query.
+  async function timeModel(factory, tag, model, queries) {
+    var knn = factory.make(tag);
+    knn.set(model);
+    for (var i = 0; i < WARMUP; i++) knn.predict(queries[i % queries.length]);
+    await tick();
+    var times = [], tops = [];
+    for (var q = 0; q < queries.length; q++) {
+      var t0 = performance.now();
+      var p = knn.predict(queries[q]);
+      times.push(performance.now() - t0);
+      tops.push(p ? p.label : null);
+      if (q % 10 === 9) await tick();
+    }
+    knn.set(null);
+    return { times: times, tops: tops };
+  }
+
+  async function benchPredict(factory, name, rows, labelCount, plain, typed, queries) {
+    var a = await timeModel(factory, name + ' ' + rows + ' plain', plain, queries);
+    var b = await timeModel(factory, name + ' ' + rows + ' f32', typed, queries);
+    var same = 0;
+    for (var i = 0; i < a.tops.length; i++) if (a.tops[i] === b.tops[i]) same++;
+    var r = { name: name, rows: rows, labels: labelCount, queries: queries.length, warmup: WARMUP,
+      instance: 'own per array kind', plain: stats(a.times), f32: stats(b.times), sameTop1: same === a.tops.length, sameTop1Count: same };
+    progress(name + ' (' + rows + ' rows): plain median ' + r.plain.median + ' / p90 ' + r.plain.p90 +
+      ' ms; f32 median ' + r.f32.median + ' / p90 ' + r.f32.p90 + ' ms; same top-1 ' + same + '/' + a.tops.length);
+    return r;
+  }
+
+  // 60 query rows spread evenly over a model's own rows (real-model runs).
+  function evenRows(model, labels, n) {
+    var all = [];
+    labels.forEach(function (k) { all = all.concat(model[k]); });
+    var qs = [];
+    for (var i = 0; i < n; i++) qs.push(all[Math.round(i * (all.length - 1) / (n - 1))].slice());
+    return qs;
+  }
+
+  // Synthetic 122-label model of N rows from the real ESL rows, like .git/sdd/cm-step1/bench.mjs:
+  // Park-Miller PRNG (seed 7), each row a random real row plus +-0.01 noise on non-zero values,
+  // label 'l' + (i % 122); queries = 60 random real rows (no noise).
+  function synthetic(pool, N) {
+    var seed = 7;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    var flat = new Float32Array(N * 126);
+    var plain = {}, typed = {};
+    for (var i = 0; i < N; i++) {
+      var src = pool[Math.floor(rnd() * pool.length)];
+      for (var j = 0; j < 126; j++) flat[i * 126 + j] = src[j] + (src[j] ? (rnd() - 0.5) * 0.02 : 0);
+      var lab = 'l' + (i % SYN_LABELS);
+      var view = flat.subarray(i * 126, i * 126 + 126);
+      (plain[lab] || (plain[lab] = [])).push(Array.from(view));
+      (typed[lab] || (typed[lab] = [])).push(view);
+    }
+    var qs = [];
+    for (var q = 0; q < QUERIES; q++) qs.push(pool[Math.floor(rnd() * pool.length)].slice());
+    return { plain: plain, typed: typed, queries: qs, labels: Object.keys(plain).length };
+  }
+
+  async function main() {
+    if (MODELS_ERROR) throw new Error(MODELS_ERROR);
+    var t0 = performance.now();
+    var result = {
+      bench: 'compact-model', version: 2, quick: QUICK, stopMs: STOP_MS, modelsDir: MODELS_DIR, startedAt: new Date().toISOString(),
+      userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency || null,
+      deviceMemory: navigator.deviceMemory || null,
+      compareTo: 'kiosk prediction tick 150 ms (knnPredict must stay well under it; MediaPipe shares the CPU)',
+      definitions: {
+        cold: 'KnnModelStore.load after remove: HEAD + GET + decode + IndexedDB put, ms',
+        warm: 'KnnModelStore.load with the stored copy: HEAD + IndexedDB get + decode, ms',
+        predict: 'knnPredict per call, ms, ' + QUERIES + ' queries after ' + WARMUP + ' warm-up calls; plain = Array rows (kiosk), f32 = Float32Array views; ' +
+          'every (model, array kind) timing uses its own freshly compiled knnPredict instance (unchanged text plus a unique trailing comment), so no V8 type feedback is shared between timings'
+      }
+    };
+    progress('Deleting ' + DB + '…');
+    result.dbBefore = await deleteDb(DB);
+    result.storageBefore = await estimate();
+
+    progress('Extracting knnPredict from js/sign-to-text-ui.js…');
+    var knn = await loadKioskKnn(); // factory: knn.make(tag) -> a fresh instance
+
+    progress('Loading models (' + LOAD_RUNS + ' cold + ' + LOAD_RUNS + ' warm each)…');
+    var esl = await benchLoad('ESL');
+    var fsl = await benchLoad('FSL');
+    result.load = { ESL: esl.result, FSL: fsl.result };
+    result.storageWithModels = await estimate();
+
+    result.predict = [];
+    progress('knnPredict on the real models…');
+    result.predict.push(await benchPredict(knn, 'ESL real', esl.result.rows, esl.labels.length,
+      esl.model, toViews(esl.model, esl.labels), evenRows(esl.model, esl.labels, QUERIES)));
+    result.predict.push(await benchPredict(knn, 'FSL real', fsl.result.rows, fsl.labels.length,
+      fsl.model, toViews(fsl.model, fsl.labels), evenRows(fsl.model, fsl.labels, QUERIES)));
+
+    var pool = [];
+    esl.labels.forEach(function (k) { pool = pool.concat(esl.model[k]); });
+    fsl = null;
+    var stopped = null;
+    for (var s = 0; s < SIZES.length; s++) {
+      var N = SIZES[s];
+      if (stopped) {
+        result.predict.push({ name: 'synthetic', rows: N, labels: SYN_LABELS, skipped: stopped });
+        progress('synthetic ' + N + ' rows: skipped (' + stopped + ')');
+        continue;
+      }
+      progress('Building synthetic ' + N + ' rows…');
+      await tick();
+      var syn = synthetic(pool, N);
+      var r = await benchPredict(knn, 'synthetic', N, syn.labels, syn.plain, syn.typed, syn.queries);
+      result.predict.push(r);
+      syn = null;
+      var worst = Math.max(r.plain.median, r.f32.median);
+      if (worst > STOP_MS) stopped = 'the ' + N + '-row median was ' + worst + ' ms > ' + STOP_MS + ' ms';
+      await tick();
+    }
+
+    result.predictInstances = knn.count();
+    result.dbAfter = await deleteDb(DB);
+    result.totalMs = Math.round(performance.now() - t0);
+    return result;
+  }
+
+  main().then(function (result) {
+    var line = 'COMPACT_BENCH ' + JSON.stringify(result);
+    window.benchResult = result;
+    window.benchLine = line;
+    window.benchDone = true;
+    statusEl.textContent = 'Done in ' + (result.totalMs / 1000).toFixed(1) + ' s.';
+    out.textContent = logLines.join('\n') + '\n\n' + JSON.stringify(result, null, 2);
+    console.log(line);
+  }).catch(function (e) {
+    var reason = (e && e.message) ? e.message : String(e);
+    deleteDb(DB).then(function () {
+      var line = 'COMPACT_BENCH_FAILED ' + reason;
+      window.benchFailed = reason;
+      window.benchLine = line;
+      window.benchDone = true;
+      statusEl.textContent = 'Bench failed: ' + reason;
+      console.error(line);
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -15,6 +15,8 @@
   <script src="js/gesture-category.js" defer></script>
   <script src="js/camera-helper.js" defer></script>
   <script src="js/speech-synthesis.js" defer></script>
+  <script src="js/knn-compile.js" defer></script>
+  <script src="js/knn-model-store.js" defer></script>
   <style>
     /* Step 2 only: data list scrolls, buttons stay fixed at bottom */
     #trContentWrap.step-2-active #leftStep2 {
@@ -32,6 +34,16 @@
     #leftStep2 > *:not(#step2SummaryCard) {
       flex-shrink: 0 !important;
     }
+    /* Step 2 Compile (compact-model phase): status line, Pi warning, touch targets >= 44 px */
+    #leftStep2 .tr-model-status { font-size: 13px; font-weight: 700; color: var(--navy); min-height: 18px; }
+    #leftStep2 .tr-model-status.stale { color: #b45309; }
+    #leftStep2 .tr-train-note { font-size: 13px; }
+    #leftStep2 .tr-train-log { overflow-y: auto; white-space: pre-wrap; }
+    #leftStep2 .tr-train-log .log-err { color: #dc2626; }
+    #leftStep2 .tr-s2-actions { display: flex; gap: 8px; }
+    #leftStep2 .tr-s2-actions > button { flex: 1 1 0; min-width: 0; height: 48px; margin: 0; font-size: 15px; }
+    #leftStep2 .tr-back-to-instr { min-height: 44px; }
+    .tr-new-badge { background: #f97316; color: #fff; font-size: 9px; padding: 1px 6px; border-radius: 4px; font-weight: 900; letter-spacing: .5px; }
   </style>
 </head>
 <body>
@@ -79,7 +91,7 @@
       </button>
       <span class="tr-pill-sep">›</span>
       <button class="tr-pill" id="pill2" onclick="trClickPill(2)">
-        <span class="tr-pill-num">2</span><span class="tr-pill-lbl">Train AI</span>
+        <span class="tr-pill-num">2</span><span class="tr-pill-lbl">Compile</span>
       </button>
       <span class="tr-pill-sep">›</span>
       <button class="tr-pill" id="pill3" onclick="trClickPill(3)">
@@ -108,11 +120,11 @@
 
     <div id="trInstr2" class="tr-instr-card" style="display:none">
       <div class="tr-step-badge">STEP 2 OF 4</div>
-      <h1>Step 2: Train Gesture</h1>
-      <p class="tr-instr-desc">Review the captured samples, then start training. Keep this screen open until training is complete.</p>
+      <h1>Step 2: Compile the Model</h1>
+      <p class="tr-instr-desc">Compile builds the recognition model file from every saved sample. Steps 3 and 4 and Let's Talk use that file. Keep this screen open until Compile is complete.</p>
       <ul class="tr-instr-bullets">
-        <li><span class="tr-bullet-num">1</span>Check that you have enough start and stop samples.</li>
-        <li><span class="tr-bullet-num">2</span>Press the <strong>Train Gesture</strong> button to begin.</li>
+        <li><span class="tr-bullet-num">1</span>Choose the model: ESL (ESL and Both signs) or FSL (FSL and Both signs).</li>
+        <li><span class="tr-bullet-num">2</span>Press <strong>Compile</strong> when the status line says the model is out of date.</li>
         <li><span class="tr-bullet-num">3</span>Wait for the progress bar to finish before continuing.</li>
       </ul>
       <button class="tr-next-btn" onclick="showStepContent(2)">Next →</button>
@@ -252,7 +264,7 @@
               <button type="button" class="tr-ghost-btn" id="downloadBtn">Export Data</button>
               <button type="button" class="tr-ghost-btn" id="loadBtn">Load Saved</button>
             </div>
-            <button type="button" class="tr-train-btn" onclick="trClickPill(2)">Next: Train AI →</button>
+            <button type="button" class="tr-train-btn" onclick="trClickPill(2)">Next: Compile →</button>
           </div>
 
           <button type="button" class="tr-back-to-instr tr-s1-back" onclick="showStepInstruction(1)">← Back to Instructions</button>
@@ -261,7 +273,7 @@
 
       <!-- Step 2 -->
       <div id="leftStep2" class="tr-left-content" style="display:none">
-        <div class="tr-section-lbl">Train Gesture</div>
+        <div class="tr-section-lbl">Compile Model</div>
         <div class="tr-fgrp" id="trainModelGroup">
           <span class="tr-flbl">AI model</span>
           <div class="tr-sign-toggle">
@@ -269,17 +281,22 @@
             <label class="tr-sign-opt"><input type="radio" name="trainModelLang" value="FSL"> FSL</label>
           </div>
         </div>
-        <!-- DYNAMIC SUMMARY CARD (Bago) -->
+        <!-- Model file status (php/api/model_status.php) and, on the Pi, why Compile is off -->
+        <div class="tr-model-status" id="modelStatusLine" role="status" aria-live="polite">Checking the model file…</div>
+        <div class="tr-train-note" id="modelPiWarning" hidden>Build the model on the laptop, then copy models/knn_ESL.bin and models/knn_FSL.bin to the Pi.</div>
+        <!-- Signs of the selected model: rows in the loaded file, NEW = not compiled yet -->
         <div class="tr-summary-card" id="step2SummaryCard">
           <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center;">No training samples loaded yet.</p>
         </div>
         <div class="tr-fgrp">
-          <div class="tr-epoch-row"><span>Training progress</span><span id="epochLabel">0 / 50 epochs</span></div>
+          <div class="tr-epoch-row"><span>Compile progress</span><span id="epochLabel">Not started</span></div>
           <div class="tr-epoch-bar"><div class="tr-epoch-fill" id="epochBar" style="width:0%"></div></div>
         </div>
-        <div class="tr-train-log" id="trainLog">Ready to train. Press Train Gesture when samples are ready.</div>
-        <button type="button" class="tr-train-btn" id="trainBtn" onclick="trainModelGuarded()">Train Gesture</button>
-        <button type="button" class="tr-continue-btn" id="step2NextBtn" style="margin-top: 6px; display: none;" onclick="trClickPill(3)">Next: Predict →</button>
+        <div class="tr-train-log" id="trainLog">Compile builds the selected model (ESL: ESL and Both signs; FSL: FSL and Both signs; start and stop in both) from every saved sample, writes models/knn_ESL.bin or models/knn_FSL.bin, and loads that file for Steps 3 and 4 and Let's Talk. Run it after adding, deleting or editing signs.</div>
+        <div class="tr-s2-actions">
+          <button type="button" class="tr-train-btn" id="trainBtn" onclick="compileModelGuarded()">Compile</button>
+          <button type="button" class="tr-continue-btn" id="step2NextBtn" style="display: none;" onclick="trClickPill(3)">Next: Predict →</button>
+        </div>
         <button type="button" class="tr-back-to-instr" onclick="showStepInstruction(2)" style="margin-top:auto">← Back to Instructions</button>
       </div>
 

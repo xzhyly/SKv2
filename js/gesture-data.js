@@ -9,17 +9,18 @@
     ? "http://localhost/Sining_kamay/php/api/signs.php"
     : "php/api/signs.php";
 
-  // One-time model-schema reset (sign-texts phase): a model cached under the old schema was built
-  // from per-language sign folders; ESL/FSL models now include BOTH signs and key off the sign's
-  // set, so every cached model and label list is dropped once and rebuilt by pressing Train.
+  // One-time model-schema reset. "2" (sign-texts phase): ESL/FSL models include BOTH signs and key
+  // off the sign's set, so every cached model and label list was dropped once. "3" (compact-model
+  // phase): the model is the compiled file models/knn_<LANG>.bin, cached in IndexedDB
+  // (js/knn-model-store.js), so the old localStorage copies (about 3.4M characters) are dropped once.
   (function resetModelSchemaOnce() {
     try {
-      if (localStorage.getItem("sining_kamay_model_schema") === "2") return;
+      if (localStorage.getItem("sining_kamay_model_schema") === "3") return;
       ["sining_kamay_knn_ESL", "sining_kamay_knn_FSL",
         "sining_kamay_labels_ESL", "sining_kamay_labels_FSL",
         "sining_kamay_trained_labels_ESL", "sining_kamay_trained_labels_FSL"
       ].forEach((k) => { localStorage.removeItem(k); });
-      localStorage.setItem("sining_kamay_model_schema", "2");
+      localStorage.setItem("sining_kamay_model_schema", "3");
     } catch (e) { /* storage blocked: nothing cached to reset */ }
   })();
 
@@ -34,6 +35,7 @@
     toast: null,
     savedCategories: { ESL: {}, FSL: {} }, // last loadSavedGestureDataset()'s json.categories
     signs: {}, // key -> { set, textEn, textFil }: last loadSavedGestureDataset()'s json.signs / loadSigns()
+    modelSigns: Object.create(null), // key -> { set, textEn, textFil }: from model file headers (setModelSigns)
     // Video-based gesture capture (createVideoDetector / onHandResults, js/video-landmarks.js):
     detectorMode: false, // true while a createVideoDetector() detector "owns" onResults
     pendingDetectResolve: null, // resolves the in-flight detect(canvas) promise
@@ -683,8 +685,13 @@
     return json;
   }
 
-  async function loadSavedGestureDataset(noSync = false) {
-    const url = noSync ? `${SAVE_ENDPOINT}?no_sync=1` : SAVE_ENDPOINT;
+  // opts.summary: ask for the listing without frames (summary=1; save_gesture.php ignores it until
+  // it supports it, and then returns frames as before).
+  async function loadSavedGestureDataset(noSync = false, opts) {
+    const params = [];
+    if (noSync) params.push("no_sync=1");
+    if (opts && opts.summary) params.push("summary=1");
+    const url = params.length ? `${SAVE_ENDPOINT}?${params.join("&")}` : SAVE_ENDPOINT;
     const res = await fetch(url);
     const json = await res.json();
     if (!res.ok || !json.success) {
@@ -700,12 +707,27 @@
   }
 
   // The text of sign `key` in a language: 'fil' -> Filipino text, anything else -> English text.
-  // Returns a non-empty string, or null when the sign or that text is unknown.
+  // The database text (state.signs) wins; when it is unknown or empty, the text in a loaded model
+  // file header (setModelSigns) is used. Returns a non-empty string, or null when neither has one.
   function getSignText(key, lang) {
-    const sign = state.signs && state.signs[key];
-    if (!sign) return null;
-    const t = lang === "fil" ? sign.textFil : sign.textEn;
-    return (typeof t === "string" && t !== "") ? t : null;
+    const pick = (sign) => {
+      if (!sign) return null;
+      const t = lang === "fil" ? sign.textFil : sign.textEn;
+      return (typeof t === "string" && t !== "") ? t : null;
+    };
+    const fromDb = pick(state.signs && state.signs[key]);
+    if (fromDb !== null) return fromDb;
+    return Object.prototype.hasOwnProperty.call(state.modelSigns, key) ? pick(state.modelSigns[key]) : null;
+  }
+
+  // Remember the sign texts of a model file header (`header.labels`: [{ key, set, textEn, textFil,
+  // ... }]). Calls for both languages merge; a later call for the same key replaces it.
+  function setModelSigns(labels) {
+    if (!Array.isArray(labels)) return;
+    labels.forEach((l) => {
+      if (!l || typeof l.key !== "string" || l.key === "") return;
+      state.modelSigns[l.key] = { set: l.set, textEn: l.textEn, textFil: l.textFil };
+    });
   }
 
   // GET php/api/signs.php and merge each sign's { set, textEn, textFil } into the state. Resolves
@@ -803,6 +825,7 @@
     getSavedCategories,
     getSigns,
     getSignText,
+    setModelSigns,
     loadSigns,
     loadGestureDatasetForTraining,
     recordingToFeatureRows,

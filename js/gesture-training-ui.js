@@ -3,7 +3,6 @@
 let stream = null, modelTrained = false, tfModel = null, knnModel = {};
 let predictLoop = null;
 let currentStep = 1;
-const trainData = { start: [], stop: [] };
 let startCount = 0, stopCount = 0;
 let isRecordingStart = false, isRecordingStop = false, recordInterval = null;
 let translatedWords = [], wordIndex = 0, currentGesture = null, signLang = 'en';
@@ -11,10 +10,21 @@ const GESTURE_HOLD_MS = 700;
 let customWords = [];
 let lastDetected = null, holdStart = null;
 let predictionHistory = [];
-let savedGestureSamplesMerged = false;
 let activeFeatureSize = 126;
-let activeLabels = ['start', 'stop'];
+let activeLabels = [];
 const EPOCHS = 50;
+
+// Compact-model phase: Steps 2-4 use the compiled model file models/knn_<LANG>.bin, loaded through
+// js/knn-model-store.js (IndexedDB cache). Compile (Step 2) builds it in the browser (js/knn-compile.js)
+// from a full-sync summary listing plus `labels=` frame batches, and POSTs it to php/api/compile_model.php.
+let loadedModel = null;        // { lang, header, labels, source, bytes } of the file knnModel came from, else null
+let modelLoadSeq = 0;          // the latest loadModelForLang() call; older results are dropped
+let modelStatus = null;        // last php/api/model_status.php answer, null = unknown / unavailable
+let modelStatusSeq = 0;
+let modelStatusReady = Promise.resolve(null);
+let listingGestures = null;    // the last summary listing (no frames): label -> [{file, frameCount, ...}]
+let compileRunning = false;
+const PI_WARNING = 'Build the model on the laptop, then copy models/knn_ESL.bin and models/knn_FSL.bin to the Pi.';
 
 let currentSentence = [];       // Dito iipunin ang mga nade-detect na salita
 let isSentenceActive = false;    // Tracker kung nasa loob ng start/stop block
@@ -260,13 +270,8 @@ async function trDatasetEditSave() {
       trDatasetEditMessage((json && json.error) || `Save failed (HTTP ${res.status}).`);
       return;
     }
-    // Model caches: clear every language whose membership changed (ESL = ESL|BOTH, FSL = FSL|BOTH).
-    const inLang = (s, lang) => s === 'BOTH' || s === lang;
-    ['ESL', 'FSL'].forEach(lang => {
-      if (inLang(oldSet, lang) !== inLang(set, lang)) {
-        try { localStorage.removeItem(`sining_kamay_labels_${lang}`); } catch (e) { /* storage unavailable */ }
-      }
-    });
+    // No model cache to clear any more (compact-model phase): reloadDataset() below refreshes the
+    // model status, which reads "Model out of date" for every language whose membership changed.
     showToast('Saved.');
     datasetEditing = null;
     trShowDatasetEditPanel(false);
@@ -365,33 +370,42 @@ function showToast(message, duration = 3000) {
 }
 window.showToast = showToast;
 
-// ── DYNAMIC SUMMARY CARD DRAWING (STEP 2) — shows all gestures + NEW badge ──
+// ── STEP 2 SUMMARY CARD — the selected model's signs + NEW badge ──
+// Every sign of the summary listing that belongs in the selected model (KnnCompile.inModel), with
+// its row count from the loaded model file's header; a sign with samples that the loaded file
+// does not have yet gets a NEW badge ("not compiled yet").
+function listingSet(signs, label, samples) {
+  const sign = signs && Object.prototype.hasOwnProperty.call(signs, label) ? signs[label] : null;
+  return (sign && sign.set) || (samples && samples[0] && samples[0].signLanguage) || 'ESL';
+}
 function updateUI() {
   const card = document.getElementById('step2SummaryCard');
   if (!card) return;
-  const labels = Object.keys(trainData);
-  if (labels.length === 0) {
+  if (!listingGestures || !window.KnnCompile) {
     card.innerHTML = '<p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center;">No training samples loaded yet.</p>';
     return;
   }
-
-  // Detect NEW gestures not yet compiled into the KNN model
-  const targetLang = modelLanguage();
-  let trainedLabels = [];
-  try {
-    const stored = localStorage.getItem(`sining_kamay_trained_labels_${targetLang}`);
-    if (stored) trainedLabels = JSON.parse(stored);
-  } catch(e) {}
-
-  card.innerHTML = labels.map(label => {
-    const count = trainData[label] ? trainData[label].length : 0;
-    const isNew = trainedLabels.length > 0 && !trainedLabels.includes(label);
-    return `
-      <div class="tr-summary-row" style="display:flex; justify-content:space-between; align-items:center; font-size:12px; font-weight:700; margin-bottom:6px;">
-        <span style="display:flex;align-items:center;gap:4px;">${label.replace(/_/g, ' ').toUpperCase()}${isNew ? ' <span style="background:#f97316;color:#fff;font-size:9px;padding:1px 6px;border-radius:4px;font-weight:900;letter-spacing:.5px;vertical-align:middle;">NEW</span>' : ''}</span>
-        <span class="tr-summary-val" style="color:var(--navy); font-weight:900;">${count} frames</span>
-      </div>
-    `;
+  const lang = modelLanguage();
+  const signs = GestureDataRecorder.getSigns() || {};
+  const rowsInFile = Object.create(null);
+  if (loadedModel && loadedModel.lang === lang) loadedModel.header.labels.forEach(L => { rowsInFile[L.key] = L.rows; });
+  const keys = Object.keys(listingGestures).filter(label =>
+    KnnCompile.inModel(lang, label, listingSet(signs, label, listingGestures[label]))).sort();
+  if (keys.length === 0) {
+    card.innerHTML = `<p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center;">No ${lang} signs in the saved samples yet.</p>`;
+    return;
+  }
+  const compiled = keys.filter(k => rowsInFile[k] !== undefined).length;
+  const head = `<div class="tr-summary-row" style="font-size:11px; color:var(--muted);"><span>${keys.length} ${lang} signs in the saved samples</span><span>${compiled} in the model file</span></div>`;
+  card.innerHTML = head + keys.map(label => {
+    const nSamples = listingGestures[label].length;
+    const rows = rowsInFile[label];
+    let right;
+    if (rows !== undefined) right = `<span class="tr-summary-val" style="color:var(--navy); font-weight:900;">${rows} rows</span>`;
+    else if (nSamples === 0) right = '<span class="tr-summary-val" style="color:var(--muted);">no samples</span>';
+    else right = '<span class="tr-summary-val" style="color:#b45309;">not compiled yet</span>';
+    const badge = rows === undefined && nSamples > 0 ? ' <span class="tr-new-badge">NEW</span>' : '';
+    return `<div class="tr-summary-row" data-key="${escapeHtml(label)}"><span style="display:flex;align-items:center;gap:4px;">${escapeHtml(label.replace(/_/g, ' ').toUpperCase())}${badge}</span>${right}</div>`;
   }).join('');
 }
 
@@ -468,7 +482,7 @@ function noteSampleSaved(res) {
   const e = savedSampleInfo[res.label] || (savedSampleInfo[res.label] = { samples: 0, frames: 0 });
   e.samples = res.labelSampleCount || e.samples + 1;   // server count is authoritative
   e.frames += res.frameCount || 0;                     // exact again after the next dataset reload
-  justSavedNote = 'Saved. Run Train AI (Step 2) again to use it.';
+  justSavedNote = 'Saved. Run Compile (Step 2) again to use it.';
 }
 // The existing sign with this key if it was saved under a DIFFERENT set than the form's, else null.
 function conflictingSign(key) {
@@ -501,7 +515,9 @@ function refreshSampleCountLine() {
 }
 
 // ── DATASET DISPLAY IN STEP 1 (Table with Delete buttons) ──
-async function renderSavedDataset(prefetchedGestures) {
+// prefetchedGestures: a summary listing (no frames) already fetched by refreshDataset(); loadError:
+// that fetch's error, shown in place of the table. Called with neither, it fetches a summary itself.
+async function renderSavedDataset(prefetchedGestures, loadError) {
   const tableWrap = document.getElementById('gestureDatasetTableWrap');
   const datasetCount = document.getElementById('datasetCount');
   if (!tableWrap) return;
@@ -510,7 +526,8 @@ async function renderSavedDataset(prefetchedGestures) {
   datasetGroups = null;
   tableWrap.innerHTML = '';
   try {
-    const gestures = prefetchedGestures || await GestureDataRecorder.loadSavedGestureDataset();
+    if (loadError) throw loadError;
+    const gestures = prefetchedGestures || await GestureDataRecorder.loadSavedGestureDataset(false, { summary: true });
     rebuildSampleInfo(gestures); refreshSampleCountLine();
     const labels = Object.keys(gestures);
     datasetCount.textContent = `${labels.length} gestures`;
@@ -540,7 +557,7 @@ async function renderSavedDataset(prefetchedGestures) {
     Object.keys(groups).forEach(cat => groups[cat].sort((a, b) => a.label.localeCompare(b.label)));
     datasetGroups = groups;
   } catch(err) {
-    tableWrap.innerHTML = `<p style="font-size:11px; color:#ef4444; text-align:center; padding:10px;">Error loading dataset: ${err.message}</p>`;
+    tableWrap.innerHTML = `<p style="font-size:11px; color:#ef4444; text-align:center; padding:10px;">Error loading dataset: ${escapeHtml(err && err.message)}</p>`;
   } finally {
     trRenderDatasetView();
     autoSelectCategory();
@@ -564,10 +581,9 @@ async function deleteGesture(label) {
     const json = await res.json();
     if (json.success) {
       showToast(`🗑️ Deleted gesture "${label}"`);
-      delete trainData[label];
       delete savedSampleInfo[label]; refreshSampleCountLine();
-      renderSavedDataset();
-      updateUI();
+      // Full disk sync (as before), summary listing; then the model status (now out of date).
+      await refreshDataset(false);
     } else {
       alert("Failed to delete gesture: " + json.error);
     }
@@ -644,38 +660,318 @@ function modelLanguage() {
   return r && String(r.value).toUpperCase() === 'FSL' ? 'FSL' : 'ESL';
 }
 
-// #trainBtn's handler: the Step 2 model-language radios are locked while trainModel() runs (it
-// reads the choice at the start and saves per-language state at the end), and always re-enabled.
-async function trainModelGuarded() {
-  const radios = document.querySelectorAll('input[name="trainModelLang"]');
-  radios.forEach(r => { r.disabled = true; });
-  try {
-    await trainModel();
-  } finally {
-    radios.forEach(r => { r.disabled = false; });
-  }
-}
-
 // Step 3 shows the sign's text in the model's language (ESL -> English, FSL -> Filipino).
 function predictDisplayText(label) {
   return translateGestureLabel(label, modelLanguage() === 'FSL' ? 'fil' : 'en');
 }
 
-// The model toggle changed (or was reset): load that language's cached model if there is one,
-// else mark the model untrained so Train must be pressed.
-function onModelLanguageChanged() {
-  savedGestureSamplesMerged = false;
-  if (!loadKnnFromCache(modelLanguage())) {
-    modelTrained = false;
-    knnModel = {};
-    activeLabels = ['start', 'stop'];
-    const nextBtn = document.getElementById('step2NextBtn');
-    if (nextBtn) nextBtn.style.display = 'none';
-    const trainBtn = document.getElementById('trainBtn');
-    if (trainBtn) { trainBtn.disabled = false; trainBtn.textContent = 'Train Gesture'; }
+// ── Model file: load (Steps 2-4), status line, Compile (compact-model phase) ──
+
+const fmtInt = (n) => Number(n).toLocaleString('en-US');
+
+// No model in memory: Steps 3/4 locked, Step 2's Next hidden.
+function clearLoadedModel() {
+  knnModel = {};
+  activeLabels = [];
+  activeFeatureSize = 126;
+  modelTrained = false;
+  loadedModel = null;
+  refreshStep2Buttons();
+}
+
+// Use a KnnModelStore.load() result: exactly the rows of the file (labels in header order).
+function applyLoadedModel(lang, res) {
+  knnModel = res.model;
+  activeLabels = res.labels.slice();
+  activeFeatureSize = 126;
+  modelTrained = activeLabels.length >= 2;
+  loadedModel = { lang, header: res.header, labels: res.labels.slice(), source: res.source, bytes: res.bytes };
+  if (typeof GestureDataRecorder.setModelSigns === 'function') GestureDataRecorder.setModelSigns(res.header.labels);
+  console.log(`[KNN] ${lang} model: ${res.header.rowCount} rows, ${activeLabels.length} labels (${res.source})`);
+  if (!modelTrained) console.warn(`[KNN] ${lang} model has ${activeLabels.length} label(s); at least 2 are needed for Steps 3 and 4`);
+  refreshStep2Buttons();
+}
+
+// Loads models/knn_<lang>.bin for Steps 2-4. A stored copy used only because the server's file is
+// missing or broken ('cache-fallback') is accepted on the Pi (keep the last good file, as the
+// kiosk does) but not on the laptop, where the answer is to run Compile. Resolves true/false.
+async function loadModelForLang(lang) {
+  const seq = ++modelLoadSeq;
+  clearLoadedModel();
+  updateUI();
+  let res = null, why = null;
+  try {
+    if (!window.KnnModelStore) throw new Error('js/knn-model-store.js is not loaded');
+    res = await KnnModelStore.load(lang);
+    if (res.source === 'cache-fallback') {
+      const st = await modelStatusReady;
+      if (!st || st.device !== 'pi') { why = 'the model file on the server is missing or cannot be read'; res = null; }
+    }
+  } catch (e) {
+    why = e && e.message ? e.message : String(e);
+  }
+  if (seq !== modelLoadSeq || modelLanguage() !== lang) return false;   // a newer load or another language won
+  if (!res) {
+    console.warn(`[KNN] ${lang} model not loaded: ${why}`);
+  } else {
+    applyLoadedModel(lang, res);
   }
   updateTrPills(currentStep);
   updateUI();
+  return !!res && modelTrained;
+}
+
+// GET php/api/model_status.php and redraw the status line. Resolves the answer, or null when it is
+// unavailable (one console.warn). Never rejects.
+function refreshModelStatus() {
+  const seq = ++modelStatusSeq;
+  const p = fetch('php/api/model_status.php', { cache: 'no-store' })
+    .then((res) => res.json().then((j) => {
+      if (!res.ok || !j || j.success !== true) throw new Error((j && j.error) || `HTTP ${res.status}`);
+      return j;
+    }))
+    .then((j) => j, (e) => { console.warn('[gesture-training] model status unavailable:', e); return null; })
+    .then((j) => {
+      if (seq === modelStatusSeq) { modelStatus = j; renderModelStatus(); }
+      return j;
+    });
+  modelStatusReady = p;
+  return p;
+}
+
+// "<LANG> model: <rows> rows, <labels> signs, built <date> — up to date" / "Model out of date: run
+// Compile" / "No model file: run Compile". On the Pi: Compile disabled, the warning shown, no
+// out-of-date text (the Pi lacks the bulk samples by design, so it cannot judge).
+function renderModelStatus() {
+  const line = document.getElementById('modelStatusLine');
+  const warn = document.getElementById('modelPiWarning');
+  const lang = modelLanguage();
+  const onPi = !!(modelStatus && modelStatus.device === 'pi');
+  if (warn) warn.hidden = !onPi;
+  refreshStep2Buttons();
+  if (!line) return;
+  let text, stale = false;
+  const m = modelStatus && modelStatus.models ? modelStatus.models[lang] : null;
+  if (!modelStatus) { text = 'Model status unavailable'; stale = true; }
+  else if (!m || !m.exists) { text = onPi ? 'No model file' : 'No model file: run Compile'; stale = true; }
+  else if (m.stale) { text = 'Model out of date: run Compile'; stale = true; }
+  else if (!m.header) { text = `${lang} model file cannot be read`; stale = true; }
+  else {
+    const h = m.header;
+    const built = h.buildDate ? new Date(h.buildDate).toLocaleString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'at an unknown time';
+    text = `${lang} model: ${fmtInt(h.rowCount)} rows, ${fmtInt(h.labelCount)} signs, built ${built}` + (onPi ? '' : ' — up to date');
+  }
+  line.textContent = text;
+  line.classList.toggle('stale', stale);
+}
+
+// Compile is off while it runs and on the Pi; Next shows only with a usable model in memory.
+function refreshStep2Buttons() {
+  const btn = document.getElementById('trainBtn');
+  const next = document.getElementById('step2NextBtn');
+  const onPi = !!(modelStatus && modelStatus.device === 'pi');
+  if (btn) {
+    btn.disabled = compileRunning || onPi;
+    btn.textContent = compileRunning ? 'Compiling…' : 'Compile';
+  }
+  if (next) next.style.display = modelTrained && !compileRunning ? 'flex' : 'none';
+}
+
+// #trainBtn's handler: the Step 2 model-language radios are locked while Compile runs (it reads
+// the choice at the start and loads that language's file at the end), and always re-enabled.
+async function compileModelGuarded() {
+  if (compileRunning) return;
+  const radios = document.querySelectorAll('input[name="trainModelLang"]');
+  radios.forEach(r => { r.disabled = true; });
+  try {
+    await compileModel();
+  } finally {
+    radios.forEach(r => { r.disabled = false; });
+  }
+}
+
+const COMPILE_STAGES = 5;
+const COMPILE_BATCH_SAMPLES = 60;   // samples with frames per save_gesture.php request (one bigger sign: alone)
+const COMPILE_BATCH_SIGNS = 200;    // the endpoint's labels= limit
+function compileFail(message) { const e = new Error(message); e.compileMessage = true; return e; }
+
+// Compile (replaces trainModel's incremental merge): model_status (refused on the Pi) -> full-sync
+// summary listing (no frames; fingerprint) -> frames a batch of signs at a time
+// (save_gesture.php?no_sync=1&labels=...) into KnnCompile.createBuilder -> encode -> POST
+// php/api/compile_model.php?lang=L -> KnnModelStore.load(L), so the page uses exactly the written file.
+async function compileModel() {
+  const lang = modelLanguage();
+  const log = document.getElementById('trainLog');
+  const epochBar = document.getElementById('epochBar');
+  const epochLabel = document.getElementById('epochLabel');
+  const addLog = (msg, cls = '') => {
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = msg;
+    log.appendChild(span); log.appendChild(document.createTextNode('\n'));
+    log.scrollTop = log.scrollHeight;
+  };
+  const stage = async (n, text) => {
+    epochBar.style.width = Math.round(((n - 1) / COMPILE_STAGES) * 100) + '%';
+    epochLabel.textContent = `${n} of ${COMPILE_STAGES}: ${text}…`;
+    await new Promise(r => setTimeout(r, 0));   // let the bar paint between stages
+  };
+  const file = `models/knn_${lang}.bin`;
+  const t0 = performance.now();
+  compileRunning = true;
+  refreshStep2Buttons();
+  log.textContent = '';
+  addLog(`Compiling the ${lang} model…`, 'log-warn');
+  try {
+    await stage(1, 'Checking the device');
+    const st = await refreshModelStatus();
+    if (!st) throw compileFail('Compile failed: the model status (php/api/model_status.php) could not be read');
+    if (st.device === 'pi') throw compileFail(PI_WARNING);
+
+    await stage(2, 'Reading the sample list');
+    // ONE summary listing (no frames) WITH the disk-to-DB sync: labels, sample files, signs,
+    // categories. The full listing with frames runs PHP out of memory at ~732 v3 samples, so the
+    // frames are read below a batch of signs at a time.
+    let summary;
+    try {
+      summary = await GestureDataRecorder.loadSavedGestureDataset(false, { summary: true });
+    } catch (e) {
+      throw compileFail(`Compile failed: the sample list could not be loaded (${e.message})`);
+    }
+    // The listing's own signs/categories, copied at once (a later loadSigns() would merge
+    // signs.php into the same state), so the fingerprint matches model_status.php's.
+    const signs = Object.assign({}, GestureDataRecorder.getSigns());
+    const cats = GestureDataRecorder.getSavedCategories() || {};
+    const categories = { ESL: Object.assign({}, cats.ESL), FSL: Object.assign({}, cats.FSL) };
+    listingGestures = summary;
+    const fpText = KnnCompile.fingerprintText(summary, signs, lang);
+
+    // The signs with at least one in-model sample file, and the files the summary listed.
+    const inModelFiles = Object.create(null);   // label -> Set of `file`
+    Object.keys(summary).sort().forEach(label => {
+      const files = summary[label].filter(s => KnnCompile.inModel(lang, label, listingSet(signs, label, [s]))).map(s => s.file);
+      if (files.length) inModelFiles[label] = new Set(files);
+    });
+    const todo = Object.keys(inModelFiles);
+    if (todo.length < 2) throw compileFail('Add at least 2 signs before compiling');
+    const batches = [];
+    let cur = [], curSamples = 0;
+    todo.forEach(label => {
+      const n = inModelFiles[label].size;
+      if (cur.length && (curSamples + n > COMPILE_BATCH_SAMPLES || cur.length >= COMPILE_BATCH_SIGNS)) { batches.push(cur); cur = []; curSamples = 0; }
+      cur.push(label); curSamples += n;
+    });
+    if (cur.length) batches.push(cur);
+
+    await stage(3, `Reading samples 0/${todo.length} signs`);
+    const builder = KnnCompile.createBuilder({ signs, categories, lang, toRows: GestureDataRecorder.recordingToFeatureRows });
+    const batchLog = [];
+    let doneSigns = 0, missing = 0;
+    for (let b = 0; b < batches.length; b++) {
+      const keys = batches[b];
+      let res, text;
+      try {
+        res = await fetch(`php/api/save_gesture.php?no_sync=1&labels=${keys.map(encodeURIComponent).join(',')}`);
+        text = await res.text();
+      } catch (e) {
+        throw compileFail(`Compile failed: the server could not be reached (${e.message})`);
+      }
+      let json = null;
+      try { json = JSON.parse(text); } catch (e) { /* not JSON: a PHP error page */ }
+      if (!json || json.success !== true || !json.gestures) {
+        const detail = json && typeof json.error === 'string' && json.error ? json.error : text.slice(0, 200);
+        throw compileFail(`Compile failed reading samples (HTTP ${res.status}): ${detail}`);
+      }
+      let nSamples = 0;
+      keys.forEach(label => {
+        const want = inModelFiles[label];
+        // Only the files of the summary, so a sample saved during Compile cannot make the rows and
+        // the fingerprint disagree.
+        const samples = (json.gestures[label] || []).filter(s => want.has(s.file));
+        missing += want.size - samples.length;
+        nSamples += samples.length;
+        builder.addSign(label, samples);
+      });
+      batchLog.push({ signs: keys.length, samples: nSamples, bytes: text.length });
+      json = null; text = null;   // drop this batch's frames before the next request
+      doneSigns += keys.length;
+      addLog(`// Read ${doneSigns}/${todo.length} signs (request ${b + 1} of ${batches.length}: ${keys.length} signs, ${nSamples} samples)`);
+      epochBar.style.width = Math.round(((2 + doneSigns / todo.length) / COMPILE_STAGES) * 100) + '%';
+      epochLabel.textContent = `3 of ${COMPILE_STAGES}: Reading samples ${doneSigns}/${todo.length} signs…`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+    if (missing) addLog(`// ${missing} sample file(s) disappeared while compiling: run Compile again.`, 'log-warn');
+
+    const built = builder.finish();
+    const header = built.header;
+    if (header.labels.length < 2) throw compileFail('Add at least 2 signs before compiling');
+    header.fingerprint = await KnnCompile.sha256Hex(fpText);
+    const buffer = KnnCompile.encode(header, built.model);
+    addLog(`// ${lang}: ${header.labels.length} signs, ${fmtInt(header.sampleCount)} samples, ${fmtInt(header.rowCount)} rows (budget ${header.rule.budget} rows per sign)`);
+    addLog(`// Signs: ${header.labels.map(L => L.key).join(', ')}`);
+
+    await stage(4, `Saving ${file}`);
+    let res;
+    try {
+      res = await fetch(`php/api/compile_model.php?lang=${lang}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: buffer,
+      });
+    } catch (e) {
+      throw compileFail(`Compile failed: the server could not be reached (${e.message})`);
+    }
+    const text = await res.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (e) { /* not JSON: a PHP warning in front, or no PHP at all */ }
+    if (!json || typeof json !== 'object' || json.success !== true) {
+      const detail = json && typeof json.error === 'string' && json.error ? json.error : text.slice(0, 200);
+      throw compileFail(`Compile failed (HTTP ${res.status}): ${detail}`);
+    }
+    addLog(`// Wrote ${file}: ${fmtInt(json.bytes)} bytes, fingerprint ${String(json.fingerprint).slice(0, 12)}…`);
+    if (json.upToDate === false) addLog('// The samples changed while compiling: run Compile again.', 'log-warn');
+
+    await stage(5, 'Loading the saved file');
+    let loaded;
+    try {
+      loaded = await KnnModelStore.load(lang);
+      if (loaded.header.buildDate !== header.buildDate || loaded.header.fingerprint !== header.fingerprint) {
+        await KnnModelStore.remove(lang);   // a stored copy that is not the new file: fetch it again
+        loaded = await KnnModelStore.load(lang);
+      }
+    } catch (e) {
+      throw compileFail(`Compile wrote ${file}, but loading it failed: ${e.message}`);
+    }
+    if (loaded.source === 'cache-fallback' || loaded.header.buildDate !== header.buildDate) {
+      throw compileFail(`Compile wrote ${file}, but the page could not load that file back`);
+    }
+    modelLoadSeq++;                 // drop any older load still running
+    applyLoadedModel(lang, loaded);
+    const ms = Math.round(performance.now() - t0);
+    addLog(`// Loaded ${file} (${loaded.source}): ${fmtInt(loaded.header.rowCount)} rows, ${loaded.labels.length} signs`, 'log-ok');
+    addLog(`Compile complete in ${(ms / 1000).toFixed(1)} s. Click Next to test your signs.`, 'log-ok');
+    epochBar.style.width = '100%';
+    epochLabel.textContent = `Complete! — ${fmtInt(loaded.header.rowCount)} rows, ${loaded.labels.length} signs`;
+    showToast(`✅ ${lang} model compiled: ${loaded.labels.length} signs. Click Next →`);
+    window.lastCompile = { lang, ok: true, ms, bytes: json.bytes, rowCount: loaded.header.rowCount, labels: loaded.labels.length, sampleCount: loaded.header.sampleCount, fingerprint: loaded.header.fingerprint, batches: batchLog };
+  } catch (e) {
+    const msg = e && e.compileMessage ? e.message : `Compile failed: ${e && e.message ? e.message : e}`;
+    addLog(msg, 'log-err');
+    showToast(msg, 6000);
+    epochBar.style.width = '0%';
+    epochLabel.textContent = 'Not compiled';
+    window.lastCompile = { lang, ok: false, ms: Math.round(performance.now() - t0), error: msg };
+  } finally {
+    compileRunning = false;
+    refreshStep2Buttons();
+    updateTrPills(currentStep);
+    updateUI();
+    await refreshModelStatus();
+  }
+}
+
+// The model toggle changed (or was reset): show that language's status and load its file.
+function onModelLanguageChanged() {
+  renderModelStatus();
+  return loadModelForLang(modelLanguage());
 }
 
 // Each time Step 2 is shown the toggle starts from Step 1's set (Both -> ESL).
@@ -687,244 +983,10 @@ function syncModelToggleToStep1() {
   onModelLanguageChanged();
 }
 
-function loadKnnFromCache(targetLang) {
-  try {
-    const knnData   = localStorage.getItem(`sining_kamay_knn_${targetLang}`);
-    const labelsData = localStorage.getItem(`sining_kamay_labels_${targetLang}`);
-    if (knnData && labelsData) {
-      const parsedKnn = JSON.parse(knnData);
-      const parsedLabels = JSON.parse(labelsData);
-      const size = (Object.values(parsedKnn)[0]?.[0]?.length) || 126;
-      
-      // If we support landmarks (126), but the cached model has raw pixel size or single-hand size, discard it
-      if (typeof window.extractLandmarkFeatures === 'function' && size !== 126) {
-        console.warn(`[KNN] Cached model has feature size ${size} but landmarks (126) are supported. Discarding cached model to force landmark training.`);
-        localStorage.removeItem(`sining_kamay_knn_${targetLang}`);
-        localStorage.removeItem(`sining_kamay_labels_${targetLang}`);
-        localStorage.removeItem(`sining_kamay_trained_labels_${targetLang}`);
-        return false;
-      }
-      
-      knnModel = parsedKnn;
-      activeLabels = parsedLabels;
-      activeFeatureSize = size;
-      modelTrained = true;
-      return true;
-    }
-  } catch(e) {
-    console.warn('[KNN] Failed to load cached model:', e);
-  }
-  return false;
-}
-
-let lastLoadedLanguage = null;
-
-async function mergeSavedGestureSamples(prefetchedGestures) {
-  const targetLang = modelLanguage();
-
-  if (!prefetchedGestures && savedGestureSamplesMerged && lastLoadedLanguage === targetLang) return;
-  if (!prefetchedGestures && typeof window.loadGestureDatasetForTraining !== 'function') return;
-  try {
-    const rows = prefetchedGestures
-      ? window.GestureDataRecorder.recordingsToTrainingRows(prefetchedGestures)
-      : await window.loadGestureDatasetForTraining();
-    // Reset trainData so we don't duplicate on reload
-    for (const key in trainData) {
-      if (key !== 'start' && key !== 'stop') delete trainData[key];
-    }
-    trainData.start = [];
-    trainData.stop = [];
-
-    let loadedCount = 0;
-    rows.forEach(({label,features,signLanguage}) => {
-      const itemLang = (signLanguage || 'ESL').toUpperCase();
-      if (itemLang === targetLang || itemLang === 'BOTH') {
-        if (!trainData[label]) trainData[label] = [];
-        trainData[label].push(features);
-        loadedCount++;
-      }
-    });
-    // Sync cached labels with database on load to avoid phantom gestures
-    try {
-      const cachedLabelsRaw = localStorage.getItem(`sining_kamay_labels_${targetLang}`);
-      if (cachedLabelsRaw) {
-        const cachedLabels = JSON.parse(cachedLabelsRaw);
-        // Find if any cached label is completely missing from current trainData
-        const validCached = cachedLabels.filter(label => trainData[label] && trainData[label].length > 0);
-        if (validCached.length !== cachedLabels.length) {
-          const cachedKnnRaw = localStorage.getItem(`sining_kamay_knn_${targetLang}`);
-          if (cachedKnnRaw) {
-            const cachedKnn = JSON.parse(cachedKnnRaw);
-            for (const label of Object.keys(cachedKnn)) {
-              if (!trainData[label] || trainData[label].length === 0) {
-                delete cachedKnn[label];
-              }
-            }
-            try {
-              localStorage.setItem(`sining_kamay_knn_${targetLang}`,            JSON.stringify(cachedKnn));
-              localStorage.setItem(`sining_kamay_labels_${targetLang}`,         JSON.stringify(validCached));
-              localStorage.setItem(`sining_kamay_trained_labels_${targetLang}`, JSON.stringify(validCached));
-            } catch (e) {
-              console.warn("[KNN] LocalStorage quota exceeded in training-ui:", e);
-            }
-            
-            // Update active variables if currently active
-            knnModel = cachedKnn;
-            activeLabels = validCached;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[KNN] Failed to sync cache on merge:', e);
-    }
-
-    if (loadedCount) showToast(`Loaded ${loadedCount} saved landmark frames for ${targetLang}`);
-    savedGestureSamplesMerged = true;
-    lastLoadedLanguage = targetLang;
-  } catch(err){
-    console.warn('Saved gesture dataset unavailable:',err);
-  }
-}
-
-async function trainModel() {
-  const btn = document.getElementById('trainBtn');
-  const log = document.getElementById('trainLog');
-  const epochBar = document.getElementById('epochBar');
-  const epochLabel = document.getElementById('epochLabel');
-
-  const targetLang = modelLanguage();
-
-  // Always reload the latest dataset to detect newly added gestures
-  savedGestureSamplesMerged = false;
-  await mergeSavedGestureSamples();
-
-  btn.disabled = true; btn.textContent = 'Compiling…';
-  log.innerHTML = '<span class="log-warn">Checking gesture model...</span>\n';
-  const addLog = (msg, cls='') => { log.innerHTML += `<span class="${cls}">${msg}</span>\n`; log.scrollTop = log.scrollHeight; };
-
-  // Determine feature size and all available labels
-  const firstRow = Object.values(trainData).flat().find(f => Array.isArray(f) && f.length);
-  activeFeatureSize = firstRow ? firstRow.length : 126;
-  activeLabels = Object.keys(trainData).filter(label =>
-    trainData[label] && trainData[label].some(f => Array.isArray(f) && f.length === activeFeatureSize)
-  );
-
-  if (activeLabels.length < 2) {
-    const msg = `Add at least 2 gesture labels before training. (Loaded ${activeLabels.length} labels)`;
-    console.error(msg, 'activeLabels =', activeLabels, 'trainData =', trainData);
-    showToast(msg, 5000);
-    btn.disabled = false; btn.textContent = 'Train Gesture';
-    return;
-  }
-
-  // ── INCREMENTAL UPDATE: Load existing compiled model from cache ──
-  let trainedLabels = [];
-  try {
-    const existingKnn    = localStorage.getItem(`sining_kamay_knn_${targetLang}`);
-    const existingLabels = localStorage.getItem(`sining_kamay_labels_${targetLang}`);
-    if (existingKnn && existingLabels) {
-      knnModel      = JSON.parse(existingKnn);
-      trainedLabels = JSON.parse(existingLabels);
-      
-      // Filter out any cached labels that no longer exist in the database (were deleted)
-      let cacheChanged = false;
-      for (const label of Object.keys(knnModel)) {
-        if (!trainData[label] || trainData[label].length === 0) {
-          delete knnModel[label];
-          cacheChanged = true;
-        }
-      }
-      
-      if (cacheChanged) {
-        trainedLabels = Object.keys(knnModel);
-        activeLabels = trainedLabels;
-        try {
-          localStorage.setItem(`sining_kamay_knn_${targetLang}`,            JSON.stringify(knnModel));
-          localStorage.setItem(`sining_kamay_labels_${targetLang}`,         JSON.stringify(activeLabels));
-          localStorage.setItem(`sining_kamay_trained_labels_${targetLang}`, JSON.stringify(activeLabels));
-        } catch (e) {
-          console.warn("[KNN] LocalStorage quota exceeded in training-ui:", e);
-        }
-        addLog(`// Cache synced with DB: removed deleted phantom gestures`);
-      }
-      
-      addLog(`// Existing model found: ${trainedLabels.length} gestures already compiled`);
-    }
-  } catch(e) {
-    knnModel      = {};
-    trainedLabels = [];
-  }
-
-  // Detect gestures not yet in the compiled model
-  const newLabels = activeLabels.filter(l => !trainedLabels.includes(l));
-
-  if (newLabels.length === 0 && Object.keys(knnModel).length >= 2) {
-    // ── Nothing new to add — model is already up to date ──
-    addLog(`// ✅ All ${activeLabels.length} gestures already compiled. Nothing to update!`, 'log-ok');
-    addLog(`// Gestures: ${activeLabels.join(', ')}`, 'log-ok');
-
-    // Quick progress bar sweep for UX
-    const steps = 10;
-    for (let i = 1; i <= steps; i++) {
-      await new Promise(r => setTimeout(r, 12));
-      epochBar.style.width = Math.round((i / steps) * 100) + '%';
-    }
-    epochLabel.textContent = `Up to date — ${activeLabels.length} gestures ready`;
-    modelTrained = true;
-    addLog('Model is up to date. No retraining needed.', 'log-ok');
-    btn.textContent = 'Compiled ✓ (Recompile)'; btn.disabled = false;
-    const nextBtnA = document.getElementById('step2NextBtn');
-    if (nextBtnA) nextBtnA.style.display = 'block';
-    updateTrPills(currentStep);
-    showToast(`✅ Already up to date! (${activeLabels.length} gestures)`);
-    return;
-  }
-
-  // ── Add ONLY new gesture(s) to the existing model ──
-  let newFrames = 0;
-  addLog(`// Adding ${newLabels.length} new gesture(s): ${newLabels.join(', ')}`);
-  newLabels.forEach(label => {
-    knnModel[label] = trainData[label].filter(f => Array.isArray(f) && f.length === activeFeatureSize);
-    newFrames += knnModel[label].length;
-  });
-
-  if (trainedLabels.length > 0) {
-    addLog(`// Old gestures retained as-is: ${trainedLabels.join(', ')}`, 'log-ok');
-  }
-  addLog(`// New frames added: ${newFrames} (${newLabels.join(', ')})`);
-
-  // Animate progress bar
-  const steps = 20;
-  for (let i = 1; i <= steps; i++) {
-    await new Promise(r => setTimeout(r, 18));
-    const pct = Math.round((i / steps) * 100);
-    epochBar.style.width = pct + '%';
-    epochLabel.textContent = `Compiling gestures... ${pct}%`;
-  }
-  epochLabel.textContent = `Complete! — ${activeLabels.length} gestures ready`;
-
-  // Update active labels to include both old + new
-  activeLabels = Object.keys(knnModel);
-
-  // Persist updated KNN model to localStorage
-  try {
-    localStorage.setItem(`sining_kamay_knn_${targetLang}`,            JSON.stringify(knnModel));
-    localStorage.setItem(`sining_kamay_labels_${targetLang}`,         JSON.stringify(activeLabels));
-    localStorage.setItem(`sining_kamay_trained_labels_${targetLang}`, JSON.stringify(activeLabels));
-    addLog(`// Model updated in cache (${targetLang}) — now has ${activeLabels.length} gestures`, 'log-ok');
-  } catch (err) {
-    console.warn('[KNN] Failed to cache model:', err);
-    addLog('// Warning: could not cache model', 'log-warn');
-  }
-
-  modelTrained = true;
-  addLog('Gesture model updated. Click Next to test your signs.', 'log-ok');
-  btn.textContent = 'Compiled ✓ (Recompile)'; btn.disabled = false;
-  const nextBtn = document.getElementById('step2NextBtn');
-  if (nextBtn) nextBtn.style.display = 'block';
-  updateTrPills(currentStep);
-  updateUI(); // refresh summary card to clear NEW badges
-  showToast(`🎉 ${newLabels.length} new gesture(s) added! Click Next →`);
+// One summary listing (no frames) for the Step 1 table and the Step 2 card, then the model status.
+async function refreshDataset(noSync) {
+  await refreshDatasetNoStatus(noSync);
+  await refreshModelStatus();
 }
 
 function averageScores(history) {
@@ -1257,7 +1319,7 @@ function showStepInstruction(step){
 }
 
 function showStepContent(step){
-  if(step>=3&&!modelTrained){showToast('Train the AI first in Step 2!');return;}
+  if(step>=3&&!modelTrained){showToast('Compile the model first in Step 2!');return;}
   currentStep=step;
   updateTrPills(step);
   document.getElementById('trInstrWrap').style.display='none';
@@ -1281,12 +1343,12 @@ function showStepContent(step){
 }
 
 function trGoToStep(step){
-  if(step>=3&&!modelTrained){showToast('Train the AI first in Step 2!');return;}
+  if(step>=3&&!modelTrained){showToast('Compile the model first in Step 2!');return;}
   showStepInstruction(step);
 }
 
 function trClickPill(step){
-  if(step>=3&&!modelTrained){showToast('Train the AI first in Step 2!');return;}
+  if(step>=3&&!modelTrained){showToast('Compile the model first in Step 2!');return;}
   showStepInstruction(step);
 }
 
@@ -1390,48 +1452,33 @@ function releaseCaptureCamera() {
   camBadge.innerHTML = '<div class="live-dot"></div> Camera Off';
 }
 
+// Export Data: the loaded model file's rows as { label: rows } (labels in header order), the same
+// shape the old training export had.
 document.getElementById('downloadBtn').addEventListener('click',()=>{
-  const blob=new Blob([JSON.stringify(trainData)],{type:'application/json'});
+  if (!loadedModel) { showToast('No model file loaded: run Compile (Step 2) first.'); return; }
+  const out = {};
+  loadedModel.labels.forEach(label => { out[label] = knnModel[label]; });
+  const blob=new Blob([JSON.stringify(out)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='siningkamay-training.json';a.click();
-  showToast('📥 Training data exported!');
+  showToast(`📥 ${loadedModel.lang} model rows exported (${loadedModel.labels.length} signs)!`);
 });
 
+// Load Saved: retired (compact-model phase). The model is built only by Compile, from the saved samples.
 document.getElementById('loadBtn').addEventListener('click',()=>{
-  const inp=document.createElement('input');inp.type='file';inp.accept='.json';
-  inp.onchange=e=>{
-    const f=e.target.files[0];if(!f)return;
-    const r=new FileReader();
-    r.onload=ev=>{
-      try{
-        const d=JSON.parse(ev.target.result);
-        if(typeof d === 'object'){
-          Object.assign(trainData, d);
-          showToast(`✅ Loaded training samples!`);
-          updateUI();
-        }
-      }catch{showToast('⚠️ Invalid file');}
-    };r.readAsText(f);
-  };inp.click();
+  showToast('Loading a training file is no longer used: Compile builds the model from the saved samples.', 5000);
 });
 
 document.getElementById('wordInput').addEventListener('keydown',e=>{if(e.key==='Enter')addCustomWord();});
 
+// After a save (js/gesture-capture-ui.js) or a dataset-modal edit: one summary listing, then the
+// model status (a new sample makes the model of its set out of date).
 window.reloadDataset = async () => {
-  savedGestureSamplesMerged = false;
-  let gestures = null;
-  try {
-    // no_sync: the save that triggered this reload already wrote disk and the gesture_recordings
-    // row directly (save_gesture.php's POST branch calls save_gesture_recording_to_db, not
-    // sync_disk_to_db), so re-walking every label folder here is redundant (finding 10).
-    // DOMContentLoaded, below, keeps the full synced fetch: disk could have been touched outside
-    // the app between page loads, and that path is not on the per-save critical path.
-    gestures = await GestureDataRecorder.loadSavedGestureDataset(true);
-  } catch (err) {
-    console.warn('[reloadDataset] shared fetch failed, falling back to independent full reloads:', err);
-  }
-  await mergeSavedGestureSamples(gestures || undefined);
-  renderSavedDataset(gestures || undefined);
-  updateUI();
+  // no_sync: the save that triggered this reload already wrote disk and the gesture_recordings
+  // row directly (save_gesture.php's POST branch calls save_gesture_recording_to_db, not
+  // sync_disk_to_db), so re-walking every label folder here is redundant (finding 10).
+  // DOMContentLoaded, below, keeps the full synced fetch: disk could have been touched outside
+  // the app between page loads, and that path is not on the per-save critical path.
+  await refreshDataset(true);
 };
 
 // Startup triggers:
@@ -1454,18 +1501,27 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   showStepInstruction(1);
 
-  // Try restoring cached KNN model so Step 3 works without re-training
-  const initLang = modelLanguage();
-  if (loadKnnFromCache(initLang)) {
-    console.log(`[KNN] Restored cached model for ${initLang} — ${activeLabels.length} gestures loaded`);
-    showToast(`✅ Gesture model loaded (${activeLabels.length} gestures)`, 2500);
-  }
-
   warmUpHandTracking();
-  await mergeSavedGestureSamples();
-  renderSavedDataset();
-  updateUI();
+  // The model file of the selected language (Steps 2-4), its status, and ONE summary listing
+  // (full disk sync, no frames) for the Step 1 table and the Step 2 card, side by side.
+  const status = refreshModelStatus();
+  const model = loadModelForLang(modelLanguage());
+  await Promise.all([status, model, refreshDatasetNoStatus(false)]);
 });
+
+// The startup listing: refreshDataset without its own model_status request (startup has one).
+async function refreshDatasetNoStatus(noSync) {
+  let gestures = null, error = null;
+  try {
+    gestures = await GestureDataRecorder.loadSavedGestureDataset(noSync, { summary: true });
+  } catch (e) {
+    error = e;
+    console.warn('[gesture-training] dataset listing failed:', e);
+  }
+  listingGestures = gestures;
+  await renderSavedDataset(gestures || undefined, error || undefined);
+  updateUI();
+}
 
 // Warm up the ONE MediaPipe Hands instance at page load, after the startup dataset load so it does
 // not compete with it: load the WASM + model (preloadMediaPipe), then run ONE detection on a blank
@@ -1593,7 +1649,7 @@ function openRecordingMode() {
 // Called once by js/gesture-capture-ui.js when a recording leaves the mode with 1-3 samples saved,
 // AFTER window.reloadDataset() has rebuilt savedSampleInfo from the server (so the new samples'
 // frames are already counted): res = { label, signLanguage, labelSampleCount } - no frameCount,
-// so noteSampleSaved adds 0 frames and only sets the sample count + "Run Train AI" note.
+// so noteSampleSaved adds 0 frames and only sets the sample count + "Run Compile" note.
 window.onCaptureSamplesSaved = (res) => {
   noteSampleSaved(res);
   refreshSampleCountLine();

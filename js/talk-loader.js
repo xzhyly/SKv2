@@ -2,8 +2,8 @@
 // Background loading queue for talk.html (docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md,
 // "Loading queue"). Starts once, when the page has loaded, and runs the items one after
 // another (queued, not parallel — the Pi 4B should not init both stacks at once). Order is
-// measured, not assumed: sign stack first (median 581 ms warm / 1551 ms cold k-NN cache on
-// the dev machine), speech stack second (median 2737 ms). See the plan's Step 1 table.
+// measured, not assumed: sign stack first, speech stack second (median 2737 ms). See the plan's
+// Step 1 table. The k-NN model is the compiled file models/knn_<LANG>.bin (js/knn-model-store.js).
 (function () {
   'use strict';
 
@@ -12,6 +12,8 @@
     'js/lib/mediapipe/hands.js',
     'js/camera-helper.js',
     'js/gesture-data.js',
+    'js/knn-compile.js',
+    'js/knn-model-store.js',
     'js/sign-to-text-ui.js'
   ];
   // Same file index.html's voice screen loads (archive/script.js:201-203), resolved against this page.
@@ -55,7 +57,7 @@
           console.warn('[TalkLoader] sign texts failed to load:', e);
         });
         return Promise.all([autoTrainForTranslate(), signs]).then(function (r) {
-          if (!r[0]) throw new Error('gesture set unavailable (database unreachable and no cached model)');
+          if (!r[0]) throw new Error('gesture set unavailable (no usable model file and no stored copy)');
         });
       } },
     { id: 'vosk-lib', stack: 'speech', name: 'Vosk library', needs: null,

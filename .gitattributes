@@ -1,0 +1,3 @@
+# Compact recognition model files: binary, never line-ending converted.
+models/knn_*.bin binary
+*.sh text eol=lf

@@ -5,7 +5,8 @@
 // Covers brief items 1-8 and 11 (items 9 and 10 are separate commands):
 //   1  live counts, backup manifest sha256, migration --verify-only
 //   2  record a BOTH sign through the real UI (Step 1 Both, 3 samples, Save) + disk/DB/modal/categories
-//   3  Train AI ESL then FSL: knn membership
+//   3  Compile ESL then FSL (was Train AI): membership read from the written models/knn_<LANG>.bin
+//      (both model files are backed up first and restored byte for byte in `finally`)
 //   4  Predict (Step 3): displayed text == the sign's text in the model language
 //   5  record an ESL-only and an FSL-only sign; knn membership, sample signLanguage, modal Set column
 //   6  edit ESL -> Both with a Filipino text in the dataset view; reload + full sync; samples byte-identical
@@ -15,7 +16,9 @@
 //
 // Every probe sign is zz-prefixed and removed in `finally` (delete_gesture + a zz sweep); real
 // signs are never modified. Run (Apache + MariaDB up): node tests/sign-texts/verify-e2e.mjs
-import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { guardModels } from '../compact-model/model-guard.mjs';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -32,6 +35,7 @@ const BACKUP = 'E:/ACADSS/IOT/backups/2026-10-04-sign-texts';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sha256 = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
 
+const KnnCompile = createRequire(import.meta.url)('../../js/knn-compile.js');
 const K_BOTH = 'zz_both_probe', K_ESL = 'zz_esl_only', K_FSL = 'zz_fsl_lamang';
 const KEYS = [K_BOTH, K_ESL, K_FSL];
 
@@ -113,6 +117,7 @@ async function main() {
   const before = item1('before');
   item1Backup();
   const report = {};
+  const models = guardModels();   // Compile (item 3) writes the real model files; restored in finally
   try {
     const y4m = buildY4m(tmpDir);
 
@@ -219,43 +224,34 @@ async function main() {
     await setText('signTextEn', '');
 
     // ---------- item 3 train ----------
-    console.log('=== item 3: Train AI ESL then FSL ===');
-    const knn = (lang) => ev(`(() => { const k = localStorage.getItem('sining_kamay_knn_${lang}'); if (!k) return null; const o = JSON.parse(k); return Object.keys(o); })()`);
+    console.log('=== item 3: Compile ESL then FSL ===');
+    // Compact-model phase: Train AI is now Compile, which writes models/knn_<LANG>.bin (restored in
+    // `finally` by model-guard). Membership is read from the written file, decoded here.
+    const knn = (lang) => { try { return KnnCompile.decode(readFileSync(path.join(repo, 'models', `knn_${lang}.bin`))).header.labels.map((L) => L.key); } catch { return null; } };
     const train = async (lang) => {
       await ev(`trClickPill(2); showStepContent(2); true`);
       await sleep(300);
       await ev(`document.querySelector('input[name="trainModelLang"][value="${lang}"]').click(); true`);
-      await sleep(400);
+      await waitFor(`!!loadedModel && loadedModel.lang === '${lang}'`, 30000, 100);
       const t0 = Date.now();
-      await ev(`document.getElementById('epochLabel').textContent = ''; document.getElementById('trainBtn').click(); true`);
-      let lbl = '';
-      while (Date.now() - t0 < 420000) {
-        lbl = await ev(`document.getElementById('epochLabel').textContent`);
-        if (/^(Complete!|Up to date)/.test(lbl) && await ev(`!!localStorage.getItem('sining_kamay_knn_${lang}')`)) break;
-        await sleep(500);
-      }
+      await ev(`window.lastCompile = null; document.getElementById('trainBtn').click(); true`);
+      await waitFor(`!!window.lastCompile && !compileRunning`, 420000, 300);
+      const lbl = await ev(`document.getElementById('epochLabel').textContent`);
       return { lbl, ms: Date.now() - t0 };
     };
     const tE = await train('ESL');
-    check('Train AI model ESL completes', /^(Complete!|Up to date)/.test(tE.lbl), `${tE.lbl} (${tE.ms} ms)`);
-    const kE = await knn('ESL');
+    check('Compile model ESL completes', /^Complete!/.test(tE.lbl), `${tE.lbl} (${tE.ms} ms)`);
+    const kE = knn('ESL');
     console.log(`  ESL knn: ${kE && kE.length} labels; has zz_both_probe ${kE && kE.includes(K_BOTH)}, zz_esl_only ${kE && kE.includes(K_ESL)}, zz_fsl_lamang ${kE && kE.includes(K_FSL)}, a ${kE && kE.includes('a')}`);
     check('ESL knn contains zz_both_probe, zz_esl_only and "a"; not zz_fsl_lamang', !!kE && kE.includes(K_BOTH) && kE.includes(K_ESL) && kE.includes('a') && !kE.includes(K_FSL));
     report.eslPredict = await predictPhase(ev, waitFor, 'ESL');
-    // localStorage quota: the ESL model alone is ~3.4M chars of the ~5.2M-char origin quota, so the
-    // FSL model (~2.5M) cannot be cached next to it (trainModel only console.warns). To measure the FSL
-    // model's membership from localStorage, drop the ESL cache first (it is rebuilt on demand) and
-    // report both facts. In-memory knnModel keys are read as well.
-    const sizesBefore = await ev(`Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k).length]))`);
-    console.log('  localStorage chars after ESL train: ' + J(sizesBefore));
-    report.eslCacheChars = sizesBefore.sining_kamay_knn_ESL;
-    await ev(`['knn', 'labels', 'trained_labels'].forEach((n) => localStorage.removeItem('sining_kamay_' + n + '_ESL')); true`);
+    report.eslModelBytes = statSync(path.join(repo, 'models', 'knn_ESL.bin')).size;
     const tF = await train('FSL');
     const memF = await ev(`Object.keys(knnModel)`);
     console.log(`  FSL in-memory knnModel: ${memF.length} labels; has zz_both_probe ${memF.includes(K_BOTH)}, zz_fsl_lamang ${memF.includes(K_FSL)}, zz_esl_only ${memF.includes(K_ESL)}, a ${memF.includes('a')}`);
     check('FSL in-memory model: zz_both_probe + zz_fsl_lamang, NOT "a", NOT zz_esl_only', memF.includes(K_BOTH) && memF.includes(K_FSL) && !memF.includes('a') && !memF.includes(K_ESL));
-    check('Train AI model FSL completes', /^(Complete!|Up to date)/.test(tF.lbl), `${tF.lbl} (${tF.ms} ms)`);
-    const kF = await knn('FSL');
+    check('Compile model FSL completes', /^Complete!/.test(tF.lbl), `${tF.lbl} (${tF.ms} ms)`);
+    const kF = knn('FSL');
     console.log(`  FSL knn: ${kF && kF.length} labels; has zz_both_probe ${kF && kF.includes(K_BOTH)}, zz_fsl_lamang ${kF && kF.includes(K_FSL)}, zz_esl_only ${kF && kF.includes(K_ESL)}, a ${kF && kF.includes('a')}`);
     check('FSL knn contains zz_both_probe and zz_fsl_lamang; NOT "a", NOT zz_esl_only', !!kF && kF.includes(K_BOTH) && kF.includes(K_FSL) && !kF.includes('a') && !kF.includes(K_ESL));
     // item 5: ESL-only only in ESL knn, FSL-only only in FSL knn (restated)
@@ -414,6 +410,10 @@ async function main() {
     console.log('  FAIL  run threw: ' + (e && e.stack ? e.stack : e));
   } finally {
     console.log('=== cleanup ===');
+    // Model files first: a throw in the steps below must not skip the restore.
+    const mr = models.restore();
+    console.log('  models: ' + mr.line);
+    check('models/knn_ESL.bin and knn_FSL.bin restored byte for byte', mr.ok);
     for (const c of [chrome, chrome2, chrome3]) if (c) { try { await c.close(); } catch {} }
     for (const k of KEYS) {
       try {

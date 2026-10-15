@@ -1,0 +1,328 @@
+{
+ "note": "Measured 2026-10-15 (compact-model Step 1) with the kiosk knnPredict on these fixtures.",
+ "queriesForFloat32Check": 5010,
+ "current": {
+  "rowsESL": 2047,
+  "rowsFSL": 1414,
+  "rowsVid": 2715,
+  "t1": {
+   "n": 8,
+   "voteOk": 6,
+   "frames": 348,
+   "frameOk": 272,
+   "byCat": {
+    "word": {
+     "frames": 348,
+     "frameOk": 272,
+     "n": 8,
+     "voteOk": 6
+    }
+   }
+  },
+  "t2": {
+   "n": 120,
+   "voteOk": 103,
+   "frames": 2844,
+   "frameOk": 1771,
+   "byCat": {
+    "number": {
+     "frames": 243,
+     "frameOk": 226,
+     "n": 10,
+     "voteOk": 10
+    },
+    "letter": {
+     "frames": 593,
+     "frameOk": 475,
+     "n": 26,
+     "voteOk": 25
+    },
+    "word": {
+     "frames": 1454,
+     "frameOk": 834,
+     "n": 67,
+     "voteOk": 54
+    },
+    "phrase": {
+     "frames": 554,
+     "frameOk": 236,
+     "n": 17,
+     "voteOk": 14
+    }
+   }
+  },
+  "t2fsl": {
+   "n": 90,
+   "voteOk": 75,
+   "frames": 2130,
+   "frameOk": 1276,
+   "byCat": {
+    "number": {
+     "frames": 243,
+     "frameOk": 228,
+     "n": 10,
+     "voteOk": 10
+    },
+    "word": {
+     "frames": 1404,
+     "frameOk": 840,
+     "n": 65,
+     "voteOk": 53
+    },
+    "phrase": {
+     "frames": 483,
+     "frameOk": 208,
+     "n": 15,
+     "voteOk": 12
+    }
+   }
+  },
+  "t2r": {
+   "n": 121,
+   "voteOk": 105,
+   "frames": 1867,
+   "frameOk": 1248,
+   "byCat": {
+    "letter": {
+     "frames": 375,
+     "frameOk": 313,
+     "n": 26,
+     "voteOk": 26
+    },
+    "word": {
+     "frames": 965,
+     "frameOk": 601,
+     "n": 68,
+     "voteOk": 54
+    },
+    "phrase": {
+     "frames": 369,
+     "frameOk": 179,
+     "n": 17,
+     "voteOk": 15
+    },
+    "number": {
+     "frames": 158,
+     "frameOk": 155,
+     "n": 10,
+     "voteOk": 10
+    }
+   }
+  },
+  "t3": [
+   {
+    "n": 48,
+    "top": [
+     [
+      "n",
+      40
+     ],
+     [
+      "u",
+      4
+     ],
+     [
+      "k",
+      1
+     ]
+    ]
+   },
+   {
+    "n": 48,
+    "top": [
+     [
+      "n",
+      42
+     ],
+     [
+      "u",
+      4
+     ],
+     [
+      "dont_know",
+      1
+     ]
+    ]
+   },
+   {
+    "n": 42,
+    "top": [
+     [
+      "n",
+      35
+     ],
+     [
+      "u",
+      4
+     ],
+     [
+      "late",
+      3
+     ]
+    ]
+   }
+  ]
+ },
+ "budget90": {
+  "rowsESL": 2047,
+  "rowsFSL": 1414,
+  "rowsVid": 2715,
+  "t1": {
+   "n": 8,
+   "voteOk": 6,
+   "frames": 348,
+   "frameOk": 272,
+   "byCat": {
+    "word": {
+     "frames": 348,
+     "frameOk": 272,
+     "n": 8,
+     "voteOk": 6
+    }
+   }
+  },
+  "t2": {
+   "n": 120,
+   "voteOk": 103,
+   "frames": 2844,
+   "frameOk": 1771,
+   "byCat": {
+    "number": {
+     "frames": 243,
+     "frameOk": 226,
+     "n": 10,
+     "voteOk": 10
+    },
+    "letter": {
+     "frames": 593,
+     "frameOk": 475,
+     "n": 26,
+     "voteOk": 25
+    },
+    "word": {
+     "frames": 1454,
+     "frameOk": 834,
+     "n": 67,
+     "voteOk": 54
+    },
+    "phrase": {
+     "frames": 554,
+     "frameOk": 236,
+     "n": 17,
+     "voteOk": 14
+    }
+   }
+  },
+  "t2fsl": {
+   "n": 90,
+   "voteOk": 75,
+   "frames": 2130,
+   "frameOk": 1276,
+   "byCat": {
+    "number": {
+     "frames": 243,
+     "frameOk": 228,
+     "n": 10,
+     "voteOk": 10
+    },
+    "word": {
+     "frames": 1404,
+     "frameOk": 840,
+     "n": 65,
+     "voteOk": 53
+    },
+    "phrase": {
+     "frames": 483,
+     "frameOk": 208,
+     "n": 15,
+     "voteOk": 12
+    }
+   }
+  },
+  "t2r": {
+   "n": 121,
+   "voteOk": 105,
+   "frames": 1867,
+   "frameOk": 1248,
+   "byCat": {
+    "letter": {
+     "frames": 375,
+     "frameOk": 313,
+     "n": 26,
+     "voteOk": 26
+    },
+    "word": {
+     "frames": 965,
+     "frameOk": 601,
+     "n": 68,
+     "voteOk": 54
+    },
+    "phrase": {
+     "frames": 369,
+     "frameOk": 179,
+     "n": 17,
+     "voteOk": 15
+    },
+    "number": {
+     "frames": 158,
+     "frameOk": 155,
+     "n": 10,
+     "voteOk": 10
+    }
+   }
+  },
+  "t3": [
+   {
+    "n": 48,
+    "top": [
+     [
+      "n",
+      40
+     ],
+     [
+      "u",
+      4
+     ],
+     [
+      "k",
+      1
+     ]
+    ]
+   },
+   {
+    "n": 48,
+    "top": [
+     [
+      "n",
+      42
+     ],
+     [
+      "u",
+      4
+     ],
+     [
+      "dont_know",
+      1
+     ]
+    ]
+   },
+   {
+    "n": 42,
+    "top": [
+     [
+      "n",
+      35
+     ],
+     [
+      "u",
+      4
+     ],
+     [
+      "late",
+      3
+     ]
+    ]
+   }
+  ]
+ }
+}

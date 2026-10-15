@@ -3,7 +3,7 @@
 // Record 3 samples -> START -> 3-2-1 -> REST/SIGN n of 3 guidance driven by real hand-presence
 // detection on a pre-recorded clip -> auto-stop -> Review "3 signs found" -> Save -> Processing
 // (MediaPipe over the recorded video, via extractVideoLandmarks) -> 3 sequential v3-format saves
-// -> overlay closes - then Redo, Cancel (at Review and during Processing), Train AI mixing the
+// -> overlay closes - then Redo, Cancel (at Review and during Processing), Compile (was Train AI) mixing the
 // new label with the existing 120-gesture dataset, and Step 3 Predict, all under the fake
 // camera. Changes no product code; this file and README.md are the only things committed.
 //
@@ -23,6 +23,7 @@ import { mkdtempSync, rmSync, statSync, readdirSync, existsSync, readFileSync } 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome } from './cdp.mjs';
+import { guardModels } from '../compact-model/model-guard.mjs';
 import { buildY4m } from './fake-camera.mjs';
 import { query } from '../categorization/db.mjs';
 
@@ -137,6 +138,8 @@ async function main() {
   const signsBefore = listSignsDir();
   const labelDirBefore = listLabelDir();
   check('label sample folder absent before the run', labelDirBefore === null, JSON.stringify(labelDirBefore));
+  // Compile (Step 2) writes the real models/knn_<LANG>.bin: backed up here, restored in finally.
+  const models = guardModels();
 
   try {
     console.log('--- building fake-camera file ---');
@@ -145,6 +148,7 @@ async function main() {
     console.log(`  fake camera file: ${y4mSize} bytes`);
 
     chrome = await launchChrome({
+      port: Number(process.env.CDP_PORT || 9333), // CDP_PORT: run beside another check on 9333
       extraArgs: [
         '--use-fake-device-for-media-stream',
         '--use-fake-ui-for-media-stream',
@@ -393,20 +397,22 @@ async function main() {
     const signsAfterAllRuns = listSignsDir();
     check('assets/signs/ listing identical after Redo/Cancel runs', JSON.stringify(signsAfterAllRuns) === JSON.stringify(signsBefore));
 
-    console.log('=== Train AI (Step 2): old samples still load and mix with the new label ===');
+    console.log('=== Compile (Step 2, was Train AI): old samples still load and mix with the new label ===');
     await ev(`window.reloadDataset().then(() => true)`);
-    await ev(`trClickPill(2); showStepContent(2); document.getElementById('trainBtn').click(); true`);
+    await ev(`trClickPill(2); showStepContent(2); window.lastCompile = null; document.getElementById('trainBtn').click(); true`);
     let epochLabel = '';
     const t0Train = Date.now();
     while (Date.now() - t0Train < 300000) {
-      epochLabel = await ev(`document.getElementById('epochLabel').textContent`);
-      if (/^(Complete!|Up to date)/.test(epochLabel)) break;
+      if (await ev(`!!window.lastCompile && !compileRunning`)) break;
       await sleep(500);
     }
-    check('Train AI completes', /^(Complete!|Up to date)/.test(epochLabel), `${epochLabel} (${Date.now() - t0Train} ms)`);
-    const trainRows = await ev(`(typeof trainData !== 'undefined' && trainData['${LABEL}']) ? trainData['${LABEL}'].length : -1`);
-    console.log(`  trainData['${LABEL}'].length = ${trainRows}`);
-    check('trainData includes the new label, <= 90 rows (3 x 30 max)', trainRows > 0 && trainRows <= 90, `${trainRows} rows`);
+    epochLabel = await ev(`document.getElementById('epochLabel').textContent`);
+    check('Compile completes', /^Complete!/.test(epochLabel), `${epochLabel} (${Date.now() - t0Train} ms)`);
+    // The loaded model (the file Compile wrote) replaces the old in-memory trainData.
+    const trainRows = await ev(`(knnModel && knnModel['${LABEL}']) ? knnModel['${LABEL}'].length : -1`);
+    const others = await ev(`activeLabels.filter((l) => l !== '${LABEL}').length`);
+    console.log(`  knnModel['${LABEL}'].length = ${trainRows}; other labels in the model: ${others}`);
+    check('the compiled model includes the new label, <= 90 rows (3 x 30 max, budget 90), next to the existing signs', trainRows > 0 && trainRows <= 90 && others >= 2, `${trainRows} rows, ${others} other labels`);
 
     console.log('=== Predict (Step 3), fake camera, ~5s, no errors ===');
     await ev(`trGoToStep(3); showStepContent(3); true`);
@@ -431,6 +437,10 @@ async function main() {
     check('0 uncaught exceptions', exceptions.length === 0, JSON.stringify(exceptions).slice(0, 1000));
   } finally {
     console.log('=== cleanup ===');
+    // Model files first: a throw in the steps below must not skip the restore.
+    const mr = models.restore();
+    console.log('  models: ' + mr.line);
+    check('model files restored byte for byte', mr.ok);
     try {
       const r = await fetch(SAVE_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_gesture', label: LABEL }) });
       const j = await r.json();

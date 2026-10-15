@@ -1,5 +1,5 @@
 // Unit tests (node:vm, no DOM) for the sign-texts additions to js/gesture-data.js:
-// signs state / getSignText, recordingsToTrainingRows using signs[key].set, the one-time
+// signs state / getSignText (and its model-header fallback), recordingsToTrainingRows using signs[key].set, the one-time
 // model-schema reset, and saveGestureSample's text_en/text_fil + BOTH + 409 error properties.
 // SIGN_TEXTS_SOURCE=<path> loads another copy of the file (used to show the tests fail on HEAD).
 import test from 'node:test';
@@ -101,11 +101,81 @@ test('model-schema reset removes exactly the six keys once and sets the flag', (
   const st = fakeStorage(Object.fromEntries([...six, 'other_key', 'sining_kamay_pin'].map((k) => [k, 'v'])));
   load({ storage: st });
   assert.deepEqual(st._keys(), ['other_key', 'sining_kamay_model_schema', 'sining_kamay_pin']);
-  assert.equal(st.getItem('sining_kamay_model_schema'), '2');
-  // second load: a model trained since must survive
-  st.setItem('sining_kamay_knn_ESL', 'trained');
+  assert.equal(st.getItem('sining_kamay_model_schema'), '3');
+  // second load: nothing is removed again
+  st.setItem('sining_kamay_knn_ESL', 'later');
   load({ storage: st });
-  assert.equal(st.getItem('sining_kamay_knn_ESL'), 'trained');
+  assert.equal(st.getItem('sining_kamay_knn_ESL'), 'later');
+});
+
+test('model-schema reset "3" runs once more on a machine already at "2" (compact-model phase)', () => {
+  const six = ['sining_kamay_knn_ESL', 'sining_kamay_knn_FSL', 'sining_kamay_labels_ESL', 'sining_kamay_labels_FSL', 'sining_kamay_trained_labels_ESL', 'sining_kamay_trained_labels_FSL'];
+  const big = 'x'.repeat(1000);
+  const st = fakeStorage(Object.fromEntries([...six.map((k) => [k, big]), ['sining_kamay_model_schema', '2'], ['sining_kamay_show_skeleton', 'false']]));
+  load({ storage: st });
+  assert.deepEqual(st._keys(), ['sining_kamay_model_schema', 'sining_kamay_show_skeleton']);
+  assert.equal(st.getItem('sining_kamay_model_schema'), '3');
+});
+
+// ── getSignText fallback to the model file header (setModelSigns) ──
+const HEADER_LABELS = [
+  { key: 'hi', set: 'ESL', category: 'word', textEn: 'Hi (model)', textFil: 'Kumusta (model)', samples: 1, rows: 30 },
+  { key: 'only_model', set: 'BOTH', category: null, textEn: 'Only in model', textFil: 'Nasa model lang', samples: 1, rows: 30 },
+  { key: 'no_text', set: 'BOTH', category: null, textEn: null, textFil: '', samples: 1, rows: 30 },
+];
+const DB_SIGNS = { hi: { set: 'ESL', textEn: 'Hi!', textFil: '' }, db_only: { set: 'FSL', textEn: 'Db only', textFil: 'Db lamang' } };
+
+test('getSignText: the database text wins over the model header text', async () => {
+  const g = load({ fetchImpl: async () => jsonRes(200, { success: true, gestures: {}, categories: {}, signs: DB_SIGNS }) });
+  await g.loadSavedGestureDataset();
+  g.setModelSigns(HEADER_LABELS);
+  assert.equal(g.getSignText('hi', 'en'), 'Hi!');
+  assert.equal(g.getSignText('db_only', 'fil'), 'Db lamang');
+});
+
+test('getSignText: header text when the sign is unknown to the database or its text is empty', async () => {
+  const g = load({ fetchImpl: async () => jsonRes(200, { success: true, gestures: {}, categories: {}, signs: DB_SIGNS }) });
+  await g.loadSavedGestureDataset();
+  g.setModelSigns(HEADER_LABELS);
+  assert.equal(g.getSignText('only_model', 'en'), 'Only in model');
+  assert.equal(g.getSignText('only_model', 'fil'), 'Nasa model lang');
+  assert.equal(g.getSignText('hi', 'fil'), 'Kumusta (model)'); // DB textFil is ''
+  // no database load at all (signs.php failed): header texts only
+  const h = load();
+  h.setModelSigns(HEADER_LABELS);
+  assert.equal(h.getSignText('hi', 'en'), 'Hi (model)');
+});
+
+test('getSignText: null when neither has a text; setModelSigns merges both languages and ignores junk', () => {
+  const g = load();
+  assert.equal(g.getSignText('only_model', 'en'), null);
+  g.setModelSigns(HEADER_LABELS);
+  assert.equal(g.getSignText('no_text', 'en'), null);
+  assert.equal(g.getSignText('no_text', 'fil'), null);
+  assert.equal(g.getSignText('nope', 'en'), null);
+  assert.equal(g.getSignText('constructor', 'en'), null);
+  g.setModelSigns([{ key: 'fsl_only', set: 'FSL', textEn: null, textFil: 'Fsl lang' }, null, { key: '' }, { key: 5 }]);
+  g.setModelSigns(undefined);
+  g.setModelSigns('x');
+  assert.equal(g.getSignText('fsl_only', 'fil'), 'Fsl lang');
+  assert.equal(g.getSignText('only_model', 'en'), 'Only in model'); // the first call's keys are kept
+});
+
+test('loadSavedGestureDataset: summary option adds summary=1 (with no_sync=1 when noSync)', async () => {
+  const urls = [];
+  const g = load({ fetchImpl: async (u) => { urls.push(u); return jsonRes(200, { success: true, gestures: {}, categories: {}, signs: {} }); } });
+  await g.loadSavedGestureDataset();
+  await g.loadSavedGestureDataset(true);
+  await g.loadSavedGestureDataset(true, { summary: true });
+  await g.loadSavedGestureDataset(false, { summary: true });
+  await g.loadSavedGestureDataset(true, {});
+  assert.deepEqual(urls, [
+    'php/api/save_gesture.php',
+    'php/api/save_gesture.php?no_sync=1',
+    'php/api/save_gesture.php?no_sync=1&summary=1',
+    'php/api/save_gesture.php?summary=1',
+    'php/api/save_gesture.php?no_sync=1',
+  ]);
 });
 
 test('model-schema reset survives blocked storage', () => {
