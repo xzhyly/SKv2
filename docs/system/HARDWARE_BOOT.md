@@ -5,6 +5,9 @@
 - `start_kiosk.sh` (17 lines)
 - `SKR_Kiosk.desktop` (9 lines)
 - `models/vosk-model-small-en-us-0.15.tar.gz.zip` (41,138,088 bytes on disk)
+- `models/knn_ESL.bin` (1,045,196 bytes) and `models/knn_FSL.bin` (723,096 bytes), the compiled recognition
+  models, and `tests/compact-model/pi-bench.sh` (104 lines) — new 2026-10-15/16, see "Compact model files on
+  the Pi" below
 - `raspberry_pi_connection_guide.md` (2729 bytes)
 - `raspberry_pi_startup_guide.md` (2856 bytes)
 
@@ -111,3 +114,47 @@ and saves it to `~/avatar-bench-<date>.json`; then restart the kiosk from the de
 avatar at 560x260, capped at 30 fps then uncapped (signs with clips, else a synthetic movement). **Pi timing has
 not been measured.** On this laptop: 29.9 fps capped, 59-60 fps uncapped (the display rate), 0.2-0.3 ms per
 frame, with GPU and with `--disable-gpu` (the log parsing was checked with desktop Chrome).
+
+## Compact model files on the Pi (compact-model phase, 2026-10-15/16)
+
+Nothing here was run on the Pi (owner decision 10). Model, rule and laptop measurements: `docs/system/ML.md`
+"Compact model".
+
+- **The files.** `models/knn_ESL.bin` and `models/knn_FSL.bin` sit in `models/` next to the Vosk model and are
+  tracked in git as binary (`.gitattributes:2`, `models/knn_*.bin binary`). The kiosk (Let's Talk) and Train
+  Gestures Steps 3/4 load them from `models/knn_<LANG>.bin`, page-relative, i.e.
+  `http://localhost/SKR/models/knn_<LANG>.bin`. They are built on the laptop (Train Gestures, Step 2 Compile) and
+  are the only recognition data the Pi needs.
+- **How the Pi gets them:** with the rest of the repo (`git pull`), or by copying the two files on their own into
+  the Pi's `SKR/models/` (owner decision 9: an SSH copy is a later, separate task). The kiosk keeps a copy of each
+  in Chromium's IndexedDB and sends one HEAD per load: a changed file (new ETag or length) is downloaded once,
+  and a missing or broken file falls back to the stored copy, so the kiosk keeps the last good model. Apache's
+  ETag also changes when only the mtime changes (a pull or a copy), which costs one download.
+- **Samples.** The Pi does not need any sample to recognise. Bulk-imported samples are git-ignored
+  (`saved_gestures/*/sample_i*.json`, `.gitignore:11`) and never reach the Pi through git. Samples recorded on
+  the Pi are still saved, but they enter a model only after the laptop compiles.
+- **Compile on the Pi is disabled.** `php/api/model_status.php` reports the device: `config/device.txt`
+  (git-ignored, `.gitignore:10`) with `pi` or `laptop` wins, else `php_uname('m')` matching `aarch64` / `arm*`
+  means the Pi (`php/api/knn_model_lib.php:52-64`). On the Pi, Train Gestures shows "Build the model on the
+  laptop, then copy models/knn_ESL.bin and models/knn_FSL.bin to the Pi." with Compile disabled, never says "out of
+  date", and `php/api/compile_model.php` answers 403. Not verified on the Pi: what `php_uname('m')` returns there.
+  If it is wrong, write `pi` into `config/device.txt`.
+- **`tests/compact-model/pi-bench.sh`** (run on the Pi's desktop: `bash tests/compact-model/pi-bench.sh`). It first
+  checks that both model files exist next to the script's repo and exits without touching the kiosk if not
+  (`:32-39`). Then, like `tests/avatar/pi-bench.sh`, it closes the kiosk Chromium, opens
+  `http://localhost/SKR/tests/compact-model/bench.html` with `start_kiosk.sh`'s flags and a throw-away profile
+  (the kiosk profile and its model cache are untouched), waits for the `COMPACT_BENCH {json}` line in Chromium's
+  `--enable-logging=stderr` output, prints it and saves `~/compact-bench-<date>.json`. It gives up after 20 minutes
+  or when Chromium exits, stops cleanly on Ctrl-C, and every exit after the kiosk was closed says to restart the
+  kiosk from the desktop entry. The bench measures cold and cached loads of both files and `knnPredict` per call
+  on both real models and on synthetic models of 2,047 / 9,164 / 10,196 / 14,140 / 24,007 / 89,887 rows (sizes
+  stop once a median passes 1,000 ms). Compare `predict[].plain.median` with the 150 ms prediction tick; MediaPipe
+  runs on the same CPU and is not in the bench. Run time on the Pi: not measured (67 s on the laptop). The script
+  was exercised on the laptop with stubbed `chromium` / `pkill` (`.git/sdd/cm-task-7-report.md`); the Pi's log line
+  format is not verified.
+- **Line endings.** `.gitattributes:3` (`*.sh text eol=lf`) makes git check out every `.sh` with LF. This laptop's
+  working copy of `start_kiosk.sh` is still CRLF (`git ls-files --eol`: `i/lf w/crlf`), so copy the scripts to the
+  Pi from git, not from this working tree.
+- **Git history.** Every recompiled model is a new binary blob in git (5,596,344 bytes for ESL at the
+  3,000-sample scale check). Either accept the growth, or copy the two files to the Pi by hand and commit them
+  less often (`docs/system/DEBT.md` item 139).

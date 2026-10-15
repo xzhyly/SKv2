@@ -103,9 +103,26 @@ by typing `http://localhost/SKR/bulk-import.html`) turns a folder of videos name
 `<SET>_<label>_<SIGNER>.<ext>` into recognition samples (through
 `php/api/save_gesture.php`) and avatar clip candidates. Its cache and the
 candidates live in the git-ignored `bulk_import_cache/` and never go to the Pi.
-The kiosk must not receive bulk-imported samples before the compact-model phase
-(`docs/system/DEBT.md` item 116) — see `docs/system/UI.md` ("Bulk video importer")
+Imported samples (`saved_gestures/*/sample_i*.json`) are git-ignored too, so they
+never reach the Pi through git, and since the compact-model phase the kiosk no
+longer needs any samples (it loads the compiled model files, below; `DEBT.md`
+item 116, resolved 2026-10-16) — see `docs/system/UI.md` ("Bulk video importer")
 and `docs/system/BACKEND.md`.
+
+**Recognition model (compact-model phase, 2026-10-16).** Recognition no longer
+downloads samples. Let's Talk and Train Gestures Steps 3/4 load
+`models/knn_ESL.bin` / `models/knn_FSL.bin` (tracked binary files, one per
+language) through `js/knn-model-store.js`, which keeps a copy of each in
+IndexedDB and downloads a file again only when it changed (otherwise one HEAD).
+The files are built on the laptop by Train Gestures Step 2 **Compile**, one
+language at a time, from every saved sample (`js/knn-compile.js`,
+`php/api/compile_model.php`). On the laptop the Step 2 status line reads "Model
+out of date: run Compile" when the samples changed (`php/api/model_status.php`).
+On the Pi, Compile is disabled with a "build the model on the laptop" warning and
+the kiosk keeps using the last good file. The device is `php_uname('m')` (ARM =
+Pi) unless the git-ignored `config/device.txt` says `pi` or `laptop`. See
+`docs/system/ML.md` ("Compact model"), `docs/system/UI.md` and
+`docs/system/HARDWARE_BOOT.md`.
 
 `talk.html` is the "Let's Talk" two-way conversation screen (see
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing

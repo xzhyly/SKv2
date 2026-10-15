@@ -1293,6 +1293,18 @@ so a later session does not re-litigate them:
     **Update 2026-09-27 (owner):** accepted as is until the keyframes phase.
     Stays open.
 
+    **Update 2026-10-16 (compact-model phase, measured):** the keyframes phase did not trim the edges.
+    In Step 1 (`docs/reports/2026-10-14-compact-model-step1.md` section 2.3), trimming 200 ms at both ends
+    before even spacing matched plain even spacing on T2 (vote 71.7 / 80.8 at 10 / 15 rows, as without the
+    trim) but scored 2.5 / 1.7 points lower on T2r (71.9 / 82.6 against 74.4 / 84.3), and every fixed count
+    per sample lost more than 2 points against today's rows on at least one set (at 20 rows per sample: T2
+    0.8 points, T2r 3.3). The shipped rule (a per-sign
+    budget of 90 rows, `docs/system/ML.md` "Compact model") keeps today's rows unchanged, transition frames
+    included; above the budget `evenIdx` (`js/knn-compile.js:49-60`) also keeps each sample's first and last
+    row. The subsampler cited above is now `js/gesture-data.js:757` (`recordingToFeatureRows`) and the top-5
+    mean `js/gesture-training-ui.js:639`. Status: open, accepted as measured; re-check with
+    leave-one-signer-out after the first real import (item 128).
+
 89. **Low severity, open (video-based gesture capture, 2026-09-26): no
     overall recording-length cap.** `js/capture-core.js`'s `CAPTURE`
     constants (`:10-21`) bound a single rep (`MAX_REP_MS` 20000) and
@@ -1392,6 +1404,14 @@ so a later session does not re-litigate them:
     No pre-phase measurement exists. Membership counts, from the migration output: the ESL model has
     122 signs before and after (122 ESL rows before; ESL + Both now), the FSL model 89 signs before
     and 89 Both + the shared `start` now. The Pi's quota is not measured. Not fixed.
+    **RESOLVED (2026-10-16, compact-model).** No k-NN model is stored in `localStorage` any more. Both
+    compiled files (`models/knn_ESL.bin`, 1,045,196 bytes; `models/knn_FSL.bin`, 723,096 bytes) are cached
+    in IndexedDB at the same time (`js/knn-model-store.js`, database `sining_kamay_models`, one entry per
+    language). Measured in `tests/compact-model/kiosk-check.mjs` (3 runs): after a reload both languages load
+    from the stored copy with one HEAD each (Let's Talk's loading step for ESL, which also waits for
+    `signs.php`, 50 / 58 / 46 ms; FSL 8 / 14 / 7 ms; switching back to ESL in the same session 11 / 9 / 10 ms); storage with both cached
+    1.13 MB (`tests/compact-model/bench.html`). The one-time schema-"3" reset (`js/gesture-data.js:16-25`)
+    removes the six old keys (1,200,000 characters in that check). The Pi's IndexedDB quota is not measured.
 
 95. **Low severity, open (sign-texts phase): deleting a sign does not invalidate the cached model
     label lists.** `deleteGesture()` (`js/gesture-training-ui.js:538-566`) removes the sign from
@@ -1400,6 +1420,10 @@ so a later session does not re-litigate them:
     changed (`:259-263`). `mergeSavedGestureSamples()` already filters cached labels against the
     current rows (`:736-757`), which limits the effect, so this is a stale-cache risk until the next
     Train, not a confirmed wrong result.
+    **RESOLVED (2026-10-16, compact-model).** There are no cached label lists any more. After a delete,
+    `deleteGesture()` (`js/gesture-training-ui.js:568-593`) reloads the summary listing and the model status
+    (`:586`), so the status line reads "Model out of date: run Compile" until the next Compile; Steps 3/4 keep
+    using the loaded file until then.
 
 96. **Low severity, open (sign-texts phase): Step 4 uses its own Output Language chip, not the Step 2
     model language.** `signLang` (`'en'`/`'fil'`, `js/gesture-training-ui.js:9`, `:1104`) is independent
@@ -1544,11 +1568,29 @@ so a later session does not re-litigate them:
      `knnPredict` on this laptop: 1.1-1.5 ms today, 53-62 ms at 87,840 rows (`ML.md`); the Pi is not
      measured. Imported samples are ordinary tracked files under `saved_gestures/`: do not commit or
      copy them to the Pi until that phase is done.
+     **RESOLVED (2026-10-16, compact-model).** The kiosk no longer receives or needs samples: Let's Talk and
+     Train Gestures Steps 3/4 load the compiled `models/knn_<LANG>.bin` (measured in
+     `tests/compact-model/kiosk-check.mjs`, 3 runs: 0 requests to `save_gesture.php`, the only PHP endpoint was
+     `signs.php`). Imported samples are git-ignored (`saved_gestures/*/sample_i*.json`, `.gitignore:11`), so they
+     are never committed and never reach the Pi through git. The per-sign budget keeps a model small: with 3,000
+     extra synthetic samples the ESL file held 11,047 rows (5,596,344 bytes) instead of every row
+     (`tests/compact-model/scale-check.mjs`; `docs/system/ML.md` "Compact model"). Not measured on the Pi
+     (item 129).
 117. **Medium, open (bulk importer): the Review step downloads the whole dataset, frames included, each
      time it opens and after each import** (`js/bulk-import-ui.js`, `loadReviewData`). 3.48 MB today
      (measured in Step 1); projected about +27 MB with 2 signers and +109 MB with 8. With a large dataset
      the GET may exceed PHP's `memory_limit` (512M here; not measured), and Import stays disabled when it
      fails. A names-only listing would remove the need.
+     **Update 2026-10-16 (compact-model phase, measured):** it does exceed it. One v3 sample is 46,316 bytes of
+     JSON and 715,443 bytes of PHP memory once decoded; an emulation of the listing at 512M handled 600 v3
+     samples (peak 438 MB) and died at 732 (`.git/sdd/cm-phase-review-1.md`). With 732 and with 3,000 synthetic
+     v3 samples on disk, the real `GET save_gesture.php?no_sync=1` through Apache answered HTTP 200 with PHP's
+     "Allowed memory size" fatal (188 bytes), and through php-cgi at 512M a fatal at a 512 MB peak
+     (`tests/compact-model/scale-check.mjs`, `.git/sdd/cm-task-9-report.md`). So the Review step cannot open
+     after an import of 2 signers x 3 reps of today's 122 signs. The listing now frees each sample early and
+     has `summary=1` (no frames) and `labels=` (a batch of signs) options, which Compile uses
+     (`docs/system/BACKEND.md`); bulk import must not change in this phase, so its Review still asks for the
+     full listing. Still open.
 118. **Low, open (bulk importer): never run at full scale or in a visible browser.** Every check ran in
      headless Chrome on at most 10 small videos. Not measured: a folder of about 960 videos (table
      redraws, a multi-hour run), the real folder dialog with a mouse, laptop sleep during a run. The
@@ -1602,6 +1644,95 @@ so a later session does not re-litigate them:
      The same video measured 71 ms per frame (Hands) and 129 ms (Holistic) on a quiet machine, and 2 to
      5 times more in the Step 1 probe while other tests were running. The cause of the slow runs was not
      isolated beyond "machine load".
+126. **Low, open (compact-model phase, owner answer Q7): bulk import's Review estimate still uses the
+     30-rows-per-sample rule.** Each planned repetition adds `min(30, hand frames)` rows
+     (`js/bulk-import-core.js:68`, `projectRows()` `:187-197`, used at `js/bulk-import-ui.js:1469`), and the
+     "current" rows count every row of every sample (`:1330-1332`), not the compiled file. The page then times
+     its `knnPredict` estimate at that size. With the per-sign budget of 90 the real model is much smaller once a
+     sign has more than 90 rows (Step 1 projection for 8 signers: 9,164 ESL rows against 89,887), so the estimate
+     overstates both rows and milliseconds. Bulk import must not change in this phase; left as is by the owner.
+127. **Low, open (compact-model phase): stale references left in files this phase must not change.**
+     `js/talk-signing.js:3` cites `tlStartPredLoop` at `js/sign-to-text-ui.js:416-601` (now `:280-465`), and
+     the constants block `:11-19` cites `:7` (`GESTURE_HOLD_MS`, now `:9`), `:501` (the 0.45 floor, now `:365`),
+     `:432` (no-hand 300 ms, now `:296`), `:600` (150 ms tick, now `:464`), `:723` (countdown, now `:567`) and
+     `:876` (skeleton key, now `:691`); `:19` and `:22` are right again. These were already a few lines off
+     before the phase; removing the old loaders moved them by about 141 lines. `js/bulk-import-ui.js:1128`
+     cites `js/sign-to-text-ui.js:118` for the start/stop rule (now `js/knn-compile.js:43-45`), `:1136` cites
+     `knnPredict` at `:204-243` (now `:109-148`), and `:1329` names `mergeSavedGestureSamples()`, which no longer
+     exists. `js/bulk-import-ui.js:1656` and `js/gesture-capture-ui.js:698` still remove
+     `sining_kamay_labels_<LANG>` after a save, now a harmless no-op. Bulk import's reminder still says
+     "Compile (Train AI)". Fix in the next phase that may touch these files.
+128. **Medium, open (compact-model phase, owner answer Q3): leave-one-signer-out has not been run.** No
+     multi-signer data exists yet, so budget 90 is proven only on today's data, where it changes nothing. After the
+     first real import run `node tests/compact-model/accuracy.mjs --live --sets LOSO --query-rows 10 --signers
+     P01,P02 --json <file>` (Task 2's recommended flags; the planned-work and ETA lines show the real run time
+     within 30 s). Rule: if budget 90 loses more than 2 vote points against the current (no-budget) rule on a set
+     with at least 20 queries (the script prints `LOSES MORE THAN 2 POINTS`), compile with budget 120 and measure
+     again; if that still loses, re-plan before the kiosk gets the bulk data (Step 1 section 2.5). Projected run
+     time with all 8 signers and the current rule is hours (`.git/sdd/cm-task-2-report.md`); not measured.
+129. **Medium, open (compact-model phase, owner decision 10): nothing of this phase was measured on the Pi.**
+     Not measured: `knnPredict` per call at today's and the projected sizes, cold and cached model loads,
+     `php_uname('m')` reporting `aarch64`/`arm*`, the IndexedDB quota, and Apache serving the `.bin` files with an
+     ETag. Run `bash tests/compact-model/pi-bench.sh` on the Pi's desktop (`docs/system/HARDWARE_BOOT.md`); it
+     prints and saves `COMPACT_BENCH {json}`. The kiosk predicts every 150 ms, and MediaPipe shares the CPU.
+130. **Low, open (compact-model phase, known edge): a sample file that is not valid JSON keeps its model "out of
+     date".** The listing skips such a file (`php/api/save_gesture.php:360-361`), so Compile's fingerprint leaves
+     it out, but `model_status.php`'s walk counts every `sample_*.json` without reading it
+     (`php/api/knn_model_lib.php:81-107`). The status line then reads "Model out of date: run Compile" after every
+     Compile until the file is fixed or removed.
+131. **Low, open (compact-model phase, known edge): two simultaneous Compiles of one language share
+     `models/knn_<LANG>.bin.tmp`** (`php/api/compile_model.php:63`). The last rename wins and a reader never sees a
+     half-written file, but one Compile's file can replace the other's. Single-owner demo; not handled.
+132. **Low, open (compact-model phase): the sample listing does not return `signer`.** `list_samples()`
+     (`php/api/save_gesture.php:362-369`) returns `file, label, frames, frameCount, createdAt, signLanguage`,
+     although an imported sample's file holds `signer` (`:650`). The accuracy script therefore reads `signer` from
+     the sample files on disk in `--live` mode (`readSignerFromDisk()`, `tests/compact-model/accuracy.mjs:82-97`),
+     which works only on the machine that holds the files and was not exercised on a real imported sample.
+133. **Medium, open (compact-model phase, measured): the summary listing and Compile are slow at the planned
+     import size.** With 3,000 extra synthetic v3 samples (`tests/compact-model/scale-check.mjs`, two runs): the
+     summary listing took 15.6-28.5 s with the disk sync and 6.8-13.0 s without (it still decodes every sample file
+     for `frameCount`); Train Gestures' page load to ready 23.3 / 50.5 s; Compile ESL 52.6 / 100.5 s and FSL
+     45.4 / 77.1 s (1 summary + 62 batch requests). Reading `frameCount` without decoding the frames would be the
+     follow-up (`.git/sdd/cm-task-9-report.md`). Laptop only; the kiosk never makes these requests.
+134. **Low, open (compact-model phase): an upload larger than PHP's `post_max_size` gets an HTML answer.**
+     Above 40M (`C:\xampp\php\php.ini:701`) PHP prints its startup warning (`display_errors` on), so
+     `compile_model.php` answers HTTP 200 `text/html` with the warning before its JSON 413 text; nothing is
+     written. Compile treats any non-JSON answer as a failure and shows its first 200 characters
+     (`js/gesture-training-ui.js:922-927`). Such a file would need about 900 signs at the 90-row budget
+     (`.git/sdd/cm-task-3-review-1.md`); not reachable through the UI today.
+135. **Low, open, pre-existing (found 2026-10-15): `tests/sign-texts/dataset-check.mjs` fails one check.** It
+     expects 6 table columns (`:76`, "English text | Filipino text | Set | Samples | Edit | Delete"), but the
+     dataset table has had 7 since the avatar phase added "Avatar" (`js/gesture-training-ui.js:169`; already 7 at
+     HEAD `b61c665`, `:159`). Every other check in it passes, including the new model-status ones.
+136. **Low, open, pre-existing: checks from earlier phases pin today's dataset.** `tests/sign-texts/verify-e2e.mjs:66`
+     (122 gestures), `tests/sign-texts/migration.test.mjs:32`, `:42` (122) and `tests/sign-texts/talk-check.mjs:56-57`,
+     `:61` (the signs `how_are_you` and `a` in the models) will fail after the owner archives today's signs
+     (`.git/sdd/cm-phase-review-1.md`, minor 5). This phase's own checks read the frozen fixtures or the live
+     files instead.
+137. **Low, open, pre-existing: Train Gestures shows its dataset table about 10 s late on a fresh profile.**
+     `warmUpHandTracking()` starts before the startup listing (`js/gesture-training-ui.js:1504`), although its
+     comment (`:1526-1533`) says it runs after it. Its first inference is one main-thread task of 11.0-11.3 s, so
+     the summary listing that ended at 2.1-2.5 s is drawn at 12.4-12.8 s (`.git/sdd/cm-task-6-review-1.md`, minor
+     1). Starting the warm-up after the listing would show the table at about 2.5 s.
+138. **Low, open (compact-model phase): paths not exercised by any test.** A missing or broken model file on the
+     real `talk.html` page in a browser (covered for the store by `tests/compact-model/store-check.mjs` and for
+     `autoTrainForTranslate()` by a unit test with a rejecting store); `kiosk-check.mjs`'s SKIP branch when `hello`
+     is not in the live model; the `labels=` option by a unit test (`save_gesture.php` needs a DB; it is covered
+     end to end); `readSignerFromDisk()` on a real imported sample (item 132); a real Ctrl-C in `pi-bench.sh`.
+     `indexedDB.open` has no timeout: if Chromium's IndexedDB never answers, the load never settles
+     (`js/knn-model-store.js:44-64`; single-tab kiosk, low risk; `.git/sdd/cm-task-4-review-1.md`, minor 6). In
+     `scale-check.mjs`, the first `delete_gesture` call after the long php-cgi phase failed with "fetch failed" in
+     every run and its retry succeeded; the cause was not confirmed.
+139. **Low, open (compact-model phase): deployment notes for the model files.** Each recompiled model is a new
+     binary blob in git history (5,596,344 bytes for ESL at the 3,000-sample scale check): accept the growth or
+     copy the two files to the Pi by hand (`docs/system/HARDWARE_BOOT.md`). The working copy of `start_kiosk.sh` on
+     this laptop is still CRLF (`git ls-files --eol`: `i/lf w/crlf`); git stores LF and `.gitattributes:3`
+     (`*.sh text eol=lf`) gives LF on a checkout, but a straight copy of this working tree to the Pi would carry
+     CRLF.
+140. **Low, open, pre-existing: dead code next to the model.** `EPOCHS = 50` and `tfModel` are declared and unused
+     in both UI files (`js/gesture-training-ui.js:3`, `:15`; `js/sign-to-text-ui.js:6`, `:15`), and the `tl*`
+     translate path in `js/sign-to-text-ui.js` (`tlLoadModelForActiveLanguage()` `:185`) has no caller in
+     `talk.html` or `js/talk-*.js` (`.git/sdd/cm-task-5-review-1.md`, minor 1).
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

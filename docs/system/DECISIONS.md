@@ -1811,6 +1811,8 @@ Source: the owner's task prompt (decisions 1-14), the approved proposal
 - **`avatar-extract.js` rejects a range with a missing or non-numeric bound** instead of processing the
   whole video.
 - **The "kiosk row count" includes `start` and `stop` in both models,** as `js/sign-to-text-ui.js:118` does.
+  (2026-10-16: that line is gone; the rule is now `KnnCompile.inModel`, `js/knn-compile.js:43-45`, used by
+  every page, so the count still matches. The importer's own comment is stale, DEBT 127.)
 
 ### Correction to the Step 1 report
 
@@ -1818,3 +1820,139 @@ The Step 1 report said one `knnPredict` call would take about 1.6 s on this lapt
 (35 ms today). Both figures were wrong: they were measured inside a node `vm` context (6-7 times slower by
 itself) on a busy machine. Re-measured: 1.1-1.5 ms today and 53-62 ms at 87,840 rows (`ML.md`). The ratio
 (about 45 times) holds; the Pi is not measured. The owner's Q1 answer was given on the wrong figure.
+
+## Decisions made during the compact-model phase (2026-10-15/16)
+
+Source: the owner's task prompt (decisions 1-10, settled), the approved proposal
+`docs/reports/2026-10-14-compact-model-step1.md`, the owner's answers to its questions (2026-10-15), and the
+build and review reports `.git/sdd/cm-task-*-report.md`, `cm-*-review-*.md`, `cm-phase-review-1.md` (not
+tracked). Model and measurements: `docs/system/ML.md` "Compact model".
+
+### Owner decisions (task prompt)
+
+1. **Compile happens on the laptop** (Train Gestures, Step 2 "Compile", for ESL and for FSL). It writes one
+   compact model file per language into the repo, which git carries to the Pi. The kiosk loads that file, never
+   the raw samples.
+2. **Fewer rows per sample:** keep a small set of keyframes per sample instead of up to 30 rows (DEBT 88). Step 1
+   proposes the number and the rule, with measured accuracy. (What shipped is a per-sign budget; see build
+   decisions.)
+3. **Compact binary storage** (Float32 or quantized) with the label list and metadata (keys, set, build date,
+   sample count, row count, format version), cached in IndexedDB, not `localStorage`, and downloaded again only
+   when the file changes.
+4. **`knnPredict` and `cosineSimilarity` keep working on the same 126-float rows** and give the same answer for
+   the same rows. Only which rows exist and how they are loaded change.
+5. **Accuracy must not get worse.** Measure before/after on held-out data (leave-one-repetition-out;
+   leave-one-signer-out with the bulk test videos if available), top-1 and per-sign confusions, per category; if
+   keyframes lose more than 2 points, propose another rule. Check whether the 30-row cap hurts phrases, compare a
+   length-based cap, and list the most confused pairs (phrase vs word).
+6. **The raw sample files stay the source of truth on the laptop.** The Pi may keep the samples it has today but
+   must not need them; imported bulk samples can stay off the Pi.
+7. **A model file older than the samples is flagged on the laptop** ("Model out of date: run Compile"); the kiosk
+   keeps using the last good file.
+8. **Demo system: no security work.**
+9. **Data work happens on the laptop.** On the Pi, Compile shows a warning that the model is built on the laptop
+   and carried to the Pi; the kiosk never compiles. Copying files to the Pi over SSH is a later task, so the
+   model files must be easy to copy on their own.
+10. **The Pi is not available in this phase.** Every measurement is on the laptop; only the Pi script is written.
+
+### Answers to the Step 1 questions (approved 2026-10-15)
+
+- **Q1** (which sign is in the owner's one real test video): unknown. T3 stays a consistency check.
+- **Q2:** git-ignore `saved_gestures/*/sample_i*.json` (`.gitignore:11`), so imported samples never reach the
+  Pi through git.
+- **Q3:** budget 90, stored in the model file as a Compile setting. Leave-one-signer-out is re-measured after
+  the first real import, not in this phase (DEBT 128).
+- **Q4:** `start` (and `stop`) are in both model files.
+- **Q5:** the device is `php_uname('m')` (ARM = Pi), overridden by a git-ignored `config/device.txt`.
+- **Q6:** on the Pi, Compile is disabled, with the warning text of Step 1 section 6.4.
+- **Q7:** bulk import's Review estimate is left as it is; a DEBT item records it (DEBT 126).
+- **Addition:** after this phase the owner archives today's 122 signs and imports a new dataset (up to 8
+  signers x 3 reps). So tests that pin today's numbers (2,047 / 1,414 rows, the 5,010 queries, the Step 1
+  section 2.3 scores) read a frozen copy in `tests/compact-model/fixtures/`, never live `saved_gestures/`; and
+  Compile, the loader, `model_status.php` and the accuracy script must work on any dataset (0 signs, a sign
+  with 1 sample, a sign with 24+ samples, a sign folder with `sign.json` and no samples). The whole-phase review
+  also unpinned the two browser checks (`kiosk-check.mjs`, `training-check.mjs`): they now read the live
+  model headers and the live listing.
+
+### Build decisions
+
+- **A per-sign row budget instead of a fixed keyframe count per sample.** Every fixed count from 3 to 20 rows
+  per sample lost more than 2 points on at least one Step 1 test set (even 20: T2 85.0 against 85.8, T2r 83.5
+  against 86.8, phrases 76.5 / 70.6 against 82.4 / 88.2; even 10: 71.7 / 74.4). `knnPredict` scores a sign by
+  the mean of its 5 best rows, so with one sample per sign fewer rows mean fewer close matches. The cost
+  problem is rows per sign: a sign keeps all its rows up to 90, above that each sample keeps
+  `max(3, floor(90 / samples))` evenly spaced rows. On today's data nothing changes (identical rows, identical
+  accuracy); the projected ESL model is 10,196 rows with 2 signers and 9,164 with 8 instead of 24,007 and
+  89,887. It is still a per-sample keyframe count (decision 2), set by how many samples the sign has. If
+  leave-one-signer-out shows budget 90 losing more than 2 points against no budget, raise it to 120 (Step 1
+  section 2.5); the budget is stored in each file's `rule`.
+- **Keep the 30-row cap.** Phrases scored the same with the cap, without any cap and with a length-based cap
+  (T2r phrases 88.2 in all three); no cap gained 0.8 points (one word) for 6% more rows.
+- **Float32, not int8.** On 5,010 test queries Float32 gave the same top-1 as the JSON doubles 5,010 times,
+  with a largest confidence difference of 2.83e-9; int8 changed 5 answers (`.git/sdd/cm-step1/quant.txt`) and
+  would be 4x smaller. At about 5 MB on localhost the size does not matter, and decision 4 asks for the same
+  answer. dtype 3 (int8) is reserved, not implemented; any dtype other than 1 is refused.
+- **Compile runs in the browser,** with the page's own `recordingToFeatureRows()`, and PHP only checks and
+  stores the bytes. One implementation of the feature rows; a PHP copy would need a parity test forever.
+- **The fingerprint is made of file names, not file contents:** `label|set|file` per sample of the model,
+  sorted, SHA-256. Sample files are write-once (`sample_<ms>_<hex>.json`, `sample_i<importId>.json`), so a name
+  is enough, and `model_status.php` never has to open a sample (median 51 ms through Apache on today's data).
+  Categories and texts are left out because they do not change recognition. A parity test checks that the JS
+  and PHP fingerprints agree on the fixture. Known edge: an invalid-JSON sample (DEBT 130).
+- **"Out of date" also covers format:** a binary version or dtype, a header `formatVersion` or a rule other than
+  `sign-budget` v1 reads `staleReason: "format"`, so a file from another build reads "Model out of date: run
+  Compile" (Step 1 section 6.3: "an older format or rule version").
+- **HEAD + ETag, with the weak ETag handled.** Each load sends one HEAD; the IndexedDB copy is used when its
+  ETag and `Content-Length` match. Apache 2.4.58 sends a weak `W/"<size>-<mtime>"` for a file changed less than a
+  second earlier and the same text as a strong ETag afterwards (measured, `tests/compact-model/store-check.mjs`
+  check 4), so the `W/` prefix is ignored; otherwise a load right after Compile, or right after a copy onto the
+  Pi, would cost one extra download every time. Without an ETag, `Content-Length` + `Last-Modified` are compared;
+  with neither, the file is always downloaded. A `git pull` that changes the file's mtime costs at most one
+  download.
+- **Labels in header order,** not `Object.keys(model)`: `Object.keys` moves integer-like keys (`"1"`, `"10"`)
+  first, and number signs are a category. Labels in the file are sorted by key.
+- **The kiosk keeps the last good file; the laptop does not.** When the server's file is missing or broken, the
+  kiosk (and Train Gestures on the Pi) uses the stored IndexedDB copy with one `console.warn` (decision 7). On the
+  laptop Train Gestures refuses that copy and says "No model file: run Compile", because there the answer is to
+  compile, and testing an old copy in Steps 3/4 would mislead.
+- **Export Data exports the loaded file's rows** (`{label: rows}`, the old shape, now the budgeted rows), and
+  **Load Saved is retired** (a toast): the model is built only by Compile, from the saved samples, so an
+  imported training file would make the model and the fingerprint disagree.
+- **Compile reads the frames in batches** (whole-phase review). The full listing with frames ran PHP out of
+  memory at about 732 v3 samples (one sample: 46 KB of JSON, 715 KB decoded; `memory_limit` 512M), which is
+  2 signers x 3 reps of today's 122 signs. Compile now reads one summary listing (no frames, with the disk sync)
+  for the fingerprint and the file list, then `save_gesture.php?no_sync=1&labels=...` at most 60 samples per
+  request, and builds the model sign by sign (`KnnCompile.createBuilder`, which `buildModel` also uses: one
+  implementation). Only files the summary listed are used, so a sample saved during Compile cannot make the
+  rows and the fingerprint disagree. Measured at 3,000 extra samples: PHP peak per request median 44 MB, max
+  46 MB; Compile 45.4-100.5 s (`docs/system/BACKEND.md`, `.git/sdd/cm-task-9-report.md`).
+- **`start` and `stop` in both files** (Q4). This was already the kiosk's rule; Train Gestures' FSL model used
+  to leave `start` out, so Steps 3/4 in FSL now also know `start` (and `stop` once it has a sample; today's
+  data has no `stop` sign: FSL = 89 Both signs + `start`).
+- **A sign with 0 rows is not in the file.** The old in-memory model kept an empty `stop` key, which scored 0;
+  recognition does not change.
+- **One-time reset of the old keys (schema `"3"`).** The six `localStorage` keys (about 3.4M characters) are
+  removed once on every page that loads `js/gesture-data.js`, including a machine already reset to `"2"`.
+- **Sign texts from the header are a fallback only.** The database text wins; the header text is used for a
+  sign the Pi's database does not list (for example one that exists only through bulk import).
+- **`*.sh text eol=lf`** (`.gitattributes:3`), next to `models/knn_*.bin binary` (`:2`), because
+  `core.autocrlf` is `true` on this laptop: a Windows checkout would otherwise give the Pi scripts CRLF.
+- **Browser checks that press Compile guard the real files** (`tests/compact-model/model-guard.mjs`): Apache
+  cannot be pointed at another models folder, so each such check copies both files first and restores them
+  byte for byte in `finally`. Checks that only pin numbers build their own files from the frozen fixture.
+- **`compile_model.php` sends no CORS header** (a write endpoint; same-origin only), unlike
+  `save_gesture.php`. **Sample names are read with `scandir`**, not `glob()`, in the fingerprint walk: the same
+  names, about 8x faster on Windows.
+
+### Open for the owner
+
+- **Bulk import's Review step before the import (decision needed).** Its full listing runs out of PHP
+  memory at about 732 imported samples (measured through Apache and php-cgi, `.git/sdd/cm-task-9-report.md`),
+  so after the first 2-signer import, Review (and with it a second import round) fails until DEBT 117 is
+  fixed. Bulk import was must-not-change in this phase; the fix (Review through `?summary=1` and `labels=`
+  batches, as Compile does) is the recommended next task.
+- **Git history growth.** Each recompiled model is a new binary blob in git (5,596,344 bytes for ESL at the
+  3,000-sample scale check). Either accept the growth or copy the two files to the Pi by hand and commit them
+  less often (`docs/system/HARDWARE_BOOT.md`; DEBT 139).
+- **Wording.** "Train AI" is gone from Train Gestures, but bulk import's reminder still says "Compile (Train AI)"
+  (bulk import must not change in this phase).

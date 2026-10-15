@@ -32,15 +32,29 @@ not a direct API call, so no row is listed for them.
 Both reachable, PIN-free-or-gated screens that actually classify gestures use
 a hand-rolled k-NN, not TensorFlow.js:
 
-- **`talk.html`'s signing screen** (and formerly `sign-to-text.html`, archived 2026-09-21), via `js/sign-to-text-ui.js:204-243` (`knnPredict`; `cosineSimilarity` `:193-202`, re-measured 2026-10-05) — top-K
-  (`min(5, N)`) cosine similarity, score normalized `(s-0.3)/0.7` clamped
-  0-1. Confirmed working (see `CLAUDE.md`).
-- **`gesture-training.html`**, via `js/gesture-training-ui.js:581-622` (`knnPredict`; `cosineSimilarity` `:570-579`, re-measured 2026-10-05) — same
-  approach, `K=5`. `trainModel()` here is a KNN cache-merge with a cosmetic
-  progress animation, not real epoch training (`docs/system/UI.md` Part 2,
-  §3).
+- **`talk.html`'s signing screen** (and formerly `sign-to-text.html`, archived 2026-09-21), via `js/sign-to-text-ui.js:109-148` (`knnPredict`; `cosineSimilarity` `:98-107`, re-measured 2026-10-16; was `:204-243` / `:193-202` on 2026-10-05) — top-K
+  (`min(5, N)`, `:137`) cosine similarity, score normalized `(s-0.3)/0.7` clamped
+  0-1 (`:145`). Called from `js/talk-signing.js:149`. Confirmed working (see `CLAUDE.md`).
+- **`gesture-training.html`**, via `js/gesture-training-ui.js:610-651` (`knnPredict`; `cosineSimilarity` `:599-608`, re-measured 2026-10-16; was `:581-622` / `:570-579`) — same
+  approach, `K=5` (`:639`), called from Steps 3/4 at `:1063`. Until 2026-10-16 `trainModel()` here was a KNN cache-merge
+  with a cosmetic progress animation, not real epoch training (`docs/system/UI.md` Part 2, §3); it is
+  replaced by **Compile**, see "Compact model" below.
+- Both pages now get `knnModel` from a compiled model file, never from samples (compact-model phase, below).
+  The text of `knnPredict` and `cosineSimilarity` did not change in that phase (byte comparison against
+  HEAD `b61c665`, `.git/sdd/cm-phase-review-1.md`).
 
 ## Model membership and display text (sign-texts phase, 2026-10-04)
+
+> **Update 2026-10-16 (compact-model phase).** The membership rule is now one function,
+> `KnnCompile.inModel` (`js/knn-compile.js:43-45`, PHP twin `knn_in_model`,
+> `php/api/knn_model_lib.php:67-69`): ESL = ESL + Both, FSL = FSL + Both, and `start` / `stop` in
+> **both** models on every page (owner answer Q4). The two filters cited below
+> (`js/gesture-training-ui.js:728`, which left `start` out of the Train Gestures FSL model, and
+> `js/sign-to-text-ui.js:118`) were removed with `trainModel()` and `mergeSavedGestureSamples()`. The
+> one-time reset now runs for schema `"3"` (`js/gesture-data.js:16-25`), and the "Cache size caveat"
+> below is superseded. Display text: `getSignText()` (`js/gesture-data.js:712-721`) uses the database
+> text first and, when it is unknown or empty, the text stored in the loaded model file's header
+> (`setModelSigns()`, `:725-731`). The rest of this section is the sign-texts phase as written.
 
 The classifier itself did not change: `knnPredict` and `cosineSimilarity` are untouched
 (`js/gesture-training-ui.js:570-622`, `js/sign-to-text-ui.js:193-243`), and `trainModel()` /
@@ -78,6 +92,9 @@ changed is *which signs feed which model* and *what text is shown for a detected
   `sining_kamay_trained_labels_ESL|FSL` are removed, because models cached before this phase were built from
   per-language folders. The models are rebuilt by pressing Train (training page) or automatically by
   `autoTrainForTranslate()` (`talk.html`). Storage access is in try/catch.
+- **Superseded 2026-10-16 (compact-model phase): no k-NN model is cached in `localStorage` any more.**
+  Both compiled files are cached in IndexedDB at the same time (`js/knn-model-store.js`, see "Compact
+  model" below; `docs/system/DEBT.md` item 94, resolved). The paragraph is kept as written:
 - **Cache size caveat.** The ESL k-NN cache is about 3.59M characters of an origin quota of roughly 5.2M, so the
   FSL model (91 labels, about 2.5M) cannot also be cached; training still reports "Complete" while
   `trainModel()` only `console.warn`s (`.git/sdd/st-task-8-report.md` concern A; not caused by this phase, but
@@ -120,7 +137,167 @@ the live capture's own calls (`js/video-landmarks.js`, `js/gesture-data.js` `cre
 are unchanged. The page's "knnPredict (estimate)" is its own function with the same shape, run on a
 synthetic model; the kiosk's function is not loaded there.
 
-Measured on this laptop, the kiosk's `knnPredict` text (`js/sign-to-text-ui.js:193-243`) run in node
+Measured on this laptop, the kiosk's `knnPredict` text (`js/sign-to-text-ui.js:193-243` at the time; `:98-148`
+since 2026-10-16) run in node
 on a JSON round-tripped model: 1.1-1.5 ms at 2,074 rows, 14-15 ms at 24,034, 37-38 ms at 58,560 and
 53-62 ms at 87,840 rows. (The Step 1 report's 35 ms / 1.6 s figures were wrong: they were taken inside a
 node `vm` context, which alone is 6-7 times slower, on a busy machine.) The Pi is not measured.
+
+## Compact model (2026-10-15/16)
+
+Recognition loads a precompiled model file per language instead of downloading every sample and building
+the k-NN in the browser. Proposal and measurements: `docs/reports/2026-10-14-compact-model-step1.md` (Step 1);
+build reports `.git/sdd/cm-task-1..9-report.md` (not tracked). `knnPredict` and `cosineSimilarity` are
+unchanged; what changed is which rows exist and how they are loaded (owner decision 4). Decisions:
+`docs/system/DECISIONS.md` ("compact-model phase"); UI: `docs/system/UI.md`; endpoints:
+`docs/system/BACKEND.md`.
+
+### Where it is built, loaded and called
+
+| What | Where |
+|---|---|
+| Rule, membership, fingerprint, encoder/decoder (browser + node, no DOM) | `js/knn-compile.js`: `DEFAULT_RULE` `:18-25`, `inModel` `:43-45`, `evenIdx` `:49-60`, `selectSignRows` `:86-101`, `fingerprintText` `:105-114`, `sha256Hex` `:116-125`, `createBuilder` `:138-218`, `buildModel` `:223-231`, `checkHeader` `:234-251`, `encode` `:259-291`, `decode` `:295-338` |
+| Build (laptop) | Train Gestures Step 2 Compile, `compileModel()` `js/gesture-training-ui.js:802-969`; written by `php/api/compile_model.php` (`docs/system/BACKEND.md`) |
+| Load + IndexedDB cache | `js/knn-model-store.js` `load()` `:168-264` |
+| Let's Talk | `autoTrainForTranslate()` `js/sign-to-text-ui.js:150-174` (name and callers kept): the queue's "gestures" item `js/talk-loader.js:59` and `loadModel()` on a language switch `js/talk-signing.js:220-227` |
+| Train Gestures Steps 2-4 | `loadModelForLang()` `js/gesture-training-ui.js:698-722`, then `applyLoadedModel()` `:683-693` |
+| Prediction | the unchanged `knnPredict` calls `js/talk-signing.js:149` and `js/gesture-training-ui.js:1063` |
+
+`autoTrainForTranslate()` sets `knnModel`, `activeLabels` (header order), `activeFeatureSize = 126` and
+`modelTrained = labels >= 2` (`js/sign-to-text-ui.js:164-167`); a result that arrives after the language
+changed is dropped (`:160`). Decoded rows are plain `Array`s of 126 numbers (Float32 widened to double,
+`js/knn-compile.js:329-334`), which is what `knnPredict` saw before.
+
+### File format (`models/knn_<LANG>.bin`, little-endian; `js/knn-compile.js:259-291`)
+
+| Bytes | Content |
+|---|---|
+| 0-3 | ASCII `SKKN` |
+| 4-5 | uint16 format version 1 |
+| 6-7 | uint16 dtype 1 = Float32 (anything else is refused) |
+| 8-11 | uint32 header length H, 2 <= H <= 4,194,304 |
+| 12 .. 12+H | UTF-8 JSON header |
+| padding | zero bytes to a multiple of 4 |
+| rest | `rowCount x 126` Float32, label by label in header order |
+
+Header keys (`js/knn-compile.js:201-213`): `formatVersion`, `lang`, `buildDate`, `builtOn: "laptop"`, `rule`
+(the rule actually used), `dims: 126`, `dtype: "f32"`, `fingerprint`, `sampleCount`, `rowCount`, and
+`labels: [{key, set, category, textEn, textFil, samples, rows}]`. The texts are only a display fallback
+(`getSignText()`, above). The decoder refuses, with a `knn model file: ...` error: a wrong magic, version or
+dtype; H out of range or past the end; a header that is not JSON; `dims != 126`; `lang` not ESL/FSL;
+`labels` not an array; a label without a non-empty string key, a duplicate key or `__proto__`; `rows` not a
+non-negative integer; rows that do not add up to `rowCount`; a body that is not `rowCount x 126 x 4` bytes
+(`decode` `:295-324`, `checkHeader` `:234-251`). A file with 0 labels is valid; callers treat fewer than 2
+labels as "not usable".
+
+Committed files (decoded 2026-10-16): `knn_ESL.bin` 1,045,196 bytes (header 13,496 bytes), 2,047 rows,
+122 labels, 127 samples; `knn_FSL.bin` 723,096 bytes (header 10,426 bytes), 1,414 rows, 90 labels, 91
+samples; both built 2026-10-15T03:12 UTC with rule `sign-budget` v1, budget 90.
+
+### The rule: a per-sign row budget, not a fixed keyframe count
+
+- Each sample first gives today's rows through the unchanged `recordingToFeatureRows()`
+  (`js/gesture-data.js:757`): v2 as stored, v3 hand frames, at most 30, evenly by index. Rows that are not
+  126 finite numbers are dropped (`isRow`, `js/knn-compile.js:74-80`).
+- **Budget 90 per sign** (`selectSignRows`, `:86-101`). `n` = the sign's samples that gave at least one row.
+  If the sign's rows total 90 or less they are all kept. Otherwise each sample keeps
+  `k = max(3, floor(90 / n))` rows chosen by `evenIdx` (first and last row included). With 1-3 samples per
+  sign nothing changes; 6 samples of 30 rows keep 15 each (90); 25 samples keep 3 each (75).
+- The rule object is stored in the file: `{name: "sign-budget", version: 1, budget: 90, maxRowsPerSample: 30,
+  minRowsPerSample: 3, spacing: "even"}` (`:18-25`). `maxRowsPerSample` only describes what
+  `recordingToFeatureRows` already does.
+- **Membership:** a sign is in model L when its set is L or `BOTH`, or its key is `start` or `stop`
+  (`inModel`, `:43-45`). The set is `signs[label].set` from the listing, else the sample's `signLanguage`,
+  else ESL (`sampleSet`, `:37-40`), as in `recordingsToTrainingRows()` (`js/gesture-data.js:785-797`).
+- Labels with 0 rows are left out. Labels are sorted by key; rows keep sample order, then row order
+  (`createBuilder().finish()`, `:185-215`). Before this phase the kiosk listed `start`, `stop`, then listing
+  order; only an exact score tie in `knnPredict`'s sort could resolve differently
+  (`.git/sdd/cm-task-1-review-1.md`). A sign with no rows (`stop` before it is recorded) used to be an empty
+  key that scored 0; it is now absent (`.git/sdd/cm-task-5-report.md`).
+- On today's data the budget never bites: ESL 2,047 rows / 122 labels and FSL 1,414 / 90, row for row the
+  model the kiosk built before (`tests/compact-model/knn-compile.test.mjs`, frozen fixture).
+
+**Why not a fixed keyframe count (owner decision 2).** Measured in Step 1, section 2.3 (vote %; T2 = 120
+display videos queried against the samples' model, T2r = 121 samples queried against a model built from those
+videos):
+
+| Rule | ESL rows | T2 vote | T2r vote | T2 phrase | T2r phrase |
+|---|---|---|---|---|---|
+| current (before this phase) | 2,047 | 85.8 | 86.8 | 82.4 | 88.2 |
+| budget 90 per sign (shipped) | 2,047 | 85.8 | 86.8 | 82.4 | 88.2 |
+| even 20 per sample | 1,892 | 85.0 | 83.5 | 76.5 | 70.6 |
+| even 15 per sample | 1,685 | 80.8 | 84.3 | 52.9 | 64.7 |
+| even 10 per sample | 1,249 | 71.7 | 74.4 | 47.1 | 47.1 |
+| trim 200 ms + even 10 / 15 | 1,249 / 1,685 | 71.7 / 80.8 | 71.9 / 82.6 | not in the Step 1 tables | not in the Step 1 tables |
+
+Every fixed count from 3 to 20 rows per sample lost more than 2 points on at least one set. Trimming
+200 ms of entering/leaving frames (DEBT 88) matched even spacing on T2 but scored 2.5 / 1.7 points lower on T2r
+(10 / 15 rows), and centred spacing was within about 1 point of even spacing at the same count; farthest-point and k-medoids selection scored worse than even spacing. `knnPredict`
+scores a sign by the mean of its 5 best rows, so with one sample per sign fewer rows mean fewer close
+matches.
+
+### Accuracy before and after (frozen fixtures, exact)
+
+`tests/compact-model/accuracy.mjs` reproduces Step 1's numbers exactly for both rules on the frozen fixtures
+(`tests/compact-model/fixtures/`, data of 2026-10-15), with the budget model predicted independently
+(`reuse: false`; `.git/sdd/cm-task-2-report.md`):
+
+| Set | Queries | Before (current rule): vote, frames | After (budget 90): vote, frames |
+|---|---|---|---|
+| T1 leave-one-repetition-out, ESL | 8 | 6/8, 272/348 | 6/8, 272/348 |
+| T2 display videos, ESL model | 120 | 103/120 (85.8%), 1,771/2,844 (62.3%) | identical |
+| T2 FSL model | 90 | 75/90 (83.3%), 1,276/2,130 (59.9%) | identical |
+| T2r reverse | 121 | 105/121 (86.8%), 1,248/1,867 (66.8%) | identical |
+
+Per category (T2 vote), before and after: letters 25/26, numbers 10/10, words 54/67, phrases 14/17. T3 (the
+owner's one real video, sign unknown, Q1) gives the same top-3 per repetition under both rules (top-1 `n`,
+`n`, `n`). Float32 storage gives the same top-1 as the double-precision rows on all 5,010 test queries
+(`knn-compile.test.mjs`). Leave-one-signer-out was not run, because no multi-signer data exists yet
+(`docs/system/DEBT.md` item 128).
+
+### Prediction time per call (laptop; the Pi is not measured)
+
+`knnPredict`'s cost grows with the model's rows. Medians, plain arrays (the kiosk's input), headless Chrome:
+
+| Model | Rows | Step 1 section 4 | Task 7 bench, fresh instance per timing |
+|---|---|---|---|
+| FSL today | 1,414 | 2.5-2.6 ms | 1.3 ms |
+| ESL today | 2,047 | 2.0-3.5 ms | 2.0 ms |
+| budget 90, 8 signers (projected) | 9,164 | 10.6-12.8 ms | 6.9 ms |
+| budget 90, 2 signers (projected) | 10,196 | 16.1-24.9 ms | 10.8 ms |
+| budget 120, 2 signers (projected) | 14,140 | 23-37 ms (Step 1 section 2.5) | 14.1 ms |
+| no budget, 2 signers (projected) | 24,007 | 30.3-47.9 ms | 24.9 ms |
+| no budget, 8 signers (projected) | 89,887 | 125.4-179.7 ms | 83.4 ms |
+
+- Task 7's figures are one full run of `tests/compact-model/bench.html` (`.git/sdd/cm-task-7-report.md`,
+  round 2), on synthetic models of 122 labels. Laptop numbers vary 2-3x with machine load
+  (`.git/sdd/cm-task-2-report.md`: 4.4 and 14.9 ms at 2,047 rows on two runs).
+- **Do not quote Step 1's Float32 column**, or its "plain arrays were as fast or faster". Step 1 timed plain
+  arrays and Float32 views on one shared `knnPredict` instance, so V8's type feedback from the first run
+  slowed the second (`.git/sdd/cm-task-7-review-1.md`). With a fresh instance per timing, Float32 views were
+  as fast or faster up to 24,007 rows and slower at 89,887 (107.5 against 83.4 ms). The decoder still gives
+  plain arrays, as the kiosk had before.
+- The kiosk predicts every 150 ms (`js/talk-signing.js:17`), with MediaPipe on the same CPU. The Pi script
+  is `tests/compact-model/pi-bench.sh` (`docs/system/HARDWARE_BOOT.md`).
+
+### Load time and what is downloaded (laptop)
+
+- **Before** (Step 1 section 3.4): talk.html with no cache downloaded `save_gesture.php?no_sync=1`
+  (3,481,409 bytes) plus `signs.php`, and the "gestures" item took 799 / 803 / 995 ms. With the ESL cache it
+  took 47 / 56 / 72 ms; `localStorage` held 3,443,720 characters for ESL and 0 for FSL. A switch to FSL
+  (never cached) took 754 / 826 / 1,142 ms every time.
+- **After** (`tests/compact-model/kiosk-check.mjs`, 3 runs, `.git/sdd/cm-task-5-report.md`): cold "gestures"
+  item 128 / 133 / 108 ms, with one `GET models/knn_ESL.bin` of 1,045,196 bytes (34 / 38 / 38 ms); reload
+  (one HEAD plus the IndexedDB copy) 50 / 58 / 46 ms; first switch to FSL (network) 48 / 45 / 44 ms; back to
+  ESL (cache) 11 / 9 / 10 ms; FSL after a reload (cache) 8 / 14 / 7 ms. Exactly two GETs per run, one per
+  language. The only PHP endpoint requested was `php/api/signs.php`, with 0 requests to `save_gesture.php`,
+  and 0 console errors at 1024x600.
+- Storage with both files cached: 1.13 MB (`navigator.storage.estimate()`, Task 7 bench).
+
+### Scale (synthetic, laptop)
+
+`tests/compact-model/scale-check.mjs` added 120 synthetic Both signs x 25 v3 samples (3,000 samples) next to
+today's data and pressed Compile (`.git/sdd/cm-task-9-report.md`). Result: ESL 11,047 rows / 242 labels /
+3,127 samples, 5,596,344 bytes; FSL 10,414 / 210 / 3,091, 5,274,244 bytes; every synthetic sign 75 rows
+(25 x 3). Compile took 52.6-100.5 s for ESL and 45.4-77.1 s for FSL over two runs (`docs/system/UI.md`;
+`docs/system/DEBT.md` item 133).

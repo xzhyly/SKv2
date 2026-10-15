@@ -7,7 +7,8 @@
 - `php/admin_api.php` (196 lines)
 - `php/api/core_api.php` (177 lines) (**deleted 2026-09-24**, DB
   normalization — see "DB normalization" below)
-- `php/api/save_gesture.php` (718 lines as of the 2026-10-04 sign-texts phase —
+- `php/api/save_gesture.php` (806 lines as of the 2026-10-16 compact-model phase, which added the GET options
+  `summary` and `labels` — see "Compact recognition model" below; 718 lines as of the 2026-10-04 sign-texts phase —
   604 lines after the 2026-09-26 video-based gesture capture phase, 585 before
   the 2026-09-23 gesture-categorization phase; also edited 2026-09-24 for the
   normalized schema. See "One sign, two texts" below)
@@ -27,6 +28,9 @@
   phase) — kiosk-facing, write-only
 - `php/api/conversations.php` (180 lines, new 2026-09-25) — admin-facing
   list/detail/delete/clear_all, read by `reports.html`
+- `php/api/compile_model.php` (95 lines), `php/api/model_status.php` (99 lines) and
+  `php/api/knn_model_lib.php` (305 lines), new 2026-10-15/16 (compact-model phase) — the compiled k-NN
+  model files `models/knn_<LANG>.bin`; see "Compact recognition model" below
 - `scratch/trigger_sync.php` (170 lines) (**deleted 2026-09-24**, DB
   normalization)
 - `db-schema/database_setup.sql` (94 lines; `gestures` DDL re-synced to the migrated live DDL 2026-10-04)
@@ -64,6 +68,11 @@ Actions via `switch($action)` (line 49): `save_recording`/`get_recordings`/`dele
 - `gestures` — label → sample objects `{file, label, frames, frameCount, createdAt, signLanguage}`; `signLanguage` is the sample file's own field (default `ESL`, `:338-345`).
 - `signs` — label → `{set, textEn, textFil}` from `derive_sign()` (`:331-333`); the first folder that has the label wins, `saved_gestures/` before the legacy folder. New in the sign-texts phase.
 - `categories` — `{"ESL": {label: category}, "FSL": {label: category}}` from `build_categories_map($conn, $signs)` (`:275-299`), one `SELECT label, category FROM gestures` (`:278`) wrapped in `try/catch (Throwable)` (`:277-281`) so a PHP 8.1+ `mysqli_sql_exception` also falls back to the `gesture_category()` heuristic per label (`:290`). A label whose set is `BOTH` appears under **both** `categories.ESL` and `categories.FSL` (`:291-296`) with the same category; the category column is per sign, not per language.
+
+*GET, update 2026-10-16 (compact-model phase):* two more query options, `summary=1` (no `frames`) and
+`labels=a,b,...` (only those sign folders), and each decoded sample is freed as soon as its entry is built. A
+GET without them is byte-identical to before. Current line numbers and measurements: "Compact recognition model"
+below.
 
 *POST* `action="delete_gesture"` (`:376-419`, label-based): `clean_label()` the label (`:377`, 400 if empty), delete every `*.json` (including `sign.json`) and then the folder from **both** `saved_gestures/` and the legacy `saved_gestures_fsl/` (`:380-392`), then `SELECT id FROM gestures WHERE label = ?` (prepared, `:395-398`) and delete recordings before the gesture row (`:405-414`, required since the FK is `ON DELETE RESTRICT`). The label is unique now, so there is at most one `gestures` row (`:394`). All statements are prepared with `bind_param`, none string-interpolated.
 
@@ -892,3 +901,109 @@ with a copy of `saved_gestures` (249 files).
   to `bulk_import.php`, `save_gesture.php`, `signs.php` and `avatar_clip.php`.
 - **The cache never goes to the Pi** (`.gitignore`: `bulk_import_cache/`). Imported samples and chosen
   clips are ordinary files under the tracked `saved_gestures/`; see DEBT 116 before committing them.
+  **Update 2026-10-16 (compact-model phase):** imported samples are now git-ignored
+  (`saved_gestures/*/sample_i*.json`, `.gitignore:11`), so they are never committed and never reach the Pi through
+  git; the kiosk recognises from the compiled model files instead (DEBT 116 resolved). Chosen clips
+  (`avatar.json`) stay tracked. The imported samples are backed up only by the laptop's disk and
+  `E:\ACADSS\IOT\backups\`.
+
+## Compact recognition model (2026-10-15/16)
+
+No schema change and no DB access in the new endpoints. Backup before the phase:
+`E:\ACADSS\IOT\backups\2026-10-15-compact-model\` (`sining_kamay_db_before-compact-model.sql`, 6,022,830 bytes,
+and `saved_gestures-copy/`, 249 files). The file format, the rule and the browser side are in
+`docs/system/ML.md` "Compact model". No auth on any of these (demo system, owner decision 8; DEBT 72).
+
+- **`php/api/knn_model_lib.php`** (shared helpers, `require_once` only, no output, no DB):
+  - Constants (`:13-22`): magic `SKKN`, version 1, dtype 1, 126 dims, header 2..4,194,304 bytes, rule
+    `sign-budget` v1, langs ESL/FSL, and the Pi warning text.
+  - Folders (`:29-44`): `<repo>/models`, `<repo>` (holds `saved_gestures/`) and `<repo>/config`, each replaced
+    by `SK_MODELS_DIR` / `SK_DATASET_ROOT` / `SK_CONFIG_DIR` when that environment variable is set and not
+    empty. **For tests only** (`tests/compact-model/php-endpoints.test.mjs` runs php-cgi in temp folders); an
+    HTTP request cannot set them.
+  - **Device** (`knn_device()`, `:52-64`, owner answer Q5): `config/device.txt` (git-ignored, `.gitignore:10`;
+    first 64 bytes, trimmed, lower-cased) wins when it says `pi` or `laptop` (`source: "override"`); anything
+    else is ignored and `php_uname('m')` decides: `/^(aarch64|arm)/i` = `pi`, else `laptop` (`source: "uname"`;
+    this laptop reports `AMD64`). Not run on the Pi.
+  - Membership `knn_in_model()` (`:67-69`) = `KnnCompile.inModel`.
+  - **Fingerprint** (`knn_fingerprint_lines_all()`, `:81-107`): the same walk as `list_samples()` (folders
+    `saved_gestures` then `saved_gestures_fsl`, every label folder, `derive_sign()` of the first folder that has
+    the label), one line `label|set|<folder>/<label>/<sample file>` per sample of an in-model label, sorted
+    byte-wise, joined with `\n`, SHA-256. Sample files are never opened. One walk serves both models
+    (`knn_fingerprints()`, `:134-140`). Sample names come from `scandir` plus `/^sample_.*\.json\z/s`
+    (`knn_sample_names()`, `:114-123`): the same names as `glob()` (tested), and about 8x faster on Windows,
+    where `glob()` stats every match. `glob()` is still used for a folder path containing `* ? [`.
+  - **Validator** (`knn_check_prefix` `:151-169`, `knn_parse_header` `:175-226`, `knn_check_length` `:233-240`,
+    `knn_read_header` `:245-282`, `knn_validate_bytes` `:285-305`): the same checks in the same order as the
+    JS decoder, with the same `knn model file: ...` messages. A BOM is dropped and invalid UTF-8 refused, as
+    `TextDecoder` does. `knn_read_header()` reads only the 12-byte prefix and the header, plus `filesize()`
+    for the body-length check. Two hand-made-file differences: PHP refuses JSON nested deeper than 512 and keys
+    starting with `\u0000`, which the JS decoder accepts; `encode()` never writes either
+    (`.git/sdd/cm-task-3-review-1.md`).
+- **`php/api/compile_model.php`** — `POST ?lang=ESL|FSL`, raw body = the model file
+  (`application/octet-stream`), sent by Train Gestures' Compile:
+  - OPTIONS 204 (`:23-26`); any other method 405 "POST only" (`:27-29`); `lang` not exactly `ESL`/`FSL` 400
+    (`:31-34`).
+  - On the Pi: 403 with the Pi warning, before the body is read and before the models folder is created
+    (`:36-38`, owner answer Q6).
+  - Size: 32 MB (`:11`); a declared larger `Content-Length` is 413 before reading; the body is read up to
+    32 MB + 1, and more is 413 (`:41-51`); empty 400; a file that fails validation (or whose `lang` is not the
+    query's) 400 with the validator's message (`:53-56`). It does not check the header's `formatVersion` or
+    `rule`; such a file is stored and then reads `format` in `model_status.php`.
+  - Write: `models/knn_<LANG>.bin.tmp` with `LOCK_EX`, byte count checked, then `rename()` over
+    `knn_<LANG>.bin`, retried 4 times 50 ms apart (a rename over a file Apache is serving can fail on Windows);
+    on failure the tmp file is removed and the answer is 500 (`:62-75`). A reader never sees a half-written
+    file. `models/*.tmp` is git-ignored (`.gitignore:12`).
+  - Answer: `{success, lang, bytes, rowCount, labels, sampleCount, buildDate, fingerprint, fingerprintNow,
+    upToDate, mtime}` (`:80-92`); `upToDate` is false when a sample changed while Compile ran. Any throwable is
+    500 JSON. No CORS header (same-origin; a write endpoint).
+  - Above PHP's `post_max_size` (40M, `C:\xampp\php\php.ini:701`) PHP itself prints a startup warning, so the
+    answer is HTTP 200 `text/html` with the warning in front of the JSON error; nothing is written. The client
+    treats any non-JSON answer as a failure (DEBT 134).
+- **`php/api/model_status.php`** — `GET`, read-only, no DB. OPTIONS 204, other methods 405 "GET only"
+  (`:26-32`). Answer (`:89-96`): `{success, device, deviceSource, machine, formatVersion, models: {ESL, FSL}}`;
+  per model (`:43-52`) `exists`, `bytes`, `mtime`, `header` (`formatVersion`, `buildDate`, `builtOn`, `rule`,
+  `rowCount`, `sampleCount`, `labelCount`, `fingerprint`), `error`, `fingerprintNow`, `stale` and
+  `staleReason`:
+  - `missing` (no file); `unreadable` (the header fails the decoder's checks); `format` (binary version or
+    dtype, header `formatVersion`, or a rule other than `sign-budget` v1); `data` (header fingerprint !=
+    `fingerprintNow`) (`:53-81`).
+  - On the Pi `stale` is always false and `staleReason` null (`:82-85`); the other fields are filled.
+  - Measured (`.git/sdd/cm-task-3-report.md`): through Apache on today's data 46-70 ms, median 51 ms (15 runs);
+    a synthetic 122 signs x 25 samples in process median 99.6 ms, whole php-cgi request median 171.8 ms (it was
+    463.6 / 543.6 ms before the `scandir` change and the single walk). With 3,000 extra samples through
+    Apache: 99-234 ms (`.git/sdd/cm-task-9-report.md`).
+- **`php/api/save_gesture.php` GET options** (`list_samples()`, `:320-388`):
+  - `summary=1` (any value except `0`; `:339-341`, `:370-372`): each sample entry without `frames` (keys `file,
+    label, frameCount, createdAt, signLanguage`). `frameCount` still needs each sample file decoded, so the time
+    saved is encoding and transfer, not disk. Used by Train Gestures for Step 1, the Step 2 card and Compile's
+    sample list.
+  - `labels=a,b,...` (`listing_label_filter()`, `:301-318`; checked first, before any sync, `:322`; applied at
+    `:349`): only those sign folders, in the usual order. Each key must equal `clean_label(key)`, at most 200
+    keys (`LIST_LABELS_MAX`, `:305`); an empty value, an empty or unclean key, an array or more than 200 keys
+    is 400 JSON. An unknown key gives `gestures: []`. Combines with `no_sync` and `summary`. Used by Compile to
+    read frames a batch of signs at a time.
+  - `unset($json, $entry)` after each sample (`:375`) frees the decoded sample at once.
+  - A GET without `labels`/`summary` is byte-identical to HEAD `b61c665` (diffed for full sync and `no_sync`,
+    3,481,109 bytes each; `.git/sdd/cm-task-9-report.md`). There is no automated unit test for `labels`
+    (`save_gesture.php` needs a DB); the scale check and `training-check.mjs` exercise it end to end.
+  - Sizes on today's data (curl, 5 runs, `.git/sdd/cm-task-6-report.md`): full listing 3,481,109 bytes,
+    0.855-1.195 s (full sync) / 0.633-0.708 s (`no_sync`); summary 32,609 bytes, 0.505-0.527 s / 0.243-0.279 s.
+    With 3,000 extra synthetic v3 samples: summary 571,673 bytes, 15.6-28.5 s with full sync and 6.8-13.0 s with
+    `no_sync` over two runs (`.git/sdd/cm-task-9-report.md`; DEBT 133).
+- **Why Compile reads frames in batches (memory, measured).** One real v3 sample is 46,316 bytes of JSON but
+  715,443 bytes of PHP memory once decoded (15.4x). `list_samples()` used to keep every decoded sample until
+  the final `json_encode`; with `memory_limit=512M` (`C:\xampp\php\php.ini:428`) an emulation of it handled
+  300 v3 samples (peak 219 MB) and 600 (peak 438 MB) but died at 732 (2 signers x 3 reps x 122 signs), 900 and
+  2,928 with "Allowed memory size exhausted" (`.git/sdd/cm-phase-review-1.md`). After the change, with 3,000
+  extra samples, each Compile batch (`labels=`, at most 60 samples) peaked at 44 MB median and 46 MB max
+  (php-cgi at `memory_limit=128M`, all OK); at 732 samples at most 52 MB. The full listing with frames (bulk
+  import's Review, which must not change) still fails at both sizes: through Apache HTTP 200 with PHP's
+  "Allowed memory size" fatal (188 bytes), and via php-cgi at 512M a fatal at a 512 MB peak
+  (`.git/sdd/cm-task-9-report.md`; DEBT 117).
+- **Known edges (documented, not solved).** A sample file that is not valid JSON is skipped by the listing (so
+  by Compile's fingerprint) but counted by the PHP walk, so that model reads "out of date" until the file is
+  fixed or removed (DEBT 130). Two Compiles of the same language at once share `knn_<LANG>.bin.tmp`; the last
+  rename wins and a reader never sees a half-written file (DEBT 131). The listing does not return a sample's
+  `signer` (DEBT 132). On Linux `glob()` treats `\` as an escape, so a label folder whose name has a backslash
+  could list differently; `clean_label()` keys never contain one.

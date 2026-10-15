@@ -217,6 +217,10 @@ below. None of that ran.
   normalized as `(s-0.3)/0.7` clamped 0–1) (`js/sign-to-text-ui.js:199-238`), cached
   per-language in `localStorage['sining_kamay_knn_ESL'/'_FSL']` and
   `'sining_kamay_labels_ESL'/'_FSL'` (`:288-289`).
+  **Superseded 2026-10-16 (compact-model phase):** `knnPredict` is now `js/sign-to-text-ui.js:109-148`
+  (unchanged text) and the model is no longer cached in `localStorage`: `autoTrainForTranslate()`
+  (`:150-174`) loads the compiled `models/knn_<LANG>.bin` through `js/knn-model-store.js` (IndexedDB copy).
+  See Part 3 "3f" and `docs/system/ML.md` "Compact model".
 - Prediction loop interval: 150 ms in both files (`camera-translator.html:1367,1754`;
   `js/sign-to-text-ui.js:600`).
 - Gesture confirmation: `camera-translator.html` requires `conf>.65` then a 500 ms
@@ -458,9 +462,13 @@ below. None of that ran.
 - Confidence normalization maps cosine range **0.3–1.0 → 0–1**
   (gesture-training-ui.js:319). Gesture accumulation requires confidence **>
   0.45** (gesture-training-ui.js:679, :687) and a **700ms** hold
-  (`GESTURE_HOLD_MS`, gesture-training-ui.js:10, used at :689).
+  (`GESTURE_HOLD_MS`, gesture-training-ui.js:9, used at :1117; re-measured 2026-10-16, was :10).
+- **Superseded 2026-10-16 (compact-model phase):** Step 2 no longer trains. The button is **Compile**, the
+  progress row reads "Compile progress" / "Not started" (`gesture-training.html:292`), and `trainModel()` is
+  gone; see "Compact recognition model: Train Gestures" below. `EPOCHS = 50` is still declared
+  (gesture-training-ui.js:15) and still unused. The bullet as written:
 - "Training" epoch UI displays **"0 / 50 epochs"** and constant `EPOCHS = 50`
-  (gesture-training-ui.js:17, HTML gesture-training.html:261) — but the actual
+  (gesture-training-ui.js:17 at the time, HTML gesture-training.html:261) — but the actual
   `trainModel()` function does not run 50 real epochs; it is a KNN cache compile
   with a cosmetic progress-bar animation of **20 steps × 18ms**
   (gesture-training-ui.js:531-537) or **10 steps × 12ms**
@@ -523,7 +531,8 @@ below. None of that ran.
       (`.tr-s1-grid`, `gesture-training.html:198-250`,
       `css/gesture-training.css:1069-1089`). Left: Gesture Name, Sign Set,
       Type. Right: Record 3 samples (72 px tall), the sample-count line, View
-      Active Gesture Dataset, Export Data / Load Saved, Next: Train AI.
+      Active Gesture Dataset, Export Data / Load Saved, Next: Train AI (renamed "Next: Compile →",
+      `gesture-training.html:267`, 2026-10-16).
       Back to Instructions spans the bottom. Inputs and toggles are 48 px tall.
     - **The recording mode starts the camera.** Its first state is
       **Starting camera**: `showStarting()`
@@ -721,6 +730,13 @@ below. None of that ran.
     "3 signs found", exactly one folder `saved_gestures/zz_both_probe` with 3 samples and a `sign.json` (BOTH),
     nothing in `saved_gestures_fsl/`, sample `signLanguage` ESL ×3, DB row BOTH with both texts, category `phrase` under
     both `categories` maps. (Probe signs were deleted afterwards.)
+  - **Update 2026-10-16 (compact-model phase):** the toggle stays, but it now chooses which model file
+    Compile builds and Steps 2-4 load. Switching runs `onModelLanguageChanged()` (`js/gesture-training-ui.js:972-975`):
+    the status line for that language, then `loadModelForLang()` (`:698-722`) loads that file, so Next shows at once
+    when the file is usable. Compile locks the radios (`compileModelGuarded()`, `:782-791`). FSL now also holds
+    `start` and `stop`. `modelLanguage()` is `:658-661` and `syncModelToggleToStep1()` `:978-984`. "Train",
+    "trains", "cached model" and the `:728` filter below describe the code before this phase; see "Compact
+    recognition model: Train Gestures" below.
   - **Step 2 — "AI model" toggle** (`#trainModelGroup`, ESL | FSL radios `name="trainModelLang"`,
     `gesture-training.html:260-265`; buttons 48 px, `#leftStep2 .tr-sign-opt`, `css/gesture-training.css:1123`).
     Training uses `modelLanguage()` (`js/gesture-training-ui.js:629-633`) instead of Step 4's chip: ESL trains on ESL
@@ -738,7 +754,7 @@ below. None of that ran.
     `zz_esl_only` → "Zz Esl Only"; FSL model `zz_both_probe` → "Zz Pareho Probe?", `zz_fsl_lamang` → "Zz Fsl Lamang"
     (96 and 76 calls hooked over 12 s each). The ESL model contained 124 labels and the FSL model 91 after training
     with the probes; the ESL-only probe appears only in the ESL model and the FSL-only probe only in the FSL model.
-  - **Step 4 (Translate) still uses its own Output Language chip** (`signLang`, `'en'`/`'fil'`, `js/gesture-training-ui.js:9`,
+  - **Step 4 (Translate) still uses its own Output Language chip** (`signLang`, `'en'`/`'fil'`, `js/gesture-training-ui.js:8` (re-measured 2026-10-16, was `:9`),
     `:1104`), independent of the model toggle. Known gap: an FSL-only sign shown with the English chip has no English
     text, so `translateGestureLabel()` falls through to the title-cased key (`:326-338`) — `docs/system/DEBT.md`. Every
     text shown through `innerHTML` in Step 4 is escaped (`escapeHtml()`, `:625`: the sentence history/big output, the
@@ -764,7 +780,10 @@ below. None of that ran.
     on the client ("Enter the English text." / "Enter the Filipino text."), POSTs `signs.php`
     `{action:"update", key, set, textEn, textFil}` with the hidden field sent as `null` (so the stored hidden text is
     kept — narrowing a set keeps it), and on success toasts "Saved.", clears `sining_kamay_labels_<LANG>` **only for
-    languages whose membership changed** (ESL = ESL|Both, FSL = FSL|Both; a text-only edit clears nothing),
+    languages whose membership changed** (ESL = ESL|Both, FSL = FSL|Both; a text-only edit clears nothing;
+    **since 2026-10-16 nothing is cleared**: there is no model cache in `localStorage`, and the reload below refreshes
+    the model status, which then reads "Model out of date: run Compile" for each language whose membership changed,
+    `js/gesture-training-ui.js:273-278`),
     `await window.reloadDataset()` and returns to the table on the same tab and search. A failed save shows the
     server's `error` (or "Save failed (HTTP n).") in the panel and stays in edit mode. Cancel sends nothing. Opening
     or closing the modal resets to table mode; the modal ✕ in edit mode closes the whole modal with no unsaved-change
@@ -832,8 +851,13 @@ below. None of that ran.
   with no argument, which is what `trainModel()` and the page's
   `DOMContentLoaded` startup handler still do — the startup load still runs
   two full synced fetches, by design (`docs/system/DECISIONS.md`).
+  **Superseded 2026-10-16 (compact-model phase):** every Train Gestures listing is now the summary
+  listing (`?summary=1`, no frames). `window.reloadDataset` (`js/gesture-training-ui.js:1475-1482`)
+  runs one `no_sync` summary GET, then the model status; the startup handler (`:1485-1510`) runs ONE full-sync
+  summary GET (`refreshDatasetNoStatus(false)`, `:1513-1524`) alongside the model status and the model
+  file. `mergeSavedGestureSamples()` and `trainModel()` are gone.
 - Admin PIN for both gesture-training.html and reports.html is hardcoded
-  client-side: `CORRECT_PIN = '2026'` (gesture-training-ui.js:23; reports.html:443,
+  client-side: `CORRECT_PIN = '2026'` (gesture-training-ui.js:33, re-measured 2026-10-16, was :23; reports.html:443,
   inline duplicate implementation).
 - Cache-busting/version query strings: `js/script.js?v=5` (index.html:750,
   before `js/script.js` was archived — see the Part 2 update note at the top
@@ -1038,6 +1062,114 @@ Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wi
   as before (`tests/bulk-import/candidates-panel-check.mjs`, 41 PASS; `tests/avatar/admin-check.mjs` 22 PASS
   and `tests/avatar/import-check.mjs` 31 PASS still hold: no page scroll, every control >= 44 px).
 
+### Compact recognition model: Train Gestures (compact-model phase, 2026-10-15/16)
+
+Proposal `docs/reports/2026-10-14-compact-model-step1.md`; model, rule and measurements in
+`docs/system/ML.md` "Compact model"; endpoints in `docs/system/BACKEND.md`; decisions in `DECISIONS.md`.
+Steps 2-4 now use the compiled file `models/knn_<LANG>.bin`. Train Gestures downloads frames only
+inside Compile. Where the Part 2 text above says Train, `trainModel()`, `mergeSavedGestureSamples()`, "cached
+model" or `sining_kamay_knn_*` / `sining_kamay_labels_*`, it describes the page before this phase.
+
+- **Scripts.** `js/knn-compile.js` and `js/knn-model-store.js` (`gesture-training.html:18-19`, `defer`, before
+  the body scripts `:452-454`).
+- **Renamed texts.** Pill 2 "Compile" (`gesture-training.html:94`, was "Train AI"); Step 1's "Next: Compile →"
+  (`:267`); Step 2 instruction card "Step 2: Compile the Model" with new bullets (`:121-131`); Step 2 section
+  label "Compile Model" (`:276`); progress row "Compile progress" / "Not started" (`:292`); the initial log text
+  explains Compile (`:295`); toast "Compile the model first in Step 2!" when Steps 3/4 are opened without a usable
+  model (`js/gesture-training-ui.js:1322`, `:1346`, `:1351`); Step 1's note after a save "Saved. Run Compile
+  (Step 2) again to use it." (`:485`). Bulk import's own reminder still says "Now run Compile (Train AI) on
+  Train Gestures for ESL and for FSL." (bulk import must not change in this phase).
+- **Step 1 without frames.** The dataset table and the sample-count line read the summary listing
+  (`save_gesture.php?summary=1`: the same listing without `frames`): `renderSavedDataset()`
+  (`js/gesture-training-ui.js:520-565`), `refreshDatasetNoStatus()` (`:1513-1524`). Page load makes ONE
+  full-sync summary request, next to `model_status.php` and the model file (`:1504-1509`). A delete
+  (`deleteGesture()`, `:568-593`) does a full-sync summary reload plus the status; a save or a dataset edit
+  (`window.reloadDataset`, `:1475-1482`) a `no_sync` one plus the status. Measured on today's data (curl,
+  5 runs): summary 32,609 bytes in 0.505-0.527 s (full sync) and 0.243-0.279 s (`no_sync`), against
+  3,481,109 bytes in 0.855-1.195 s / 0.633-0.708 s with frames (`.git/sdd/cm-task-6-report.md`).
+- **Step 2 status line** (`#modelStatusLine`, `gesture-training.html:285`; `renderModelStatus()`,
+  `js/gesture-training-ui.js:745-766`), from `php/api/model_status.php`, for the toggle's language:
+  - "Checking the model file…" until the first answer (the HTML text);
+  - laptop, up to date: "<LANG> model: 2,047 rows, 122 signs, built Oct 15, 2026, 11:12 AM — up to date"
+    (numbers and date from the file header);
+  - "Model out of date: run Compile" (the samples changed, or the file is of another format or rule);
+  - "No model file: run Compile" (laptop) / "No model file" (Pi);
+  - "<LANG> model file cannot be read" (the header is unreadable and the answer is not "stale", i.e. on the
+    Pi);
+  - "Model status unavailable" (`model_status.php` failed);
+  - on the Pi, the up-to-date form without " — up to date": the Pi lacks the bulk samples by design, so it
+    never judges.
+  Every form except the up-to-date one gets the `.stale` colour (`#b45309`, `gesture-training.html:39`).
+- **Pi warning.** `#modelPiWarning` (`gesture-training.html:286`) shows "Build the model on the laptop, then
+  copy models/knn_ESL.bin and models/knn_FSL.bin to the Pi." when `model_status.php` says the device is the
+  Pi. Compile is then disabled (`refreshStep2Buttons()`, `js/gesture-training-ui.js:769-778`); a direct call
+  is refused before any request (`:829`), and the server also answers 403.
+- **Step 2 card** (`updateUI()`, `:381-410`): a header line "N <LANG> signs in the saved samples / M in the
+  model file", then every sign of the selected model (`KnnCompile.inModel` over the summary listing) with
+  "N rows" (from the loaded file's header), or "not compiled yet" plus an orange **NEW** badge (samples, but
+  not in the loaded file), or "no samples" (a sign folder without samples). Empty states: "No training samples
+  loaded yet." and "No <LANG> signs in the saved samples yet.".
+- **Compile** (`#trainBtn`, "Compile" / "Compiling…" while it runs; `compileModelGuarded()` `:782-791` locks the
+  ESL | FSL radios; `compileModel()` `:802-969`), five stages on the progress bar:
+  1. "Checking the device": `model_status.php`; on the Pi it stops with the Pi warning (`:826-829`).
+  2. "Reading the sample list": ONE full-sync summary listing (`:831-847`). Its own `signs` and `categories`
+     are copied at once, and the fingerprint is computed from it.
+  3. "Reading samples k/N signs": the frames of the in-model signs, a batch at a time
+     (`save_gesture.php?no_sync=1&labels=a,b,...`, at most 60 samples and 200 signs per request, a bigger
+     sign alone; `:794-795`, `:866-903`). Only the files the summary listed are used, each sign goes into
+     `KnnCompile.createBuilder()` and its frames are dropped before the next request. Log line per request:
+     "// Read 58/122 signs (request 1 of 3: 58 signs, 60 samples)".
+  4. "Saving models/knn_<LANG>.bin": encode, then `POST php/api/compile_model.php?lang=<LANG>` with the raw
+     bytes (`:913-930`). Log: "// <LANG>: N signs, S samples, R rows (budget 90 rows per sign)", "// Signs:
+     ...", "// Wrote models/knn_<LANG>.bin: B bytes, fingerprint <12 hex>…".
+  5. "Loading the saved file": `KnnModelStore.load()`; if the loaded `buildDate` / fingerprint is not the one
+     just written, the stored copy is removed and the file loaded once more (`:932-944`). Then "Compile complete
+     in X s. Click Next to test your signs.", the bar label "Complete! — R rows, N signs" and the toast
+     "✅ <LANG> model compiled: N signs. Click Next →" (`:947-953`).
+  Warnings in the log: "// N sample file(s) disappeared while compiling: run Compile again." (`:903`) and
+  "// The samples changed while compiling: run Compile again." (`:930`). Errors go to the log in red and to a
+  6 s toast; the bar returns to "Not compiled" and the button comes back (`:955-968`): "Add at least 2 signs
+  before compiling" (`:856`, `:907`); "Compile failed: the model status (php/api/model_status.php) could not
+  be read"; "Compile failed: the sample list could not be loaded (...)"; "Compile failed: the server could not
+  be reached (...)"; "Compile failed reading samples (HTTP n): ..."; "Compile failed (HTTP n): <error, or the
+  first 200 characters of a non-JSON answer>"; "Compile wrote models/knn_<LANG>.bin, but loading it failed:
+  ..." / "... but the page could not load that file back"; any other error as "Compile failed: <message>"
+  (for example an encoder refusal, "knn model file: ..."). `window.lastCompile` records the result for the
+  checks (`:954`, `:961`).
+- **Steps 3 and 4** use only `knnModel` / `activeLabels` from the loaded file (`loadModelForLang()`
+  `:698-722`, `applyLoadedModel()` `:683-693`; `modelTrained` = at least 2 labels). Step 2's Next shows whenever
+  a usable file is loaded (`:777`), not only after a Compile. When the server's file is missing or broken and
+  only the IndexedDB copy is left (`cache-fallback`), the laptop refuses that copy (the status says "No model
+  file: run Compile", Next stays hidden); the Pi accepts it, keeping the last good file like the kiosk
+  (`:706-709`). If `model_status.php` is unavailable the page treats the device as the laptop
+  (`.git/sdd/cm-task-6-review-1.md`, minor 4).
+- **Export Data** (`:1455-1464`) now downloads the LOADED model file's rows as `{label: rows}` in header order
+  (`siningkamay-training.json`, the old shape; budgeted rows, not every raw row); with no file loaded it toasts
+  "No model file loaded: run Compile (Step 2) first.". **Load Saved** (`:1466-1469`) only toasts "Loading a
+  training file is no longer used: Compile builds the model from the saved samples."
+- **Gone:** `trainModel()`, `trainModelGuarded()`, `mergeSavedGestureSamples()`, `loadKnnFromCache()`,
+  `trainData`, every `localStorage` use on this page (only the `sessionStorage` PIN flag is left), and the
+  toasts "Loaded N saved landmark frames" and "Gesture model loaded" at page load.
+- **Measured** (headless Chrome, this laptop; `tests/compact-model/training-check.mjs`):
+  - Layout at 1024x600, Step 2: ESL | FSL 497x48 at y=99; status line y=153; card y=177 h=187 (laptop) or,
+    with the Pi warning (y=177 h=35.5), y=218.5 h=145.5; progress y=370; log y=404 h=72; Compile and Next
+    496x48 at y=482; Back 1000x44 at y=536; no overlap, no page scroll, 0 console errors
+    (`.git/sdd/cm-task-6-report.md`).
+  - Compile on today's data, after the batching change: ESL 2.5-3.0 s, FSL 1.9-2.5 s (click to done; ESL 3
+    requests, FSL 2; `.git/sdd/cm-task-9-report.md`). The written files equal a node build over the same
+    listing, and the fingerprint equals `model_status.php`'s `fingerprintNow`.
+  - Page load: the summary listing ends 2.1-2.5 s after navigation, but the table appears at 12.4-12.8 s,
+    because the MediaPipe warm-up (one main-thread task of 11.0-11.3 s) starts first; on an idle main thread
+    the startup listing took 1.0-1.2 s against 3.3-3.9 s for the two full GETs before this phase
+    (`.git/sdd/cm-task-6-review-1.md`; `docs/system/DEBT.md` item 137).
+  - At scale (`tests/compact-model/scale-check.mjs`, 120 synthetic signs x 25 v3 samples = 3,000, plus today's
+    data; two runs): Compile ESL 52.6 / 100.5 s and FSL 45.4 / 77.1 s, 1 summary + 62 `labels=` requests, the
+    largest answer 2.4 MB; page load to ready 23.3 / 50.5 s. At 732 samples (122 x 6): ESL 33.4 s, FSL 31.1 s
+    (`.git/sdd/cm-task-9-report.md`; `docs/system/DEBT.md` item 133).
+- **After the owner archives today's signs, before a new import:** Compile refuses ("Add at least 2 signs
+  before compiling"), the committed model files keep recognising the archived signs, and the laptop's status
+  reads "Model out of date: run Compile" (`.git/sdd/cm-phase-review-1.md`, minor 5). Accepted.
+
 ### 4. Key decisions and why
 
 - Speech recognition is hard-forced to the Vosk offline adapter "to ensure 100%
@@ -1055,7 +1187,9 @@ Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wi
   "instant, no epoch training needed" (gesture-training-ui.js:269 comment) —
   documented as a deliberate design tradeoff, though the UI still displays an
   "epochs" label of 50 that no longer reflects actual behavior (see §3), which is
-  an inconsistency, not an explained decision.
+  an inconsistency, not an explained decision. (2026-10-16: that comment went with
+  `trainModel()`, and the epochs label is gone; Step 2 is Compile, see "Compact
+  recognition model: Train Gestures" above.)
 
 ### 5. Constraints (Raspberry Pi / low-power specific)
 
@@ -1201,7 +1335,10 @@ Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wi
   (gesture-training-ui.js:422-562) never runs 50 iterative epochs — it's a KNN
   cache-merge with a cosmetic 10- or 20-step progress animation. The `EPOCHS`
   constant appears unused by the actual training path (no other reference to
-  `EPOCHS` found in the file).
+  `EPOCHS` found in the file). **2026-10-16:** the label and `trainModel()` are gone
+  (Compile, compact-model phase); `const EPOCHS = 50` is still declared and unused
+  at gesture-training-ui.js:15 (and `js/sign-to-text-ui.js:15`), with `tfModel`
+  (`:3` / `:6`) — dead code, `docs/system/DEBT.md` item 140.
 - index.html:819-820 — a commented-out `<iframe src="preload.html">`, explicitly
   left in with a Pi-crash-avoidance comment; `preload.html` is otherwise fully
   orphaned dead code (see verify-only section above).
@@ -1275,7 +1412,8 @@ Reused, not copied: `js/sign-to-text-ui.js` (`knnPredict`,
 another: sign-libs (`tf.min.js`, `hands.js`, `camera-helper.js`,
 `gesture-data.js`, `sign-to-text-ui.js`), MediaPipe (`Hands` constructed on the
 hidden `#signing-video` and `initialize()`d), gesture set (`autoTrainForTranslate()`
-— localStorage cache or database; since 2026-10-04 run together with `loadSigns()`, see 3d), then Vosk library (`js/vosk.js`), Vosk model
+— localStorage cache or database; since 2026-10-04 run together with `loadSigns()`, see 3d; **since 2026-10-16 the
+compiled model file, see 3f**: sign-libs also loads `js/knn-compile.js` and `js/knn-model-store.js`), then Vosk library (`js/vosk.js`), Vosk model
 (`Vosk.createModel(models/vosk-model-small-en-us-0.15.tar.gz.zip)`). Each item
 is `queued | loading | done | failed`; a failed item marks its dependents
 "skipped" and the other stack still runs. API: `TalkLoader.start/isSettled/
@@ -1491,13 +1629,13 @@ owner to verify on real hardware (`docs/system/DEBT.md` item 85).
 `talk.html` reads the same sign set/texts as the training page; no `talk.html` markup or `js/talk-signing.js` /
 `js/talk-speaking.js` / `js/talk-history.js` code changed (`.git/sdd/st-task-6-report.md`). Models and display text:
 `docs/system/ML.md`; storage: `docs/system/BACKEND.md`.
-- **Captions come from the texts.** `translateGestureLabel()` (`js/sign-to-text-ui.js:65`) first asks
+- **Captions come from the texts.** `translateGestureLabel()` (`js/sign-to-text-ui.js:62`, re-measured 2026-10-16, was `:65`) first asks
   `GestureDataRecorder.getSignText(key, lang)` (ESL chip → English text, FSL chip → Filipino text) and only then falls
   back to the old table/title-cased key. So the live caption pill, the draft and the confirm card show the text of
   the active language, never the slug. Measured over 20 s with a fake camera: every shown caption was a sign text of
   that language and none contained an underscore (EN: "Show your sign", "Stabilizing…", "Zz Both Probe?", "Zz Esl
   Only"; FIL: "Zz Pareho Probe?", "Zz Pareho Na", "Zz Fsl Lamang"; `.git/sdd/st-task-8-report.md` item 8).
-- **Loading queue.** The `gestures` item is still one item (`js/talk-loader.js:48-60`) and now runs
+- **Loading queue.** The `gestures` item is still one item (`js/talk-loader.js:50-62`, re-measured 2026-10-16, was `:48-60`) and now runs
   `Promise.all([autoTrainForTranslate(), GestureDataRecorder.loadSigns()])`. A failed or rejected `loadSigns()` only
   `console.warn`s (captions fall back to the labels); the item fails only if `autoTrainForTranslate()` fails. Measured
   (`tests/sign-texts/talk-check.mjs`, headless Chrome 1024×600, real Apache/MariaDB): queue settled in 8094 ms, all 5
@@ -1561,6 +1699,42 @@ decisions in `DECISIONS.md` ("2D avatar phase").
   400 ms, 45.6 / 49.7 / 34.7 / 28.7 px, identical in 5 of 5 runs);
   "zz ava one nice" -> the avatar run, then `assets/signs/en/nice.webm` 15 ms after it ends; a clip removed after
   registration -> that word fingerspelled as video; 0 console errors.
+
+### 3f. Compact model in Let's Talk (compact-model phase, 2026-10-15/16)
+
+No `talk.html` markup, CSS or behaviour changed, and `js/talk-signing.js` is unchanged. Model and measurements:
+`docs/system/ML.md` "Compact model".
+- **Scripts.** The queue's sign-libs item loads `js/knn-compile.js` and `js/knn-model-store.js` before
+  `js/sign-to-text-ui.js` (`SIGN_SCRIPTS`, `js/talk-loader.js:10-18`). The queue still has 5 items.
+- **Model loading.** `autoTrainForTranslate()` (`js/sign-to-text-ui.js:150-174`) keeps its name and callers (the
+  "gestures" item, `js/talk-loader.js:59`; the language switch, `js/talk-signing.js:220-227`). It calls
+  `KnnModelStore.load('ESL'|'FSL')`: one `HEAD models/knn_<LANG>.bin` (`cache: no-store`) and, in parallel, a read
+  of the IndexedDB copy (database `sining_kamay_models`, store `models`, key `ESL`/`FSL`,
+  `js/knn-model-store.js:14-16`). The copy is used when its ETag (a weak `W/` prefix ignored) and length match
+  the HEAD (`sameFile()`, `:134-142`); otherwise one GET, decode and store. Both languages are kept, so a switch
+  back is served from IndexedDB. It logs `[KNN] <LANG> model: <rows> rows, <labels> labels (<source>)`
+  (`js/sign-to-text-ui.js:163`).
+- **Keeps the last good file.** When the HEAD or GET fails, or the downloaded file does not decode, the stored copy
+  is used with one `console.warn` (source `cache-fallback`, `js/knn-model-store.js:183-198`). With no usable file
+  and no stored copy, or a model with fewer than 2 labels, `autoTrainForTranslate()` returns false and the
+  "gestures" item fails with "gesture set unavailable (no usable model file and no stored copy)"
+  (`js/talk-loader.js:60`); a failed language switch shows the existing "Sign set not available" card and goes
+  back to the previous language. The page never compiles.
+- **No samples.** `mergeSavedGestureSamples()`, `loadKnnFromCache()`, `buildKnnFromDatabase()`, `trainData` and
+  every `localStorage` model key were removed from `js/sign-to-text-ui.js`; the only PHP endpoint the kiosk
+  requests for recognition and texts is `php/api/signs.php`, with 0 requests to `save_gesture.php`
+  (`tests/compact-model/kiosk-check.mjs`, 3 runs). The one-time schema-"3" reset
+  (`js/gesture-data.js:16-25`) removed 1,200,000 characters of old keys in that check.
+- **Sign texts.** Each loaded header's texts are registered with `GestureDataRecorder.setModelSigns()`
+  (`js/sign-to-text-ui.js:162`), so a sign the Pi's database does not list (for example one that exists only
+  through bulk import) still gets its caption (`getSignText()`, `js/gesture-data.js:712-721`; DB text first).
+- **Timings** (laptop, kiosk-check): cold "gestures" item 108-133 ms, reload 46-58 ms, first FSL switch 44-48 ms,
+  later switches 7-14 ms (`docs/system/ML.md`; before this phase 799-995 ms cold and 754-1,142 ms for every FSL
+  switch). The "Loaded N saved landmark frames" toast and `tlDbStatusDot` updates went with
+  `mergeSavedGestureSamples()`; neither element exists in `talk.html`.
+- **Not verified:** a missing or broken model file on the real kiosk page in a browser (covered by
+  `tests/compact-model/store-check.mjs` for the store and by a unit test with a rejecting store,
+  `tests/sign-texts/talk-texts.test.mjs`), and anything on the Pi (`docs/system/DEBT.md` items 129, 138).
 
 ### 1. Owns these files
 
