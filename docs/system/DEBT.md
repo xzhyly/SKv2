@@ -1591,6 +1591,12 @@ so a later session does not re-litigate them:
      has `summary=1` (no frames) and `labels=` (a batch of signs) options, which Compile uses
      (`docs/system/BACKEND.md`); bulk import must not change in this phase, so its Review still asks for the
      full listing. Still open.
+     **RESOLVED (2026-10-16, bulk-reps-fix, `docs/reports/2026-10-16-bulk-reps-fix.md`).** The Review step reads
+     the summary listing (`save_gesture.php?no_sync=1&summary=1`, file names only) for every status, then the
+     rows per sample in `labels=` batches of at most 60 samples / 200 signs, as Compile does
+     (`js/bulk-import-ui.js` `loadReviewData()` `:1457`, `loadRowCounts()` `:1505`), remembered per file for the
+     page load. Not measured: no browser or PHP run was possible in that session; the time at the 3,000-sample
+     size is the summary listing's (DEBT 133) plus the batches.
 118. **Low, open (bulk importer): never run at full scale or in a visible browser.** Every check ran in
      headless Chrome on at most 10 small videos. Not measured: a folder of about 960 videos (table
      redraws, a multi-hour run), the real folder dialog with a mouse, laptop sleep during a run. The
@@ -1606,6 +1612,12 @@ so a later session does not re-litigate them:
 121. **Low, open (bulk importer): rest means "no hand detected".** The segmenter needs 1 s without a
      detected hand before, between and after the signs. In the one real video the hands left the
      picture. Hands held still but visible may still be detected; not measured.
+     **RESOLVED for bulk import (2026-10-16, bulk-reps-fix).** The group's videos rest about 1 s, often with the
+     hand only lowered, so most gave 1-2 reps (owner: P01 letters, 24 of 26 videos). Bulk import now uses its
+     own split (`js/bulk-rep-split.js`): a frame rests when no hand is detected, the hand is lowered below the
+     video's own signing zone, or it is nearly still while low; the 2 rest runs that best cut the video into 3
+     reps are chosen. Live capture keeps the 1 s no-hand rule (`js/capture-core.js:11`). The thresholds are
+     untested on real videos (item 141).
 122. **Low, open (bulk importer): `avatar-clips.html` now calls `php/api/bulk_import.php`.** On a machine
      with no cache the listing is empty and the page works as before, but a Save with a `P01`..`P99`
      signer creates `bulk_import_cache/picks.json` there too (git-ignored, harmless).
@@ -1651,6 +1663,10 @@ so a later session does not re-litigate them:
      its `knnPredict` estimate at that size. With the per-sign budget of 90 the real model is much smaller once a
      sign has more than 90 rows (Step 1 projection for 8 signers: 9,164 ESL rows against 89,887), so the estimate
      overstates both rows and milliseconds. Bulk import must not change in this phase; left as is by the owner.
+     **RESOLVED (2026-10-16, bulk-reps-fix).** The Review estimate counts, per model, the rows the compile rule
+     keeps (`Core.budgetRows()`, `js/bulk-import-core.js:298`, tested equal to `KnnCompile.selectSignRows` on
+     12 cases in `tests/bulk-import/rep-split.test.mjs`) for the saved samples now and after the import (new
+     reps added, replaced samples removed), and times `knnPredict` at those sizes.
 127. **Low, open (compact-model phase): stale references left in files this phase must not change.**
      `js/talk-signing.js:3` cites `tlStartPredLoop` at `js/sign-to-text-ui.js:416-601` (now `:280-465`), and
      the constants block `:11-19` cites `:7` (`GESTURE_HOLD_MS`, now `:9`), `:501` (the 0.45 floor, now `:365`),
@@ -1662,6 +1678,11 @@ so a later session does not re-litigate them:
      exists. `js/bulk-import-ui.js:1656` and `js/gesture-capture-ui.js:698` still remove
      `sining_kamay_labels_<LANG>` after a save, now a harmless no-op. Bulk import's reminder still says
      "Compile (Train AI)". Fix in the next phase that may touch these files.
+     **Update 2026-10-16 (bulk-reps-fix):** in `js/bulk-import-ui.js` the start/stop citation now names
+     `KnnCompile.inModel` (`js/knn-compile.js:43-45`), the `knnPredict` citation reads `:109-148`, the
+     `mergeSavedGestureSamples()` comment went with the rewritten Review loader, and the reminder reads "Now run
+     Compile on Train Gestures (Step 2) for ESL and for FSL." Still open: the `js/talk-signing.js` citations and
+     the two no-op `sining_kamay_labels_<LANG>` removals.
 128. **Medium, open (compact-model phase, owner answer Q3): leave-one-signer-out has not been run.** No
      multi-signer data exists yet, so budget 90 is proven only on today's data, where it changes nothing. After the
      first real import run `node tests/compact-model/accuracy.mjs --live --sets LOSO --query-rows 10 --signers
@@ -1733,6 +1754,31 @@ so a later session does not re-litigate them:
      in both UI files (`js/gesture-training-ui.js:3`, `:15`; `js/sign-to-text-ui.js:6`, `:15`), and the `tl*`
      translate path in `js/sign-to-text-ui.js` (`tlLoadModelForActiveLanguage()` `:185`) has no caller in
      `talk.html` or `js/talk-*.js` (`.git/sdd/cm-task-5-review-1.md`, minor 1).
+141. **Medium, open (bulk-reps-fix, 2026-10-16): the dynamic split's thresholds are untested on real videos.**
+     `SPLIT` (`js/bulk-rep-split.js:21-47`) was set from the owner's description (rests of about 1 s, hand
+     lowered or out of the picture) and checked on synthetic frames only (`tests/bulk-import/rep-split.test.mjs`,
+     22 pass). Tuning guide: `docs/reports/2026-10-16-bulk-reps-fix.md` section 2. After a change, raise
+     `SPLIT.VERSION`; Start then redoes every cached split from the cached frames.
+142. **Low, open (bulk-reps-fix): the earlier browser checks of the bulk importer were not updated.**
+     `tests/bulk-import/extract-check.mjs` (version-1 `hands.reps`, `seg.reason 'too-few-reps'`),
+     `import-flow-check.mjs` ("found 2 repetitions, need 3", "import the 2 repetitions found") and `verify-e2e.mjs`
+     encode the old segmenter and cache format and will fail in those checks. They need XAMPP and a browser,
+     which that session did not have.
+143. **Low, open (bulk-reps-fix): paths not exercised by any test.** The `save_gesture.php` action
+     `delete_import_samples` (`:450-487`, only `php -l`); the Review batches at any size; Stop; re-split from the
+     cache; the record → save → replace → record import order and its pauses; a sample file listed by the
+     summary and gone before its batch (counted as 0 rows).
+144. **Low, open (bulk-reps-fix): the cache is larger.** A version-2 `hands.json` keeps every frame (not only
+     the reps'), so a split can be redone without the video. Measured on synthetic frames with 4-decimal
+     landmarks: 1,591 bytes per 2-hand frame, 808 per 1-hand frame; a 90 s all-2-hand video about 2,147,850
+     bytes, under the 8 MB `put_video` limit (`php/api/bulk_import.php:15`). Projection for 960 videos like
+     the owner's 17.8 s one (267 frames, one hand): at most about 216 KB each (267 x 808 bytes), about 207 MB in all, laptop only
+     (git-ignored).
+145. **Low, open (bulk-reps-fix): replacing samples needs the cache's record.** The old samples of a video
+     are found by the first version's id formula (`name|size|1..5`) and by `meta.imported` in the cache.
+     If `bulk_import_cache/` is deleted after an import made with the new code, and the same video is later
+     imported with another split, its earlier samples are no longer found: both sets stay (the per-sign budget
+     still caps the model at 90 rows per sign). Identity is still name + size (item 120).
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

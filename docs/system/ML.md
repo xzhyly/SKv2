@@ -143,6 +143,14 @@ on a JSON round-tripped model: 1.1-1.5 ms at 2,074 rows, 14-15 ms at 24,034, 37-
 53-62 ms at 87,840 rows. (The Step 1 report's 35 ms / 1.6 s figures were wrong: they were taken inside a
 node `vm` context, which alone is 6-7 times slower, on a busy machine.) The Pi is not measured.
 
+**Update 2026-10-16 (bulk-reps-fix).** Bulk import no longer uses the live segmenter: its reps come from
+`js/bulk-rep-split.js` (a per-frame rest score on the raw image-space wrists, the 2 rest runs that best cut a
+video into 3 reps; `docs/reports/2026-10-16-bulk-reps-fix.md` section 2). This changes which frames become a
+sample, not how a sample becomes rows: the samples are the same v3 files, read by the same
+`recordingToFeatureRows()`. Live capture keeps `js/capture-core.js` (REST_MS 1000). `knnPredict`,
+`cosineSimilarity` and the compile rule are unchanged; the Review estimate now counts rows by the compile rule
+(`Core.budgetRows`).
+
 ## Compact model (2026-10-15/16)
 
 Recognition loads a precompiled model file per language instead of downloading every sample and building

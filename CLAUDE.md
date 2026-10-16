@@ -107,7 +107,11 @@ Imported samples (`saved_gestures/*/sample_i*.json`) are git-ignored too, so the
 never reach the Pi through git, and since the compact-model phase the kiosk no
 longer needs any samples (it loads the compiled model files, below; `DEBT.md`
 item 116, resolved 2026-10-16) — see `docs/system/UI.md` ("Bulk video importer")
-and `docs/system/BACKEND.md`.
+and `docs/system/BACKEND.md`. Since bulk-reps-fix (2026-10-16) the importer finds each
+video's 3 repetitions with its own split (`js/bulk-rep-split.js`: no hand / hand lowered /
+nearly still while low, thresholds in `SPLIT`), not with the live 1 s no-hand segmenter,
+which live capture keeps; re-importing a video with another split replaces its old samples
+(`docs/reports/2026-10-16-bulk-reps-fix.md`).
 
 **Recognition model (compact-model phase, 2026-10-16).** Recognition no longer
 downloads samples. Let's Talk and Train Gestures Steps 3/4 load

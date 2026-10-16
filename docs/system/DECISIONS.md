@@ -1956,3 +1956,35 @@ tracked). Model and measurements: `docs/system/ML.md` "Compact model".
   less often (`docs/system/HARDWARE_BOOT.md`; DEBT 139).
 - **Wording.** "Train AI" is gone from Train Gestures, but bulk import's reminder still says "Compile (Train AI)"
   (bulk import must not change in this phase).
+
+## Decisions made during the bulk-reps-fix phase (2026-10-16)
+
+Source: the owner's task brief for this phase and `docs/reports/2026-10-16-bulk-reps-fix.md`. Context: the
+group's videos each hold exactly 3 repetitions, but the signers rest only about 1 s between them (often the hand
+is just lowered, still in the picture) and stop right after the 3rd, so the live segmenter's 1 s of no hand
+merged reps (P01 letters: 24 of 26 videos gave 1-2 reps).
+
+1. **Dynamic rep detection for video import, no fixed rest time.** Per frame a rest score (no hand; hand
+   lowered below the video's own signing zone, learned from the video; nearly still while low), from the raw
+   image-space landmarks; rest runs of at least 200 ms; the 2 that best split the video into 3 reps of plausible
+   similar length; rest frames trimmed off each rep; the first rep may start at frame 0 and the last runs to the
+   end. Weak splits are problem rows that say why. **Live capture keeps its own segmenter and REST_MS 1000.**
+2. Review shows the split on a small timeline per video.
+3. Problem rows: "import the reps found", "skip", and "split into 3 equal parts" as a last resort.
+4. Re-segment from the extraction cache when it holds per-frame landmarks, otherwise re-extract; the cache
+   version is bumped so old segmentations are not reused silently. (Implemented: cache version 2 keeps every
+   frame; `SPLIT.VERSION` marks the thresholds.)
+5. Review: header checkbox, "Select all", "Select all problems (reps found)", "Clear"; the Import count follows.
+6. Extract: "Stop" = pause and go to Review with the videos done so far.
+7. **Re-import replaces.** A video imported before (same file identity) with a different split has its old
+   samples removed (files and DB rows, through `save_gesture.php`) and the new ones saved; Review shows
+   "replaces N old samples"; re-importing with the same split adds 0. (Implemented: the rep's place in the video
+   is part of the sample id; the old samples are removed only after the new ones are saved.)
+8. Review must open with the full dataset (DEBT 117): summary listing + `labels=` batches as Compile does; the
+   estimate follows the compile budget rule.
+9. After import the summary still reminds: Compile ESL and FSL.
+- **Choices made in the implementation (not asked):** "Select all" ticks every importable row, problem rows
+  included, each with its own choice; the old samples are found by the first version's id formula and by a
+  per-video record in the cache (`meta.imported`); a rep identical to one the first version saved keeps that
+  sample (so a clean video reads "already imported"); a video re-extracted from a version-1 cache keeps its
+  avatar candidate only if its old split was the 3 clear reps.

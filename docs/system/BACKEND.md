@@ -907,6 +907,36 @@ with a copy of `saved_gestures` (249 files).
   (`avatar.json`) stay tracked. The imported samples are backed up only by the laptop's disk and
   `E:\ACADSS\IOT\backups\`.
 
+### Update 2026-10-16 (bulk-reps-fix, `docs/reports/2026-10-16-bulk-reps-fix.md`)
+
+No schema change. Live capture's save path is unchanged.
+
+- **`save_gesture.php` POST `{action: "delete_import_samples", label, importIds}`** (`:450-487`, placed after
+  `delete_gesture`, before any save validation). `label` must equal `clean_label(label)`; `importIds` is a list of
+  1 to 20 strings of 32 lower-case hex characters, else 400. For each id it unlinks
+  `saved_gestures/<label>/sample_i<id>.json` (a name only an import save produces) and runs
+  `DELETE FROM gesture_recordings WHERE sample_path = 'saved_gestures/<label>/sample_i<id>.json'` (the same two
+  steps as `delete_gesture`, scoped to named imported samples). The sign folder, `sign.json`, the other samples
+  and the `gestures` row stay. A file already gone counts as `missing`. Answer: `{success, label, deleted,
+  missing, files}`. A failed unlink or DB step is 500. Called only by bulk import, after every new repetition of
+  the video is saved ("re-import replaces"). Not run against PHP or a DB yet (DEBT 143).
+- **Cache format version 2** (written by `js/bulk-import-ui.js`; `bulk_import.php` itself is unchanged and stores
+  whatever JSON it gets):
+  - `videos/<id>.hands.json`: `{id, v: 2, meta: {videoWidth, videoHeight, fps, durationMs, input}, frames: [every
+    frame of the video]}` (version 1 held `reps: [{index, frames}]`, only the reps' frames).
+  - `videos/<id>.meta.json`: `v: 2`, plus `split` (`version` = `BulkRepSplit.SPLIT.VERSION`, `method`, `ok`,
+    `reasons`, `cuts`, `rests` (at most 12), `balance`, `profile` (one character 0-3 per frame), `zone`),
+    `reps[]` now with `startFrame`/`endFrame`, `imported` (the importIds Import saved for this video) and
+    `legacyReps` (the reps a version-1 import saved). `seg` stays for display (`reason: 'split'` when not sure).
+  - A version-1 entry is read again from the video on the next Start; a version-2 entry whose `split.version`
+    differs is split again from its cached frames (no video read).
+- **Sample ids.** `importId` = first 32 hex of SHA-256 of `name|size|repIndex|startMs-endMs` (was
+  `name|size|repIndex`); a rep identical to a version-1 rep keeps the version-1 id. `save_gesture.php`'s
+  duplicate check is unchanged.
+- **Review reads.** `GET save_gesture.php?no_sync=1&summary=1`, then `?no_sync=1&labels=` batches (at most 60
+  samples / 200 signs) for the rows per sample; bulk import no longer asks for the full listing with frames
+  (DEBT 117 resolved; `diagnostic.html:120` still GETs it, a dev page).
+
 ## Compact recognition model (2026-10-15/16)
 
 No schema change and no DB access in the new endpoints. Backup before the phase:

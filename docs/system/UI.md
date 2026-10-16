@@ -1046,6 +1046,41 @@ Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wi
   on the fake camera showed "Zz bulk one"; 207 requests, all localhost; 70 POSTs, all JSON, largest 112 KB
   against 5,391 KB of videos; no video file written under the repo or `C:\xampp`; 0 console errors.
   Kill mid-extraction, Pause / Resume and cache failures: `tests/bulk-import/extract-check.mjs` (85 PASS).
+- **Update 2026-10-16 (bulk-reps-fix, `docs/reports/2026-10-16-bulk-reps-fix.md`).** Not run in a browser yet
+  (no XAMPP in that session); only the splitter's node tests ran (22 pass).
+  - **Scripts:** adds `js/knn-compile.js` (the compile rule for the estimate) and `js/bulk-rep-split.js`
+    (the dynamic split). `js/capture-core.js` is still loaded, but bulk import no longer calls
+    `segmentFrames`.
+  - **Extract:** the Hands pass is unchanged. The reps come from `BulkRepSplit.splitReps()`: a per-frame rest
+    score (no hand / hand lowered below the video's own signing zone / nearly still while low), rest runs of
+    at least 200 ms, and the 2 runs that best cut the video into 3 reps, each trimmed to its signing frames.
+    A row is a problem row, with the reason, when the split is not sure: fewer than 3 reps, a weak rest,
+    reps of very different length, or another rest as clear as the chosen ones. The Reps column shows
+    "3 ?" for a 3-rep split that is not sure (hover: the reasons). The cache is version 2 (every frame kept).
+    A video cached by the first version reads "extracted by the old importer: Start reads it again". One
+    split with older thresholds reads "split with older settings: Start splits it again from the cache"
+    (no video read). New **Stop** button: pauses and opens Review with the videos done so far (Resume carries
+    on).
+  - **Review:** new **Split** column, a 168x26 timeline per video. Top band: the per-frame rest score (dark
+    no hand, mid lowered, light still and low). Bottom band: the numbered reps that would be imported. Its
+    title / aria-label says the same in words. Above the table: **Select all** (every importable row;
+    problem rows import what their choice says), **Select all problems (reps found)**, **Clear**, and a
+    legend. A header checkbox ticks or unticks every importable row under the current filter (mixed when
+    some are). A problem row has a select: "the N reps found" / "split into 3 equal parts" / "skip". A video
+    imported before with another split reads "… — replaces N old samples", and the Import button reads
+    "Import V videos (S samples, replaces R old samples)". Rows cached by the first version, or split with
+    older settings, cannot be imported until Start runs.
+  - **Review data:** the statuses come from the summary listing (file names). The estimate box shows
+    "Reading the saved samples for the estimate… x of y signs" while the rows per sample are read in
+    `labels=` batches (as Compile does). Its rows are now "Rows in the compiled model", by the compile rule
+    (at most 90 per sign).
+  - **Import:** per video, the cache records the new sample ids, the reps are saved (the same v3 payload),
+    then the old samples of the same file (another split) are removed through `save_gesture.php`
+    `delete_import_samples`, then the record is narrowed. The progress card adds "Old samples replaced". The
+    summary adds "Old replaced" per sign, the videos split into 3 equal parts, and "Next: Compile ESL and
+    Compile FSL on Train Gestures (Step 2)". The reminder card reads "Now run Compile on Train Gestures
+    (Step 2) for ESL and for FSL."
+  - The earlier browser checks still encode the old segmenter and are not updated (DEBT 142).
 
 ### Avatar clips: Candidates panel (2026-10-14)
 
@@ -1078,7 +1113,8 @@ model" or `sining_kamay_knn_*` / `sining_kamay_labels_*`, it describes the page 
   explains Compile (`:295`); toast "Compile the model first in Step 2!" when Steps 3/4 are opened without a usable
   model (`js/gesture-training-ui.js:1322`, `:1346`, `:1351`); Step 1's note after a save "Saved. Run Compile
   (Step 2) again to use it." (`:485`). Bulk import's own reminder still says "Now run Compile (Train AI) on
-  Train Gestures for ESL and for FSL." (bulk import must not change in this phase).
+  Train Gestures for ESL and for FSL." (bulk import must not change in this phase). **Update 2026-10-16
+  (bulk-reps-fix):** it now reads "Now run Compile on Train Gestures (Step 2) for ESL and for FSL."
 - **Step 1 without frames.** The dataset table and the sample-count line read the summary listing
   (`save_gesture.php?summary=1`: the same listing without `frames`): `renderSavedDataset()`
   (`js/gesture-training-ui.js:520-565`), `refreshDatasetNoStatus()` (`:1513-1524`). Page load makes ONE
