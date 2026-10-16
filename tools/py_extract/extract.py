@@ -3,11 +3,14 @@
 # Hands on the same 320x240 pictures at the same times as the page, and writes the page's own
 # cache entries (bulk_import_cache/videos/<id>.meta.json + <id>.hands.json, format version 2).
 # The page then shows those videos as already extracted (python) and its Start only splits them
-# from the cache (no video is read) and, for the avatar signers, runs the Holistic pass on the
-# best repetition. The split, Review, Import, Compile and the avatar stay in the page.
+# from the cache (no video is read). Review, Import and Compile stay in the page.
+# With --avatar-signers (py-avatar phase), the avatar candidates of those signers' videos are made
+# here too (avatar_pass.py: Holistic on the best repetition, the split and the clip by the page's
+# own JavaScript through node), so the page only has Step 5 (Apply / pick) left for them.
 # Videos are only read. Nothing is uploaded; nothing outside the cache folder is written.
 #
 #   python tools/py_extract/extract.py <video folder> [--cache <cache folder>] [--workers N]
+#                                      [--avatar-signers P03,P01] [--overwrite]
 #
 # README.md next to this file has the install and run commands.
 import argparse
@@ -22,6 +25,7 @@ import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import skcore  # noqa: E402
+import avatar_pass  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 DEFAULT_CACHE = os.path.join(REPO, 'bulk_import_cache')
@@ -350,7 +354,25 @@ def main(argv=None):
     ap.add_argument('--limit', type=int, default=0, help='extract at most this many videos (0: all)')
     ap.add_argument('--resample', choices=['linear', 'area'], default='linear', help=argparse.SUPPRESS)
     ap.add_argument('--list', action='store_true', help='only list the videos and the problems, extract nothing')
+    ap.add_argument('--avatar-signers', default='', metavar='P03,P01',
+                    help='also make the avatar candidates of these signers\' videos (Holistic on the best repetition, '
+                         'as the page\'s Start does); default: none (Hands pass only)')
+    ap.add_argument('--overwrite', action='store_true',
+                    help='avatar pass: make the candidate again even when the cache already has one (browser or python)')
+    ap.add_argument('--avatar-frame-ms', type=float, default=1000 / avatar_pass.AVATAR_FPS,
+                    help='avatar pass: time between two frames as Holistic\'s smoothing sees it (default: 40, the clip\'s own 25 fps)')
+    ap.add_argument('--seed-cache', default=None, metavar='FOLDER',
+                    help='parity only: copy each video\'s Hands entry (meta + hands, no candidate) from this cache into --cache '
+                         'when --cache has none, so the avatar pass uses the same split and best repetition. Never writes to FOLDER.')
     args = ap.parse_args(argv)
+    try:
+        args.avatar_signers = avatar_pass.parse_signers(args.avatar_signers)
+    except ValueError as e:
+        print('--avatar-signers: %s' % e)
+        return 2
+    if not args.avatar_frame_ms > 0:
+        print('--avatar-frame-ms must be more than 0')
+        return 2
 
     if not os.path.isdir(args.folder):
         print('Not a folder: %s' % args.folder)
@@ -361,6 +383,10 @@ def main(argv=None):
           % (scan['name'], scan['files'], len(videos), scan['ignored'], scan['skipped'], len(scan['problems'])))
     for p in scan['problems']:
         print('  PROBLEM  %s  — %s' % (p['relPath'], p['reason']))
+
+    if args.seed_cache:
+        seeded = seed(videos, args.seed_cache, args.cache)
+        print('Seeded %d Hands entries from %s into %s.' % (seeded, args.seed_cache, args.cache))
 
     todo, skipped, old = [], 0, 0
     for row in videos:
@@ -375,10 +401,42 @@ def main(argv=None):
         todo = todo[:args.limit]
     print('Cache %s: %d already extracted (skipped), %d to extract%s.'
           % (args.cache, skipped, len(todo), (' (%d of them cached by the old importer)' % old) if old else ''))
-    if args.list or not todo:
-        return 0
+    v = versions() if (todo and not args.list) or args.avatar_signers else None
+    failed = 0
+    if todo and not args.list:
+        failed = hands_pass(args, todo, skipped, v)
+    if args.avatar_signers:
+        failed += avatar_pass.run(args, videos, v, fmt_time)
+    elif todo and not args.list:
+        print('Next: open bulk-import.html, choose the same folder, press Start on Extract (it splits the videos from the cache).')
+    return 1 if failed else 0
 
-    v = versions()
+
+def seed(videos, src_cache, dst_cache):
+    """--seed-cache: the Hands entries of these videos copied from src_cache into dst_cache
+    (hands file first, as put_video), where dst_cache has none, without their avatar candidate (the
+    avatar pass makes it in dst_cache from the same split and best rep). Only reads src_cache."""
+    n = 0
+    for row in videos:
+        st, _ = skcore.cache_state(dst_cache, row['id'])
+        if st != 'none':
+            continue
+        st2, meta = skcore.cache_state(src_cache, row['id'])
+        if st2 != 'cached':
+            continue
+        hands = skcore.read_json(skcore.cache_paths(src_cache, row['id'])[1])
+        if not isinstance(hands, dict):
+            continue
+        meta = dict(meta, candidate=None)          # the avatar pass makes it again, in dst_cache
+        meta_p, hands_p = skcore.cache_paths(dst_cache, row['id'])
+        skcore.write_atomic(hands_p, hands)
+        skcore.write_atomic(meta_p, meta)
+        n += 1
+    return n
+
+
+def hands_pass(args, todo, skipped, v):
+    """The Hands pass of the videos in todo. -> the number of failed videos."""
     source = 'python mediapipe %s' % v['mediapipe']
     extractor = dict(v, tool='tools/py_extract/extract.py', resample=args.resample, options=HANDS_OPTIONS)
     workers = max(1, min(args.workers, len(todo)))
@@ -410,8 +468,7 @@ def main(argv=None):
           % (done - failed, failed, skipped, fmt_time(el), (done - failed) / el * 60 if el else 0, el / (video_ms / 1000) if video_ms else 0))
     for row, res in failures:
         print('  FAILED  %s  — %s' % (row['relPath'], res['error']))
-    print('Next: open bulk-import.html, choose the same folder, press Start on Extract (it splits the videos from the cache).')
-    return 1 if failed else 0
+    return failed
 
 
 if __name__ == '__main__':

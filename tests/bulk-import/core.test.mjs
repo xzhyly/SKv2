@@ -713,3 +713,67 @@ test('cacheSource: python, browser, a meta from before the field (browser), no m
 test('cacheState: a python entry (split null) is split by the page from the cache', () => {
   assert.equal(Core.cacheState({ v: 2, split: null, source: 'python mediapipe 0.10.21' }, 1), 'resplit');
 });
+
+// ---------- py-avatar phase: buildMeta (moved from bulk-import-ui.js), candidateSource ----------
+
+const Split = require('../../js/bulk-rep-split.js');
+// A synthetic 3-rep video at 15 fps: a raised hand for 1.5 s, then 1 s without a hand, three times.
+function threeReps() {
+  const hand = (y) => ({ label: 'Right', score: 0.9, landmarks: Array.from({ length: 21 }, (_, i) => ({ x: 0.5 + i * 0.004, y: y - i * 0.01, z: 0 })) });
+  const frames = [];
+  for (let k = 0; k < 15 * 7.5; k++) {
+    const s = (k / 15) % 2.5;
+    frames.push({ t: Math.round(k * 1000 / 15), hands: s < 1.5 ? [hand(0.5 + 0.02 * Math.sin(k))] : [] });
+  }
+  return { videoWidth: 720, videoHeight: 1280, fps: 15, durationMs: 7500, input: { width: 320, height: 240, contentRect: { x: 92.5, y: 0, w: 135, h: 240 } }, frames };
+}
+const ROW = { id: 'a'.repeat(32), name: 'ESL_a_P03.mp4', size: 123, lastModified: 1700000000000, relPath: 'letters/ESL_a_P03.mp4', parsed: { set: 'ESL', label: 'a', key: 'a', signer: 'P03', ext: 'mp4' } };
+
+test('buildMeta: the page\'s cache meta (split, reps, best rep, source, savedAt from the caller)', () => {
+  const r = threeReps();
+  const split = Split.splitReps(r.frames, { fps: 15, aspect: 320 / 240 });
+  const m = Core.buildMeta(ROW, r, split, 1234.4, null, 'python mediapipe 0.10.21', '2026-10-17T00:00:00.000Z');
+  assert.equal(m.v, Core.META_VERSION);
+  assert.equal(m.id, ROW.id);
+  assert.deepEqual(m.file, { name: ROW.name, size: 123, lastModified: 1700000000000, relPath: ROW.relPath });
+  assert.deepEqual(m.parsed, { set: 'ESL', label: 'a', key: 'a', signer: 'P03' });
+  assert.equal(m.hands.ms, 1234);
+  assert.equal(m.hands.frameCount, r.frames.length);
+  assert.equal(m.split.version, Split.SPLIT.VERSION);
+  assert.equal(m.reps.length, split.reps.length);
+  assert.equal(m.reps[0].startFrame, split.reps[0].startFrame);
+  assert.deepEqual(m.bestRep, Core.pickBestRep(m.reps, 7500, { ok: true }));
+  assert.equal(Core.cacheState(m, Split.SPLIT.VERSION), 'current');
+  assert.equal(m.source, 'python mediapipe 0.10.21');
+  assert.equal(m.savedAt, '2026-10-17T00:00:00.000Z');
+  assert.equal(m.candidate, null);
+  assert.deepEqual(m.imported, []);
+  assert.equal(m.legacyReps, null);
+});
+
+test('buildMeta: carries over imported, legacyReps, savedAt of a v2 meta and the candidate of a clear old split', () => {
+  const r = threeReps();
+  const split = Split.splitReps(r.frames, { fps: 15, aspect: 320 / 240 });
+  const cand = { state: 'ok', signer: 'P03', frames: 30, repIndex: 1, ms: 9, source: 'python mediapipe 0.10.21 holistic' };
+  const old = { v: 2, savedAt: 'then', imported: ['x'], legacyReps: [{ index: 1, startMs: 0, endMs: 9 }], seg: { ok: true }, candidate: cand };
+  const m = Core.buildMeta(ROW, r, split, 0, old, 'browser', 'now');
+  assert.equal(m.savedAt, 'then');
+  assert.deepEqual(m.imported, ['x']);
+  assert.notEqual(m.imported, old.imported);
+  assert.deepEqual(m.legacyReps, old.legacyReps);
+  assert.equal(m.candidate, cand);
+  assert.equal(Core.buildMeta(ROW, r, split, 0, Object.assign({}, old, { seg: { ok: false } }), 'browser', 'now').candidate, null);
+  // a v1 meta: its reps become legacyReps, savedAt is new
+  const v1 = Core.buildMeta(ROW, r, split, 0, { v: 1, savedAt: 'then', reps: [{ index: 1, startMs: 5, endMs: 6, frames: 3 }] }, 'browser', 'now');
+  assert.deepEqual(v1.legacyReps, [{ index: 1, startMs: 5, endMs: 6 }]);
+  assert.equal(v1.savedAt, 'now');
+});
+
+test('candidateSource: python, browser, a candidate from before the field (browser), none', () => {
+  assert.deepEqual(Core.candidateSource({ candidate: { state: 'ok', source: 'python mediapipe 0.10.21 holistic' } }), { kind: 'python', text: 'python mediapipe 0.10.21 holistic' });
+  assert.deepEqual(Core.candidateSource({ candidate: { state: 'ok', source: 'browser mediapipe holistic 0.5.1675471629' } }), { kind: 'browser', text: 'browser mediapipe holistic 0.5.1675471629' });
+  assert.deepEqual(Core.candidateSource({ candidate: { state: 'ok' } }), { kind: 'browser', text: 'browser' });
+  assert.deepEqual(Core.candidateSource({ candidate: { state: 'none', source: 'python mediapipe 0.10.21 holistic' } }), { kind: 'none', text: '' });
+  assert.deepEqual(Core.candidateSource({ candidate: null }), { kind: 'none', text: '' });
+  assert.deepEqual(Core.candidateSource(null), { kind: 'none', text: '' });
+});

@@ -67,6 +67,18 @@
     return { kind: src.indexOf('python') === 0 ? 'python' : 'browser', text: src };
   }
 
+  // Who made a cached video's avatar candidate (py-avatar phase): meta.candidate.source, written by
+  // the page ("browser mediapipe holistic <version>") and by tools/py_extract ("python mediapipe
+  // <version> holistic"). A candidate written before the field existed was made by the page.
+  // -> {kind:'python'|'browser'|'none', text}; 'none' while the video has no clip (no candidate,
+  // or state 'none').
+  function candidateSource(meta) {
+    var c = meta && meta.candidate;
+    if (!c || c.state !== 'ok') return { kind: 'none', text: '' };
+    var src = typeof c.source === 'string' && c.source ? c.source : 'browser';
+    return { kind: src.indexOf('python') === 0 ? 'python' : 'browser', text: src };
+  }
+
   // The strings to hash (SHA-256, first 32 hex chars): the cache identity of a video file, and the
   // identity of one saved sample (file + repetition). file: {name, size, lastModified}.
   function videoIdSource(file) { return file.name + '|' + file.size + '|' + file.lastModified; }
@@ -288,6 +300,59 @@
     return meta.split && meta.split.version === splitVersion ? 'current' : 'resplit';
   }
 
+  // A rest run as kept in meta.split (the Review timeline and the tuning notes read these).
+  function slimRun(r) {
+    return { startFrame: r.startFrame, endFrame: r.endFrame, startMs: r.startMs, endMs: r.endMs, ms: r.ms, depth: r.depth, strength: r.strength, kind: r.kind };
+  }
+
+  // The cache meta (version 2) of a video; bulk-import.html's buildMeta() (moved here in the
+  // py-avatar phase so tools/py_extract/avatar_node.mjs builds the same meta with the same code).
+  // row: {id, name, size, lastModified, relPath, parsed}; r: the Hands result ({videoWidth,
+  // videoHeight, fps, durationMs, input, frames}); split: BulkRepSplit.splitReps() of r.frames;
+  // old: the meta it had before (a first-version meta, or a version 2 one split with other
+  // thresholds), or null. Carried over from it: the record of the samples Import saved for this
+  // video (imported: their importIds), the reps the first importer version saved (legacyReps), and
+  // the avatar candidate when the old split was the 3 clear reps (otherwise its clip may hold two
+  // reps: the avatar step makes it again). source: who made the Hands result r (meta.source).
+  // nowIso: the time to record as savedAt when the Hands result is new (pure: no clock here).
+  function buildMeta(row, r, split, handsMs, old, source, nowIso) {
+    var reps = summarizeReps(r, split).map(function (rep, i) {
+      rep.startFrame = split.reps[i].startFrame;
+      rep.endFrame = split.reps[i].endFrame;
+      return rep;
+    });
+    var legacy = null;
+    if (old && old.v !== META_VERSION && Array.isArray(old.reps)) {
+      legacy = old.reps.map(function (rep) { return { index: rep.index, startMs: rep.startMs, endMs: rep.endMs }; });
+    } else if (old && Array.isArray(old.legacyReps)) legacy = old.legacyReps;
+    var keepClip = old && old.seg && old.seg.ok && old.candidate && old.candidate.state === 'ok';
+    return {
+      v: META_VERSION, id: row.id,
+      file: { name: row.name, size: row.size, lastModified: row.lastModified, relPath: row.relPath },
+      parsed: { set: row.parsed.set, label: row.parsed.label, key: row.parsed.key, signer: row.parsed.signer },
+      hands: {
+        videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, durationMs: r.durationMs, input: r.input,
+        frameCount: r.frames.length,
+        handFrames: r.frames.filter(function (f) { return f.hands.length > 0; }).length,
+        ms: Math.round(handsMs)
+      },
+      seg: { ok: !!split.ok, reason: split.ok ? null : 'split', repsFound: split.reps.length },
+      split: {
+        version: split.version, method: split.method, ok: !!split.ok, reasons: split.reasons,
+        cuts: split.cuts.map(slimRun), rests: split.rests.map(slimRun), balance: split.balance,
+        profile: split.profile, zone: split.zone
+      },
+      reps: reps,
+      bestRep: pickBestRep(reps, r.durationMs, { ok: true }),
+      candidate: keepClip ? old.candidate : null,
+      imported: old && Array.isArray(old.imported) ? old.imported.slice() : [],
+      legacyReps: legacy,
+      // when the Hands result was first cached; later updates keep it
+      savedAt: old && old.v === META_VERSION && old.savedAt ? old.savedAt : nowIso,
+      source: source
+    };
+  }
+
   // The string a v2 sample id is hashed from: the rep's place in the video is part of it, so a
   // different split of the same video gives different samples (and the old ones can be replaced),
   // while the same split gives the same ids again (a re-import adds nothing). A rep identical to a
@@ -346,6 +411,9 @@
     META_VERSION: META_VERSION,
     LEGACY_REPS_MAX: LEGACY_REPS_MAX,
     cacheState: cacheState,
+    slimRun: slimRun,
+    buildMeta: buildMeta,
+    candidateSource: candidateSource,
     importIdSourceV2: importIdSourceV2,
     splitStatus: splitStatus,
     budgetRows: budgetRows,

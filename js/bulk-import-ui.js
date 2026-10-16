@@ -36,6 +36,10 @@
   // Hands version (js/lib/mediapipe/hands.js VERSION, docs/system/VENDORED.md). tools/py_extract
   // writes "python mediapipe <version>"; BulkImportCore.cacheSource() reads either.
   var BROWSER_SOURCE = 'browser mediapipe hands 0.4.1675469240';
+  // meta.candidate.source of an avatar candidate this page makes (py-avatar phase): the vendored
+  // Holistic (AvatarClip.buildClip()'s extractor.lib). tools/py_extract writes "python mediapipe
+  // <version> holistic"; BulkImportCore.candidateSource() reads either.
+  var BROWSER_AVATAR_SOURCE = 'browser mediapipe holistic 0.5.1675471629';
   var NO_SIMD = 'This page must be run on the laptop\'s Chrome: this browser has no WebAssembly SIMD, which the extractor needs. Extraction is disabled.';
   var Core = window.BulkImportCore;
   var Split = window.BulkRepSplit;
@@ -542,6 +546,7 @@
   function renderCounts() {
     var cached = state.videos.filter(function (r) { return r.cached; }).length;
     var byPython = state.videos.filter(function (r) { return r.cached && Core.cacheSource(r.meta).kind === 'python'; }).length;
+    var clipsByPython = state.videos.filter(function (r) { return r.cached && Core.candidateSource(r.meta).kind === 'python'; }).length;
     $('bi-n-videos').textContent = state.videos.length;
     $('bi-n-signs').textContent = state.signs.length;
     $('bi-n-signers').textContent = state.signers.length;
@@ -552,7 +557,8 @@
         (state.folder.ignored ? ' (' + state.folder.ignored + ' ignored)' : '') +
         (state.folder.skipped ? ' (' + state.folder.skipped + ' in unzipping / _duplicates folders, skipped)' : '')
       : 'No folder chosen.';
-    $('bi-count').textContent = state.videos.length ? state.videos.length + ' videos · ' + cached + ' extracted' + (byPython ? ' (' + byPython + ' by python)' : '') : '';
+    $('bi-count').textContent = state.videos.length ? state.videos.length + ' videos · ' + cached + ' extracted' + (byPython ? ' (' + byPython + ' by python)' : '') +
+      (clipsByPython ? ' · ' + clipsByPython + ' avatar clip' + (clipsByPython === 1 ? '' : 's') + ' by python' : '') : '';
     $('bi-problem-count').textContent = state.problems.length ? '(' + state.problems.length + ')' : '';
     $('bi-video-count').textContent = state.videos.length ? '(' + state.videos.length + ')' : '';
     $('bi-to-extract').disabled = !state.videos.length;
@@ -602,7 +608,9 @@
     if (row.status === 'done' && row.did && row.did.resplit && !row.did.hands && !row.did.holistic) return row.did.firstSplit ? 'done (split from the cache)' : 'done (split again from the cache)';
     if (row.status === 'done' && row.did && row.did.resplit && !row.did.hands) return 'done (split from the cache + avatar clip)';
     if (row.status === 'done' && row.did && !row.did.hands) return 'done (avatar clip only)';
-    if (row.status === 'cached' && Core.cacheSource(row.meta).kind === 'python') return 'already extracted (python)';
+    if (row.status === 'cached' && Core.cacheSource(row.meta).kind === 'python') {
+      return 'already extracted (python' + (Core.candidateSource(row.meta).kind === 'python' ? ', avatar clip by python' : '') + ')';
+    }
     return STATUS_TEXT[row.status] || row.status;
   }
   // A video's meta.candidate ({state:'ok'|'none', ...}), or null while it has none.
@@ -676,8 +684,10 @@
     cand.classList.toggle('bi-warn', !!(c && c.state === 'none') || !!(c && clipTakenBy(row)) ||
       (!c && !mayMakeCandidate(row) && state.avatarSigners.indexOf(row.parsed.signer) >= 0));
     var src = tr.querySelector('.bi-src');
-    src.textContent = Core.cacheSource(row.meta).text;
+    var avSrc = Core.candidateSource(row.meta);
+    src.textContent = Core.cacheSource(row.meta).text + (avSrc.text ? '\navatar: ' + avSrc.text : '');
     src.classList.toggle('bi-src-python', Core.cacheSource(row.meta).kind === 'python');
+    src.classList.toggle('bi-src-python-avatar', avSrc.kind === 'python');
     tr.className = (row.status === 'failed' ? 'failed' : row.status === 'done' ? 'done' : row.cached ? 'cached' : '') +
       (state.run.current === row ? ' current' : '');
   }
@@ -818,7 +828,7 @@
     var signer = row.parsed.signer;
     var best = meta.bestRep;
     function none(reason) {
-      return { state: 'none', reason: reason, signer: signer, frames: 0, repIndex: best ? best.index : null, ms: Math.round(now() - t0) };
+      return { state: 'none', reason: reason, signer: signer, frames: 0, repIndex: best ? best.index : null, ms: Math.round(now() - t0), source: BROWSER_AVATAR_SOURCE };
     }
     if (!best) return none('no repetition found');
     if (meta.hands.durationMs >= MAX_CANDIDATE_MS) return none(TOO_LONG);
@@ -858,7 +868,7 @@
     if (!Object.prototype.hasOwnProperty.call(state.clipOwners, row.parsed.key)) state.clipOwners[row.parsed.key] = {};
     state.clipOwners[row.parsed.key][signer] = row.id;
     state.videos.forEach(function (v) { if (v !== row && v.parsed.key === row.parsed.key && v.parsed.signer === signer) updateRow(v); });
-    return { state: 'ok', signer: signer, frames: built.clip.frames.length, repIndex: best.index, ms: Math.round(now() - t0) };
+    return { state: 'ok', signer: signer, frames: built.clip.frames.length, repIndex: best.index, ms: Math.round(now() - t0), source: BROWSER_AVATAR_SOURCE };
   }
 
   function adoptMeta(row, meta) {
@@ -867,54 +877,12 @@
     state.cache[row.id] = meta;
   }
 
-  // A rest run as kept in meta.split (the Review timeline and the tuning notes read these).
-  function slimRun(r) {
-    return { startFrame: r.startFrame, endFrame: r.endFrame, startMs: r.startMs, endMs: r.endMs, ms: r.ms, depth: r.depth, strength: r.strength, kind: r.kind };
-  }
-  // The cache meta (version 2) of a video. r: the Hands result ({videoWidth, videoHeight, fps,
-  // durationMs, input, frames}); split: splitOf(r.frames, r); old: the meta it had before (a
-  // first-version meta, or a version 2 one split with other thresholds), or null. Carried over
-  // from it: the record of the samples Import saved for this video (imported: their importIds),
-  // the reps the first importer version saved (legacyReps), and the avatar candidate when the old
-  // split was the 3 clear reps (otherwise its clip may hold two reps: the avatar step makes it again).
+  // The cache meta (version 2) of a video: BulkImportCore.buildMeta() (js/bulk-import-core.js,
+  // moved there in the py-avatar phase so tools/py_extract builds the same meta with the same code).
   // source: who made the Hands result r (meta.source): BROWSER_SOURCE after this page's own Hands
   // pass; on a split redone from the cache, the source of the cached frames (old.source).
   function buildMeta(row, r, split, handsMs, old, source) {
-    var reps = Core.summarizeReps(r, split).map(function (rep, i) {
-      rep.startFrame = split.reps[i].startFrame;
-      rep.endFrame = split.reps[i].endFrame;
-      return rep;
-    });
-    var legacy = null;
-    if (old && old.v !== Core.META_VERSION && Array.isArray(old.reps)) {
-      legacy = old.reps.map(function (rep) { return { index: rep.index, startMs: rep.startMs, endMs: rep.endMs }; });
-    } else if (old && Array.isArray(old.legacyReps)) legacy = old.legacyReps;
-    var keepClip = old && old.seg && old.seg.ok && old.candidate && old.candidate.state === 'ok';
-    return {
-      v: Core.META_VERSION, id: row.id,
-      file: { name: row.name, size: row.size, lastModified: row.lastModified, relPath: row.relPath },
-      parsed: { set: row.parsed.set, label: row.parsed.label, key: row.parsed.key, signer: row.parsed.signer },
-      hands: {
-        videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, durationMs: r.durationMs, input: r.input,
-        frameCount: r.frames.length,
-        handFrames: r.frames.filter(function (f) { return f.hands.length > 0; }).length,
-        ms: Math.round(handsMs)
-      },
-      seg: { ok: !!split.ok, reason: split.ok ? null : 'split', repsFound: split.reps.length },
-      split: {
-        version: split.version, method: split.method, ok: !!split.ok, reasons: split.reasons,
-        cuts: split.cuts.map(slimRun), rests: split.rests.map(slimRun), balance: split.balance,
-        profile: split.profile, zone: split.zone
-      },
-      reps: reps,
-      bestRep: Core.pickBestRep(reps, r.durationMs, { ok: true }),
-      candidate: keepClip ? old.candidate : null,
-      imported: old && Array.isArray(old.imported) ? old.imported.slice() : [],
-      legacyReps: legacy,
-      // when the Hands result was first cached; later updates keep it
-      savedAt: old && old.v === Core.META_VERSION && old.savedAt ? old.savedAt : new Date().toISOString(),
-      source: source || BROWSER_SOURCE
-    };
+    return Core.buildMeta(row, r, split, handsMs, old, source || BROWSER_SOURCE, new Date().toISOString());
   }
 
   // The cached frames of a version 2 video (GET ?action=hands), as a Hands result, or null when
