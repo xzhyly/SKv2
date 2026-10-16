@@ -298,6 +298,11 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 | `js/bulk-import-core.js` (changed, 347 lines) | Adds `cacheState`, `importIdSourceV2`, `splitStatus`, `budgetRows` (`:254-306`) |
 | `js/bulk-import-ui.js` (changed, 3,036 lines), `bulk-import.html` (319), `css/bulk-import.css` (233) | Cache version 2 and re-split from the cache; Stop; Review from the summary listing + `labels=` batches, compile-rule estimate, split timeline, selection buttons, per-row choice; re-import replaces. `bulk-import.html` now also loads `js/knn-compile.js` |
 | `php/api/save_gesture.php` (changed, 844 lines) | POST action `delete_import_samples` (`:450-487`) |
+| **2026-10-16 (py-extractor)** `tools/py_extract/extract.py` (new, 419 lines) | Python Hands pass (OpenCV + MediaPipe 0.10.21) that writes the page's cache entries; worker processes, resume, progress/ETA. Laptop only, run by hand; never loaded by a page |
+| `tools/py_extract/skcore.py` (new, 294 lines) | The page's rules in Python: file names, skipped folders, cache id, frame grid, letterbox, rounding, cache entry, atomic write |
+| `tools/py_extract/parity.py` (213), `parity_node.mjs` (48) | Browser vs python comparison of the same videos; node runs the page's `recordingToFeatureRows` and `BulkRepSplit.splitReps` |
+| `tools/py_extract/test_skcore.py` (166), `js_ref.mjs` (40), `requirements.txt`, `README.md` | Python tests against the page's JavaScript (13); pinned packages; commands |
+| `js/bulk-import-core.js` (changed, 371 lines), `js/bulk-import-ui.js` (3,066), `bulk-import.html` (319), `css/bulk-import.css` (235) | `skipFolder`, `cacheSource`; skipped folders; Source column; python-entry texts; `meta.source`; ETA |
 
 Load order in `talk.html`: ... `js/talk-signing.js`, then `avatar-rig`, `avatar-clip`, `avatar-retarget`,
 `avatar-timeline`, `avatar-renderer`, `avatar-store`, `avatar-player`, then `js/sign-player.js`,

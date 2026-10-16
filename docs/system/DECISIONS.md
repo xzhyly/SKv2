@@ -1988,3 +1988,29 @@ merged reps (P01 letters: 24 of 26 videos gave 1-2 reps).
   per-video record in the cache (`meta.imported`); a rep identical to one the first version saved keeps that
   sample (so a clean video reads "already imported"); a video re-extracted from a version-1 cache keeps its
   avatar candidate only if its old split was the 3 clear reps.
+
+## Decisions made during the py-extractor phase (2026-10-16)
+
+Report: `docs/reports/2026-10-16-py-extractor.md`.
+
+1. **Python only extracts.** `tools/py_extract/extract.py` writes cache entries in the page's format (version 2,
+   every frame) under the page's cache id; the split, timeline, Review, Import and Compile stay in the page. No
+   second copy of the split or the normalisation in Python (the tool leaves `split: null`; the page splits).
+2. Same input as the browser: 15 fps grid of `extractVideoLandmarks()`, 320x240 letterboxed picture, the Hands
+   options of `setupMediaPipe()`, unmirrored picture (MediaPipe's own handedness labels), raw image-space landmarks
+   rounded as the page rounds them.
+3. One video per worker process (default CPU cores - 1); a cached video is skipped; a progress line with ETA.
+4. **The avatar stays in the browser.** A python entry of a ticked avatar signer gets only the Holistic pass on its
+   best repetition from the page's Start.
+5. Every entry records its `source`; the page shows it (Source column).
+6. Same file-name rules as the page; `unzipping` and `_duplicates*` sub-folders are skipped by both (the page did
+   not skip them before this phase).
+7. `tools/py_extract/parity.py`: PASS when hand detected agreement >= 97 %, the same rep count on >= 95 % of the
+   videos and split points within 2 frames.
+8. The owner's environment: Python 3.12.13, mediapipe 0.10.21, numpy 1.26.4, opencv-python 4.10.0.84,
+   opencv-contrib-python 4.11.0.86 (`tools/py_extract/requirements.txt`).
+9. Videos are never modified, moved, committed or uploaded.
+- **Choices made in the implementation (not asked):** the picture is drawn with bilinear sampling (canvas
+  `drawImage`'s default) through `cv2.warpAffine`, not `cv2.resize`; the duration comes from the file header
+  (MP4 `mvhd`, WebM Segment Info), as the browser reads it; a version-1 entry is extracted again (as the page
+  would) with the page's carry-over rule; hand order in 2-hand frames is left as MediaPipe gives it (DEBT 149).

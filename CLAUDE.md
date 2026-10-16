@@ -112,6 +112,11 @@ video's 3 repetitions with its own split (`js/bulk-rep-split.js`: no hand / hand
 nearly still while low, thresholds in `SPLIT`), not with the live 1 s no-hand segmenter,
 which live capture keeps; re-importing a video with another split replaces its old samples
 (`docs/reports/2026-10-16-bulk-reps-fix.md`).
+Since py-extractor (2026-10-16) the Hands pass can also run outside the browser:
+`tools/py_extract/extract.py` (Python 3.12, mediapipe 0.10.21, venv `E:\ACADSS\IOT\mp_env`, laptop only) writes the
+same cache entries (`source: "python mediapipe …"`, split left to the page); the page's Start splits them from the cache
+and runs Holistic for the avatar signers only. Folders named `unzipping` / `_duplicates*` are skipped by both. See
+`tools/py_extract/README.md` and `docs/reports/2026-10-16-py-extractor.md`.
 
 **Recognition model (compact-model phase, 2026-10-16).** Recognition no longer
 downloads samples. Let's Talk and Train Gestures Steps 3/4 load

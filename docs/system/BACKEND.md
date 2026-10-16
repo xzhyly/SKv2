@@ -937,6 +937,25 @@ No schema change. Live capture's save path is unchanged.
   samples / 200 signs) for the rows per sample; bulk import no longer asks for the full listing with frames
   (DEBT 117 resolved; `diagnostic.html:120` still GETs it, a dev page).
 
+### Update 2026-10-16 (py-extractor, `docs/reports/2026-10-16-py-extractor.md`)
+
+No schema change, no PHP change, no DB access. `bulk_import.php` is unchanged.
+
+- **A second writer of the cache.** `tools/py_extract/extract.py` (Python, laptop only) writes
+  `bulk_import_cache/videos/<id>.hands.json` then `<id>.meta.json` directly on disk, each through a temp file
+  and a rename, as `write_atomic()` does (`tools/py_extract/skcore.py` `write_atomic()`). Same `<id>` (first 32
+  hex of SHA-256 of `name|size|lastModified`, `lastModified` = the file's modified time in whole ms, rounded
+  down), same compact UTF-8 JSON.
+- **Its entries:** `hands.json` as the page writes it (`{id, v: 2, meta, frames}`) plus `source`; `meta.json`
+  with `v: 2`, `file`, `parsed`, `hands` (`ms` = the tool's time for the video), `split: null`, `reps: []`,
+  `bestRep: null`, `candidate`/`imported`/`legacyReps`/`seg`/`savedAt` carried over from an older meta exactly as
+  `buildMeta()` does, `source: "python mediapipe <version>"` and `extractor` (versions, options, where the
+  duration came from). `BulkImportCore.cacheState()` reads `split: null` as `resplit`: the page's Start splits it
+  from the cached frames with `GET ?action=hands` and writes the meta back with `put_video` (meta only).
+- **`meta.source`** is now also written by the page (`"browser mediapipe hands 0.4.1675469240"`) on its own Hands
+  pass, and kept when it re-splits an entry. A meta without it was made by the page.
+- **Videos are never uploaded or written.** The tool only opens them for reading; no request leaves the laptop.
+
 ## Compact recognition model (2026-10-15/16)
 
 No schema change and no DB access in the new endpoints. Backup before the phase:

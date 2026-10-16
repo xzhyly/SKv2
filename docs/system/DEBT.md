@@ -1779,6 +1779,30 @@ so a later session does not re-litigate them:
      If `bulk_import_cache/` is deleted after an import made with the new code, and the same video is later
      imported with another split, its earlier samples are no longer found: both sets stay (the per-sign budget
      still caps the model at 90 rows per sign). Identity is still name + size (item 120).
+146. **Medium, open (py-extractor, 2026-10-16): browser vs python parity on real videos is not measured yet.**
+     `tools/py_extract/extract.py` copies the page's frame grid, input picture and MediaPipe Hands options
+     (`docs/reports/2026-10-16-py-extractor.md` section 2), but runs MediaPipe 0.10.21 (Python) where the page runs
+     the vendored JS Hands 0.4.1675469240: the models and the decoder differ. Measured only on synthetic videos
+     made from `assets/signs/en` clips (report section 3). `tools/py_extract/parity.py` on a real folder decides.
+147. **Low, open (py-extractor): the cache identity uses the modified time in whole milliseconds, rounded down.**
+     Chromium's `File.lastModified` was rounded down on Linux in this session (mtime `.123456789` s gave `...123`);
+     on Windows it was not measured. If it differed, Python entries would not be found by the page; `parity.py`
+     prints `ID MISMATCH` with both values for such a file.
+148. **Low, open (py-extractor): the video duration is read from the file header, not from the browser.**
+     `tools/py_extract/extract.py` `container_duration()` reads `moov/mvhd` for `.mp4/.mov/.m4v/.3gp` and the
+     Segment Info Duration for `.webm/.mkv`; for other containers it uses OpenCV's frame count / fps. On the 7
+     synthetic WebM videos the frame counts equalled the page's on every video. A different duration only adds or
+     removes grid frames at the end (each a copy of the last frame). MP4 was not compared with a browser: this
+     session's Chromium cannot decode H.264.
+149. **Low, open (py-extractor): in 2-hand frames the hands can be listed in the other order than the page lists
+     them.** The order follows which hand MediaPipe found first; on one synthetic video Python found both hands
+     in the same frame where the browser found them one frame apart, and all 67 of its 2-hand frames had the
+     hands swapped (features hand 1 / hand 2 swapped; the landmarks themselves agreed, mean feature difference
+     0.0085 with the hands matched). Live capture's order is just as arbitrary; `knnPredict` is not changed here.
+     `parity.py` counts such frames ("order").
+150. **Low, open (py-extractor): non-ASCII video paths on Windows are untested.** OpenCV's `VideoCapture` has had
+     trouble with non-ASCII Windows paths; such a video would be listed as FAILED by the tool (the run goes on).
+     The owner's dataset paths are ASCII.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

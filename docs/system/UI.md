@@ -1046,6 +1046,21 @@ Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wi
   on the fake camera showed "Zz bulk one"; 207 requests, all localhost; 70 POSTs, all JSON, largest 112 KB
   against 5,391 KB of videos; no video file written under the repo or `C:\xampp`; 0 console errors.
   Kill mid-extraction, Pause / Resume and cache failures: `tests/bulk-import/extract-check.mjs` (85 PASS).
+- **Update 2026-10-16 (py-extractor, `docs/reports/2026-10-16-py-extractor.md`).** The Hands pass can now also be
+  done by `tools/py_extract/extract.py` (Python, several videos at once); the page then only splits, reviews and
+  imports. Run in headless Chromium (php -S, no DB) on a synthetic folder, Folder and Extract steps only.
+  - **Folder:** files under a sub-folder named `unzipping` or starting with `_duplicates` (any case, below the
+    chosen folder) are not listed; the folder line counts them ("N in unzipping / _duplicates folders, skipped").
+    Same rule in the tool (`BulkImportCore.skipFolder()`, `js/bulk-import-core.js:52`).
+  - **Extract table:** new last column **Source** (`python mediapipe 0.10.21` in blue, `browser mediapipe hands
+    0.4.1675469240`, or `browser` for an entry from before the field). The count line reads "N videos · M extracted
+    (K by python)". A python entry not split yet reads "already extracted (python): Start splits it from the cache"
+    (", then makes the avatar clip" for an avatar signer); after Start "done (split from the cache)" or "done (split
+    from the cache + avatar clip)"; later "already extracted (python)". Review shows such a row as "not split yet:
+    press Start on Extract" until then.
+  - **Start** on a python entry: the split from the cached frames (no video read), then, for a ticked avatar
+    signer, the Holistic pass on the best repetition only. The ETA counts that Holistic pass
+    (`js/bulk-import-ui.js:1043`).
 - **Update 2026-10-16 (bulk-reps-fix, `docs/reports/2026-10-16-bulk-reps-fix.md`).** Not run in a browser yet
   (no XAMPP in that session); only the splitter's node tests ran (22 pass).
   - **Scripts:** adds `js/knn-compile.js` (the compile rule for the estimate) and `js/bulk-rep-split.js`
