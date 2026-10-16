@@ -1803,6 +1803,33 @@ so a later session does not re-litigate them:
 150. **Low, open (py-extractor): non-ASCII video paths on Windows are untested.** OpenCV's `VideoCapture` has had
      trouble with non-ASCII Windows paths; such a video would be listed as FAILED by the tool (the run goes on).
      The owner's dataset paths are ASCII.
+151. **Medium, open (py-avatar, 2026-10-17): Holistic's smoothing sees different frame times in the browser and in
+     Python.** The page's `holistic.send({image})` (`js/avatar-extract.js:124`) stamps each frame with the wall
+     clock (the vendored `holistic.js` uses `1000 * performance.now()` when no time is given), so its landmark
+     smoothing sees the time the page took per frame (measured 1.5-1.8 s per frame in headless Chromium here; on the
+     laptop about 2 min per video). `tools/py_extract/avatar_pass.py` gives each frame its own clip time (k x 40 ms)
+     by setting `SolutionBase._simulated_timestamp` before `process()`. The smoothing filters weigh motion by
+     speed, so the two can smooth differently; `--avatar-frame-ms` changes the Python spacing (e.g. to the
+     browser's), and `parity_avatar.py` prints the browser's measured time per frame.
+152. **Low, open (py-avatar): `_simulated_timestamp` is a private attribute of MediaPipe's Python `SolutionBase`.**
+     It exists in the pinned mediapipe 0.10.21 (`mediapipe/python/solution_base.py`, `process()` adds 33333 us to
+     it). A mediapipe upgrade could drop it; the pin in `tools/py_extract/requirements.txt` stays.
+153. **Low, open (py-avatar): the best-rep rule counts Hands frames, not pose frames.** The phase brief described it
+     as "most frames with pose and the needed hands"; the page's rule (`BulkImportCore.pickBestRep()`,
+     `js/bulk-import-core.js:117`) counts the Hands-pass frames with the needed number of hands (2 when 2-hand
+     frames are at least half of all rep frames) and never looks at a pose. The Python pass uses the page's own
+     `meta.bestRep`, so both pick the same rep; the brief's wording was not implemented.
+154. **Low, open (py-avatar): the Python tool and the page write the same cache without a lock.** Each file is
+     written atomically (temp file + rename) by both, but a meta read by one and written back by the other while
+     the first also writes it can lose one of the two changes. Run `extract.py` and the page's Start one at a time.
+155. **Low, open (py-avatar): node is required for `--avatar-signers`.** The avatar pass runs the page's own split,
+     meta, frame packing and clip code with node (`tools/py_extract/avatar_node.mjs`); without node on the PATH it
+     stops with a message (the Hands pass still runs). The repo's tests already need node.
+156. **Low, open (py-avatar): a candidate's source is in the cache files but not in `bulk_import.php`'s listing.**
+     `candidates/<key>/<SIGNER>.json` and `.info.json` carry `source` (Python only), and `meta.candidate.source`
+     (both); the `candidates` listing (`php/api/bulk_import.php`) returns its fixed fields only, so avatar-clips.html's
+     candidate picker does not show it. The clip itself names its build in `extractor.lib` ("python mediapipe 0.10.21
+     holistic" or "@mediapipe/holistic 0.5.1675471629"), which "Use this" / Step 5 Apply keep in `avatar.json`.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

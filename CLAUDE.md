@@ -117,6 +117,11 @@ Since py-extractor (2026-10-16) the Hands pass can also run outside the browser:
 same cache entries (`source: "python mediapipe …"`, split left to the page); the page's Start splits them from the cache
 and runs Holistic for the avatar signers only. Folders named `unzipping` / `_duplicates*` are skipped by both. See
 `tools/py_extract/README.md` and `docs/reports/2026-10-16-py-extractor.md`.
+Since py-avatar (2026-10-17) `extract.py --avatar-signers P03,...` also makes those signers' avatar candidates
+(Holistic on the best repetition, in the page's candidate format, `source: "python mediapipe 0.10.21 holistic"`; HEVC
+works), so the page only does Step 5 for them; the split, best rep and clip come from the page's own JavaScript run
+with node. It never replaces a stored candidate without `--overwrite` and never writes `avatar.json`. See
+`docs/reports/2026-10-17-py-avatar.md`.
 
 **Recognition model (compact-model phase, 2026-10-16).** Recognition no longer
 downloads samples. Let's Talk and Train Gestures Steps 3/4 load

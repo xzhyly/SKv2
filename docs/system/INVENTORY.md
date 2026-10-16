@@ -303,6 +303,12 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 | `tools/py_extract/parity.py` (213), `parity_node.mjs` (48) | Browser vs python comparison of the same videos; node runs the page's `recordingToFeatureRows` and `BulkRepSplit.splitReps` |
 | `tools/py_extract/test_skcore.py` (166), `js_ref.mjs` (40), `requirements.txt`, `README.md` | Python tests against the page's JavaScript (13); pinned packages; commands |
 | `js/bulk-import-core.js` (changed, 371 lines), `js/bulk-import-ui.js` (3,066), `bulk-import.html` (319), `css/bulk-import.css` (235) | `skipFolder`, `cacheSource`; skipped folders; Source column; python-entry texts; `meta.source`; ETA |
+| **2026-10-17 (py-avatar)** `tools/py_extract/avatar_pass.py` (new, 511 lines) | The avatar pass of `extract.py --avatar-signers`: Holistic on the best rep's window, candidate files and meta, ownership/resume rules. Laptop only |
+| `tools/py_extract/avatar_node.mjs` (new, 81) | Runs the page's `BulkRepSplit`, `BulkImportCore.buildMeta` / `buildCandidate`, `AvatarClip.packFrame` for the avatar pass |
+| `tools/py_extract/parity_avatar.py` (197), `parity_avatar_node.mjs` (112) | Browser vs python avatar candidates: joint distance, frames, continuity, forearm jumps; PASS/FAIL |
+| `tools/py_extract/test_avatar.py` (264) | 9 tests (endpoint read-back through php -S, page code, rules, window reader) |
+| `tools/py_extract/extract.py` (changed, 476), `README.md` | `--avatar-signers`, `--overwrite`, `--avatar-frame-ms`, `--seed-cache`; Hands pass in `hands_pass()` (output unchanged) |
+| `js/bulk-import-core.js` (changed, 439), `js/bulk-import-ui.js` (3,034), `css/bulk-import.css` (236), `bulk-import.html` | `buildMeta` / `slimRun` moved to Core, `candidateSource`; candidate `source`; Source column second line |
 
 Load order in `talk.html`: ... `js/talk-signing.js`, then `avatar-rig`, `avatar-clip`, `avatar-retarget`,
 `avatar-timeline`, `avatar-renderer`, `avatar-store`, `avatar-player`, then `js/sign-player.js`,

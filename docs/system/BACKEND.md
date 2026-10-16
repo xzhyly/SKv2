@@ -956,6 +956,25 @@ No schema change, no PHP change, no DB access. `bulk_import.php` is unchanged.
   pass, and kept when it re-splits an entry. A meta without it was made by the page.
 - **Videos are never uploaded or written.** The tool only opens them for reading; no request leaves the laptop.
 
+### Update 2026-10-17 (py-avatar, `docs/reports/2026-10-17-py-avatar.md`)
+
+No schema change, no PHP change, no DB access. `bulk_import.php` is unchanged.
+
+- **The tool also writes avatar candidates** (`tools/py_extract/extract.py --avatar-signers P03,...`,
+  `tools/py_extract/avatar_pass.py`), on disk, in `put_candidate`'s layout: `candidates/<key>/<SIGNER>.json`
+  (`{videoId, repIndex, savedAt, set, clip, source}`) then `<SIGNER>.info.json` (`{signer, set, frames, videoId,
+  repIndex, savedAt, source}`), each through a temp file and a rename; `savedAt` in `gmdate('c')` form. `source` is
+  the only added field; the `candidates` / `candidate` GETs read the files unchanged (`candidate` returns the whole
+  file, the listing its fixed fields: DEBT 156). The key is checked with `valid_key()`'s rule before a path is built.
+- **The video's meta** gets `candidate: {state: 'ok', signer, frames, repIndex, ms, source}` (or `state: 'none'` with
+  `reason`), as the page's meta-only `put_video` after its candidate step. A video the page had not split yet is
+  split first and its meta written as the page's Start writes it (`BulkImportCore.buildMeta()` through node).
+- **The page's own candidates** now also carry `meta.candidate.source` = `"browser mediapipe holistic
+  0.5.1675471629"` (`js/bulk-import-ui.js:42`); a candidate without the field was made by the page.
+- **Never replaced without `--overwrite`:** a sign and signer with a stored candidate (any source) is skipped. The
+  tool never writes `saved_gestures/` (only `avatar_clip.php`, through Step 5 Apply or "Use this", does).
+- No lock between the tool and the page (DEBT 154).
+
 ## Compact recognition model (2026-10-15/16)
 
 No schema change and no DB access in the new endpoints. Backup before the phase:

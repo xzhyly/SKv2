@@ -2014,3 +2014,29 @@ Report: `docs/reports/2026-10-16-py-extractor.md`.
   `drawImage`'s default) through `cv2.warpAffine`, not `cv2.resize`; the duration comes from the file header
   (MP4 `mvhd`, WebM Segment Info), as the browser reads it; a version-1 entry is extracted again (as the page
   would) with the page's carry-over rule; hand order in 2-hand frames is left as MediaPipe gives it (DEBT 149).
+
+## Decisions made during the py-avatar phase (2026-10-17)
+
+Report: `docs/reports/2026-10-17-py-avatar.md`.
+
+1. **Python makes the avatar candidates too**, in the page's own format and place (`candidates/<key>/<SIGNER>.json`
+   + `.info.json`, `meta.candidate`), so Step 5 Apply, the avatar-clips.html picker and "Use this" are unchanged.
+   Each candidate records its source (`python mediapipe 0.10.21 holistic`; the page now writes
+   `browser mediapipe holistic 0.5.1675471629`), shown in the Extract table's Source column.
+2. **No second copy of the page's logic.** The split, the meta and its best rep (`BulkImportCore.buildMeta()`, moved
+   out of `bulk-import-ui.js` unchanged), the frame packing, auto-trim and the clip run as the page's JavaScript
+   through node (`tools/py_extract/avatar_node.mjs`). Holistic runs only on the best rep's window.
+3. Same settings as `js/avatar-extract.js`: model complexity 1, smoothing on, no segmentation, no face refinement,
+   0.5 / 0.5, the 25 fps grid of the window, the canvas of at most 720 px, the 11-point pose subset and rounding
+   (`packFrame`), auto-trim. Frame times: the clip's own (DEBT 151).
+4. CLI `--avatar-signers` (default none: the Hands-only behaviour is unchanged), worker processes, resume, progress /
+   ETA; works on HEVC.
+5. A stored candidate (browser or Python) is never replaced without `--overwrite`; `saved_gestures/<key>/avatar.json`
+   is never written by the tool.
+6. `tools/py_extract/parity_avatar.py`: PASS when the mean shoulder/elbow/wrist distance is at most 0.10 shoulder
+   widths and no Python clip fails the transition continuity check (60 logical px per 40 ms) where the browser clip
+   of the same video passes; forearm jumps over 90 degrees shown for both.
+- **Choices made in the implementation (not asked):** the PASS limit of 0.10 shoulder widths; `--seed-cache` (the
+  parity run copies the page's split so only Holistic differs); the Python frame times (clip time, not the wall
+  clock); the page's `buildMeta()` moved into `BulkImportCore` (36 of 36 outputs identical to the old function).
+

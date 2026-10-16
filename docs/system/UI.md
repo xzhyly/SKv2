@@ -1046,6 +1046,20 @@ Built for a laptop screen (measured: no horizontal scroll at 1366 and at 1280 wi
   on the fake camera showed "Zz bulk one"; 207 requests, all localhost; 70 POSTs, all JSON, largest 112 KB
   against 5,391 KB of videos; no video file written under the repo or `C:\xampp`; 0 console errors.
   Kill mid-extraction, Pause / Resume and cache failures: `tests/bulk-import/extract-check.mjs` (85 PASS).
+- **Update 2026-10-17 (py-avatar, `docs/reports/2026-10-17-py-avatar.md`).** The avatar candidates can now also be
+  made by `tools/py_extract/extract.py --avatar-signers` (Holistic in Python, several videos at once, HEVC too); the
+  page then only does Step 5 for them.
+  - **Extract table, Source column:** a second line `avatar: <source>` when the video has a clip
+    (`python mediapipe 0.10.21 holistic`, `browser mediapipe holistic 0.5.1675471629`, or `browser` for a clip from
+    before the field; `BulkImportCore.candidateSource()`, `js/bulk-import-core.js:75`); blue for a Python clip. The
+    count line adds "· N avatar clips by python"; a python row reads "already extracted (python, avatar clip by
+    python)". `css/bulk-import.css` `?v=1.0.8`.
+  - **Start** skips a video whose Python clip is in the cache (its meta is split and has its candidate:
+    `planWork()` 'skip'). The page's own candidate step now records `source` in `meta.candidate`.
+  - `buildMeta()` is now `BulkImportCore.buildMeta()` (`js/bulk-import-core.js:318`), called by a 3-line wrapper
+    (`js/bulk-import-ui.js:884`); 36 of 36 outputs identical to the old function on synthetic and cached entries.
+  - Checked in headless Chromium (php -S, no DB): see the report. Step 5 Apply and avatar-clips.html were not run
+    (they need MySQL).
 - **Update 2026-10-16 (py-extractor, `docs/reports/2026-10-16-py-extractor.md`).** The Hands pass can now also be
   done by `tools/py_extract/extract.py` (Python, several videos at once); the page then only splits, reviews and
   imports. Run in headless Chromium (php -S, no DB) on a synthetic folder, Folder and Extract steps only.
