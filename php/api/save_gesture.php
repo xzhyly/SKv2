@@ -447,6 +447,44 @@ if (isset($body['action']) && $body['action'] === 'delete_gesture') {
     exit;
 }
 
+// Bulk import, "re-import replaces" (2026-10-16): removes named IMPORTED samples of one sign, the
+// same two steps as delete_gesture above (the sample file, then its gesture_recordings row) but only
+// for saved_gestures/<label>/sample_i<importId>.json -- a file only an import save writes (see the
+// importId branch below). The sign, its sign.json, its other samples and the gestures row stay.
+// {action, label, importIds: [32 lower-case hex, 1..20]} -> {success, label, deleted, missing, files}
+// (a file already gone counts as missing, not as an error: a retried request is harmless).
+if (isset($body['action']) && $body['action'] === 'delete_import_samples') {
+    $label = $body['label'] ?? null;
+    if (!is_string($label) || $label === '' || clean_label($label) !== $label) fail('Invalid label');
+    $ids = $body['importIds'] ?? null;
+    if (!is_array($ids) || count($ids) < 1 || count($ids) > 20) fail('importIds must be a list of 1 to 20 ids');
+    foreach ($ids as $id) {
+        if (!is_string($id) || !preg_match('/^[0-9a-f]{32}$/D', $id)) fail('importIds must be 32 lower-case hex characters');
+    }
+    $labelDir = $datasetRoot . DIRECTORY_SEPARATOR . $label;
+    $deleted = [];
+    $missing = 0;
+    foreach (array_values(array_unique($ids)) as $id) {
+        $filename = 'sample_i' . $id . '.json';
+        $path = $labelDir . DIRECTORY_SEPARATOR . $filename;
+        if (is_file($path)) {
+            if (!@unlink($path)) fail('Unable to delete ' . $filename, 500);
+            $deleted[] = $filename;
+        } else {
+            $missing++;
+        }
+        $relativePath = 'saved_gestures/' . $label . '/' . $filename;
+        $delRec = mysqli_prepare($conn, 'DELETE FROM gesture_recordings WHERE sample_path = ?');
+        if (!$delRec) fail('DB delete prepare failed: ' . mysqli_error($conn), 500);
+        mysqli_stmt_bind_param($delRec, 's', $relativePath);
+        if (!mysqli_stmt_execute($delRec)) fail('DB delete failed: ' . mysqli_stmt_error($delRec), 500);
+        mysqli_stmt_close($delRec);
+    }
+    mysqli_close($conn);
+    echo json_encode(['success' => true, 'label' => $label, 'deleted' => count($deleted), 'missing' => $missing, 'files' => $deleted]);
+    exit;
+}
+
 $set          = valid_sign_set($body['sign_language'] ?? $body['dataset'] ?? null) ?? 'ESL';
 $frames       = $body['frames']      ?? null;
 $videoBase64  = $body['video_base64'] ?? null;   // optional recorded video

@@ -34,6 +34,7 @@
   var DETECTOR_TIMEOUT_RE = /timed out waiting for MediaPipe results|createVideoDetector\(\): timed out/;
   var NO_SIMD = 'This page must be run on the laptop\'s Chrome: this browser has no WebAssembly SIMD, which the extractor needs. Extraction is disabled.';
   var Core = window.BulkImportCore;
+  var Split = window.BulkRepSplit;
   var POSE = window.AvatarClip ? window.AvatarClip.P : null;   // pose point indices
 
   function $(id) { return document.getElementById(id); }
@@ -47,7 +48,7 @@
   //               turn did), timing:{...}|null, ownsCandidate (false: an earlier file of the
   //               same sign and signer makes the avatar candidate), dupOf (that file's name),
   //               before (the earlier files of the same sign and signer, in file-name order),
-  //               importIds ({repIndex: importId} once the Review step has hashed them) }
+  //               idOf ({id source string: importId} once the Review step has hashed them) }
   //   status: pending | cached | hands | holistic | saving | done | skipped | failed
   var state = {
     step: 'folder',
@@ -75,44 +76,57 @@
       status: 'idle',           // idle | running | paused | resuming | done
       index: -1, total: 0, current: null, runs: 0,
       elapsedMs: 0, etaMs: null, rate: null,
-      counts: { hands: 0, holistic: 0, skipped: 0, failed: 0, done: 0 },   // of the last Start
+      counts: { hands: 0, holistic: 0, skipped: 0, failed: 0, done: 0, resplit: 0 },   // of the last Start
       work: { ms: 0, videoMs: 0, videos: 0 }                              // measured, for the ETA
     },
     // Summed over this page load: ms spent inside each extractor and the frames it returned.
     timings: { hands: { ms: 0, frames: 0, videos: 0 }, holistic: { ms: 0, frames: 0, videos: 0 } },
     // Step 3. rows[]: one per video and per file-name problem, in file-name order:
     //   { id (null for a file-name problem), name, relPath, video (the videos[] entry), label, key,
-    //     set, signer, reps, kind, text (the status shown), group (the reason a summary counts it
-    //     under), enabled, checked, isNew (its key is no sign yet), newSign (isNew and importable),
-    //     problem, addReps:[{index, rows}] (repetitions not saved yet), doneReps (already saved) }
+    //     set, signer, reps (found by the split), sure (the split is confident), kind, text (the
+    //     status shown), group (the reason a summary counts it under), enabled, checked, isNew (its
+    //     key is no sign yet), newSign (isNew and importable), problem, splitProblem (the split is
+    //     not sure: the row offers "reps found" / "3 equal parts" / "skip"), mode ('found' |
+    //     'equal'), modes ({found, equal}: reps each would give), importReps (the reps of the mode,
+    //     with importId), addReps:[{index, rows}] (repetitions not saved yet), doneReps (already
+    //     saved), replace (ids of old samples of the same file an import removes), tooLong }
     //   kind: ok | problem (importable, not ticked by default) | imported | collision |
-    //         set-differs | not-extracted | failed | not-used | no-reps | bad-name
+    //         set-differs | not-extracted | failed | stale (cached by the old importer or split with
+    //         older settings: Extract again) | not-used | no-reps | bad-name
     review: {
       status: 'idle',           // idle | loading | ready | failed
       error: null,
       signs: {},                // key -> {set, textEn, textFil, samples, avatar}: the signs that exist
       files: {},                // key -> {sample file name: true}: what saved_gestures holds
-      current: { ESL: 0, FSL: 0 },   // training rows per model now, as the kiosk loads them
-      labels: { ESL: {}, FSL: {} },  // per model: the sign keys that have at least one row
       rows: [],
       newSigns: [],             // [{key, set, file, textEn, textFil, draftEn, draftFil, active}]
       checks: {},               // videoId -> the tick the user chose (absent: the default)
+      modes: {},                // videoId -> 'found' | 'equal': what a problem row imports (absent: 'found')
+      samples: {},              // key -> [{file, name, signLanguage}]: the saved samples (summary listing)
+      rowCache: {},             // sample file -> its rows (recordingToFeatureRows), read once per page load
+      rowsStatus: 'idle',       // idle | loading | ready | failed: the rows per sample for the estimate
+      rowsError: null, rowsDone: 0, rowsTotal: 0,   // signs read so far / to read
       texts: {},                // key -> {textEn, textFil} as typed
       filter: 'all',            // all | problems | new | import
-      // {current, added, projected: {ESL, FSL} rows; knn: {status: 'measuring'|'ready', capped,
-      //  current, projected: {ESL, FSL} ms (null until measured), labels: {current, projected}}}
+      // {current, added, projected: {ESL, FSL} rows of the COMPILED model (compile rule: at most
+      //  90 rows per sign); knn: {status: 'measuring'|'ready', capped, current, projected: {ESL,
+      //  FSL} ms (null until measured), labels: {current, projected}}}; null until the rows per
+      //  saved sample are read (rowsStatus)
       projection: null,
-      toImport: { videos: 0, samples: 0 },
+      toImport: { videos: 0, samples: 0, replaces: 0 },
       blocked: null             // why Import cannot be pressed (a message), or null
     },
-    // Step 4. queue[]: { id, name, video, key, set, isNew, rep (next repetition to send), reps,
-    //                    added, duplicates, skip (why the video was left, or null), hands }
+    // Step 4. queue[]: { id, name, video, key, set, isNew, mode ('found' | 'equal'), list (the reps
+    //                    to send: {index, startFrame, endFrame, importId}), replace (ids of the old
+    //                    samples of the same file to remove), stage (record | samples | replace |
+    //                    final | done), rep (next repetition to send), reps, added, duplicates,
+    //                    replaced, skip (why the video was left, or null), note, hands }
     imp: {
       status: 'idle',           // idle | running | paused | done
       phase: 'samples',         // samples | texts | finish | done
       queue: [], index: 0, textAt: 0, current: null,
-      added: 0, duplicates: 0, skipped: 0,
-      signs: {},                // key -> {key, set, isNew, created, added, duplicates, texts, textUpdated, textError}
+      added: 0, duplicates: 0, skipped: 0, replaced: 0,
+      signs: {},                // key -> {key, set, isNew, created, added, duplicates, replaced, texts, textUpdated, textError}
                                 //   (created: new at Review time and at least one repetition accepted)
       notPicked: [],            // [{name, reason}]: the folder's videos this import leaves out
       langs: {},                // model language -> true once a sample was added to it
@@ -308,7 +322,7 @@
       rows.push({
         file: f, name: f.name, relPath: relPath, size: f.size, lastModified: f.lastModified, parsed: parsed,
         id: null, cached: false, meta: null, status: 'pending', progress: 0, error: null, failedStep: null, did: null, timing: null,
-        ownsCandidate: true, dupOf: null, before: [], importIds: null
+        ownsCandidate: true, dupOf: null, before: [], idOf: null
       });
     });
     var first = list.length ? (list[0].webkitRelativePath || '') : '';
@@ -562,10 +576,14 @@
     pending: 'waiting', cached: 'already extracted', saving: 'saving…', done: 'done', skipped: 'skipped (already extracted)'
   };
   function statusText(row) {
+    var cs = row.meta && (row.status === 'cached' || row.status === 'skipped') ? Core.cacheState(row.meta, Split.SPLIT.VERSION) : null;
+    if (cs === 'old') return 'extracted by the old importer: Start reads it again';
+    if (cs === 'resplit') return 'split with older settings: Start splits it again from the cache';
     if (row.status === 'hands') return 'reading hands ' + Math.round(row.progress * 100) + '%';
     if (row.status === 'holistic') return 'avatar clip ' + Math.round(row.progress * 100) + '%';
     if (row.status === 'failed' && row.failedStep === 'holistic') return 'avatar clip failed: ' + row.error + ' (recognition data kept)';
     if (row.status === 'failed') return 'failed: ' + row.error;
+    if (row.status === 'done' && row.did && row.did.resplit && !row.did.hands && !row.did.holistic) return 'done (split again from the cache)';
     if (row.status === 'done' && row.did && !row.did.hands) return 'done (avatar clip only)';
     return STATUS_TEXT[row.status] || row.status;
   }
@@ -626,10 +644,12 @@
   function updateRow(row) {
     var tr = rowEls[row.id];
     if (!tr) return;
-    var found = row.meta && row.meta.seg ? row.meta.seg.repsFound : null;
+    var cs = row.meta ? Core.cacheState(row.meta, Split.SPLIT.VERSION) : 'none';
+    var found = cs === 'current' ? row.meta.reps.length : null;
     var reps = tr.querySelector('.bi-reps');
-    reps.textContent = found === null ? '—' : String(found);
-    reps.classList.toggle('bi-warn', found !== null && found !== Core.REQUIRED_REPS);
+    reps.textContent = found === null ? '—' : String(found) + (row.meta.split.ok ? '' : ' ?');
+    reps.title = found !== null && !row.meta.split.ok ? row.meta.split.reasons.join('; ') : '';
+    reps.classList.toggle('bi-warn', found !== null && !(found === Core.REQUIRED_REPS && row.meta.split.ok));
     tr.querySelector('.bi-st').textContent = statusText(row);
     var cand = tr.querySelector('.bi-cand');
     cand.textContent = candidateText(row);
@@ -694,14 +714,19 @@
 
   // ── Extraction of one video ──
   // Which work a video still needs: 'full' (Hands pass, then the candidate when its signer is an
-  // avatar signer), 'candidate' (cached, but its signer was added to the avatar list later: only
-  // the Holistic step, from the cached best repetition) or 'skip'. A later file of a sign and
-  // signer whose first file makes the clip has no candidate work (nothing is stored for it).
+  // avatar signer; also for a video cached by the first importer version, whose cache holds only
+  // the reps' frames: it is read again), 'resplit' (cached with every frame, but split with other
+  // thresholds: the split is redone from the cached frames, the video is not read), 'candidate'
+  // (cached, but its signer was added to the avatar list later: only the Holistic step, from the
+  // cached best repetition) or 'skip'. A later file of a sign and signer whose first file makes the
+  // clip has no candidate work (nothing is stored for it).
   function needsCandidate(row, meta) {
     return state.avatarSigners.indexOf(row.parsed.signer) >= 0 && !candidateOf(meta) && mayMakeCandidate(row);
   }
   function planWork(row) {
-    if (!row.cached || !row.meta) return 'full';
+    var st = row.cached && row.meta ? Core.cacheState(row.meta, Split.SPLIT.VERSION) : 'none';
+    if (st === 'none' || st === 'old') return 'full';
+    if (st === 'resplit') return 'resplit';
     return needsCandidate(row, row.meta) ? 'candidate' : 'skip';
   }
 
@@ -712,9 +737,11 @@
     renderProgress();
   }
 
-  // The Hands pass and the segmentation: the same calls, with the same arguments, as the live
-  // capture's saveRecording() (js/gesture-capture-ui.js:557-592). The only addition is that the
-  // detector is watched, so the picture it was sent can be shown.
+  // The Hands pass: the same extractor call, with the same arguments, as the live capture's
+  // saveRecording() (js/gesture-capture-ui.js:557-592); the only addition is that the detector is
+  // watched, so the picture it was sent can be shown. The reps are then found by the dynamic split
+  // (js/bulk-rep-split.js), not by the live capture's segmenter (REST_MS 1000), which the live
+  // capture keeps.
   async function handsPass(row, signal) {
     var det = null;
     var result;
@@ -745,11 +772,14 @@
       }
     }
     var ms = now() - t0;
-    var seg = window.GestureCaptureCore.segmentFrames(
-      result.frames.map(function (f) { return { t: f.t, handPresent: f.hands.length > 0 }; }),
-      { endMs: result.durationMs }
-    );
-    return { result: result, seg: seg, ms: ms };
+    return { result: result, split: splitOf(result.frames, result), ms: ms };
+  }
+
+  // The dynamic split (js/bulk-rep-split.js) of a video's frames. hm: {fps, input} of the Hands
+  // pass (the landmarks are fractions of the input canvas, so its aspect turns x into heights).
+  function splitOf(frames, hm) {
+    var input = (hm && hm.input) || {};
+    return Split.splitReps(frames, { fps: hm && hm.fps, aspect: input.width && input.height ? input.width / input.height : 4 / 3 });
   }
 
   function releaseVideo() {
@@ -815,47 +845,110 @@
     state.cache[row.id] = meta;
   }
 
-  // plan: 'full' or 'candidate'. The Hands result is cached as soon as it exists (put_video with
-  // candidate: null); the candidate step follows and ends with a meta-only put_video. So an abort
-  // or a failure during the Holistic step keeps the cached Hands result: the video then only needs
-  // 'candidate' work. Throws on an abort or a failure; an error of the candidate step has
-  // step === 'holistic'.
+  // A rest run as kept in meta.split (the Review timeline and the tuning notes read these).
+  function slimRun(r) {
+    return { startFrame: r.startFrame, endFrame: r.endFrame, startMs: r.startMs, endMs: r.endMs, ms: r.ms, depth: r.depth, strength: r.strength, kind: r.kind };
+  }
+  // The cache meta (version 2) of a video. r: the Hands result ({videoWidth, videoHeight, fps,
+  // durationMs, input, frames}); split: splitOf(r.frames, r); old: the meta it had before (a
+  // first-version meta, or a version 2 one split with other thresholds), or null. Carried over
+  // from it: the record of the samples Import saved for this video (imported: their importIds),
+  // the reps the first importer version saved (legacyReps), and the avatar candidate when the old
+  // split was the 3 clear reps (otherwise its clip may hold two reps: the avatar step makes it again).
+  function buildMeta(row, r, split, handsMs, old) {
+    var reps = Core.summarizeReps(r, split).map(function (rep, i) {
+      rep.startFrame = split.reps[i].startFrame;
+      rep.endFrame = split.reps[i].endFrame;
+      return rep;
+    });
+    var legacy = null;
+    if (old && old.v !== Core.META_VERSION && Array.isArray(old.reps)) {
+      legacy = old.reps.map(function (rep) { return { index: rep.index, startMs: rep.startMs, endMs: rep.endMs }; });
+    } else if (old && Array.isArray(old.legacyReps)) legacy = old.legacyReps;
+    var keepClip = old && old.seg && old.seg.ok && old.candidate && old.candidate.state === 'ok';
+    return {
+      v: Core.META_VERSION, id: row.id,
+      file: { name: row.name, size: row.size, lastModified: row.lastModified, relPath: row.relPath },
+      parsed: { set: row.parsed.set, label: row.parsed.label, key: row.parsed.key, signer: row.parsed.signer },
+      hands: {
+        videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, durationMs: r.durationMs, input: r.input,
+        frameCount: r.frames.length,
+        handFrames: r.frames.filter(function (f) { return f.hands.length > 0; }).length,
+        ms: Math.round(handsMs)
+      },
+      seg: { ok: !!split.ok, reason: split.ok ? null : 'split', repsFound: split.reps.length },
+      split: {
+        version: split.version, method: split.method, ok: !!split.ok, reasons: split.reasons,
+        cuts: split.cuts.map(slimRun), rests: split.rests.map(slimRun), balance: split.balance,
+        profile: split.profile, zone: split.zone
+      },
+      reps: reps,
+      bestRep: Core.pickBestRep(reps, r.durationMs, { ok: true }),
+      candidate: keepClip ? old.candidate : null,
+      imported: old && Array.isArray(old.imported) ? old.imported.slice() : [],
+      legacyReps: legacy,
+      // when the Hands result was first cached; later updates keep it
+      savedAt: old && old.v === Core.META_VERSION && old.savedAt ? old.savedAt : new Date().toISOString()
+    };
+  }
+
+  // The cached frames of a version 2 video (GET ?action=hands), as a Hands result, or null when
+  // the cache has no frames for it (404, or a first-version hands file): it is then read again.
+  async function cachedHands(row) {
+    var h;
+    try {
+      h = await apiGet('action=hands&id=' + row.id);
+    } catch (e) {
+      if (e && e.http && e.http < 500) return null;
+      if (e) e.cacheWrite = true;          // the cache is not answering: the queue pauses
+      throw e;
+    }
+    if (!Array.isArray(h.frames) || !h.meta) return null;
+    var hm = h.meta;
+    return { videoWidth: hm.videoWidth, videoHeight: hm.videoHeight, fps: hm.fps, durationMs: hm.durationMs, input: hm.input, frames: h.frames };
+  }
+
+  // plan: 'full', 'resplit' or 'candidate'. The Hands result is cached as soon as it exists
+  // (put_video with candidate: null, and every frame in hands.json); the candidate step follows and
+  // ends with a meta-only put_video. So an abort or a failure during the Holistic step keeps the
+  // cached Hands result: the video then only needs 'candidate' work. 'resplit' redoes the split
+  // from the cached frames and writes the meta only (no video is read). Throws on an abort or a
+  // failure; an error of the candidate step has step === 'holistic'.
   async function processVideo(row, plan, signal) {
     var timing = row.timing = { handsMs: 0, handsFrames: 0, holisticMs: 0, holisticFrames: 0, totalMs: 0 };
-    var did = row.did = { hands: false, holistic: false };
+    var did = row.did = { hands: false, holistic: false, resplit: false };
     var t0 = now();
     var t = state.timings;
     var meta = row.meta;
+    if (plan === 'resplit') {
+      row.status = 'saving';
+      setProgress(row, 0);
+      var cached = await cachedHands(row);
+      if (signal.aborted) throw abortError();
+      if (!cached) plan = 'full';          // no frames in the cache: read the video again
+      else {
+        if (!cached.durationMs) cached.durationMs = meta.hands.durationMs;
+        var resplit = buildMeta(row, cached, splitOf(cached.frames, cached), meta.hands.ms || 0, meta);
+        await cachePost({ action: 'put_video', id: row.id, meta: resplit });
+        adoptMeta(row, resplit);
+        meta = resplit;
+        did.resplit = true;
+        updateRow(row);
+      }
+    }
     if (plan === 'full') {
       row.status = 'hands';
       setProgress(row, 0);
       var h = await handsPass(row, signal);
       var r = h.result;
-      var reps = Core.summarizeReps(r, h.seg);
       timing.handsMs = h.ms;
       timing.handsFrames = r.frames.length;
-      meta = {
-        v: 1, id: row.id,
-        file: { name: row.name, size: row.size, lastModified: row.lastModified, relPath: row.relPath },
-        parsed: { set: row.parsed.set, label: row.parsed.label, key: row.parsed.key, signer: row.parsed.signer },
-        hands: {
-          videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, durationMs: r.durationMs, input: r.input,
-          frameCount: r.frames.length,
-          handFrames: r.frames.filter(function (f) { return f.hands.length > 0; }).length,
-          ms: Math.round(h.ms)
-        },
-        seg: { ok: !!h.seg.ok, reason: h.seg.ok ? null : h.seg.reason, repsFound: h.seg.reps.length },
-        reps: reps,
-        bestRep: Core.pickBestRep(reps, r.durationMs, h.seg),
-        candidate: null,
-        savedAt: new Date().toISOString()      // when the Hands result was cached; later updates keep it
-      };
+      meta = buildMeta(row, r, h.split, h.ms, row.meta);
+      // every frame (not only the reps'): the split can be redone from the cache
       var hands = {
-        id: row.id,
-        meta: { videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, input: r.input },
-        reps: h.seg.reps.map(function (rep) {
-          return { index: rep.index, frames: r.frames.slice(rep.startFrame, rep.endFrame + 1) };
-        })
+        id: row.id, v: Core.META_VERSION,
+        meta: { videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, durationMs: r.durationMs, input: r.input },
+        frames: r.frames
       };
       if (signal.aborted) throw abortError();
       row.status = 'saving';
@@ -916,7 +1009,10 @@
     run.rate = w.ms / w.videoMs;
     if (run.status === 'done') { run.etaMs = 0; return; }
     var left = 0;
-    for (var i = Math.max(0, run.index); i < state.videos.length; i++) if (planWork(state.videos[i]) !== 'skip') left++;
+    for (var i = Math.max(0, run.index); i < state.videos.length; i++) {
+      var p = planWork(state.videos[i]);
+      if (p === 'full' || p === 'candidate') left++;   // a re-split from the cache takes no time
+    }
     var mean = w.ms / w.videos;
     var spent = run.status === 'running' && run.current ? Math.min(mean, now() - videoSince) : 0;
     run.etaMs = Math.max(0, left * mean - spent);
@@ -945,6 +1041,7 @@
     var s = state.run.status;
     $('bi-start').disabled = !(canStart() && (s === 'idle' || s === 'done'));
     $('bi-pause').disabled = s !== 'running';
+    $('bi-stop').disabled = !(s === 'running' || s === 'paused');
     $('bi-resume').disabled = !(canStart() && s === 'paused');
     var busy = s === 'running' || state.imp.status === 'running';
     $('bi-folder').disabled = busy;
@@ -965,7 +1062,7 @@
       run.runs++;
       run.elapsedMs = 0;
       run.index = -1;
-      run.counts = { hands: 0, holistic: 0, skipped: 0, failed: 0, done: 0 };
+      run.counts = { hands: 0, holistic: 0, skipped: 0, failed: 0, done: 0, resplit: 0 };
       // Never extract against a cache that cannot be read: every video would be redone, or lost.
       status('Reading the cache…');
       try {
@@ -1010,10 +1107,14 @@
         var timing = await processVideo(row, plan, ctrl.signal);
         row.status = 'done';
         run.counts.done++;
-        // the rate: a candidate-only video counts with the length of the window that was read
-        run.work.ms += timing.totalMs;
-        run.work.videoMs += plan === 'full' ? row.meta.hands.durationMs : row.meta.bestRep ? row.meta.bestRep.windowEndMs - row.meta.bestRep.windowStartMs : 0;
-        run.work.videos++;
+        if (row.did.resplit && !row.did.hands) run.counts.resplit++;
+        // the rate: a candidate-only video counts with the length of the window that was read; a
+        // split redone from the cache (no video read) does not count
+        if (row.did.hands || row.did.holistic) {
+          run.work.ms += timing.totalMs;
+          run.work.videoMs += row.did.hands ? row.meta.hands.durationMs : row.meta.bestRep ? row.meta.bestRep.windowEndMs - row.meta.bestRep.windowStartMs : 0;
+          run.work.videos++;
+        }
       } catch (e) {
         var why = e && e.message ? e.message : String(e);
         if (ctrl.signal.aborted || (e && e.name === 'AbortError')) {
@@ -1055,7 +1156,7 @@
       // A Resume carries on at the video that was stopped. A signer ticked in the avatar list
       // during the pause leaves EARLIER videos without their avatar step: Start looks at them.
       var earlier = !fresh && state.videos.slice(0, from).some(function (v) { return v.status !== 'failed' && planWork(v) !== 'skip'; });
-      status('Finished: ' + c.done + ' extracted, ' + c.skipped + ' skipped (already extracted)' +
+      status('Finished: ' + (c.done - c.resplit) + ' extracted, ' + (c.resplit ? c.resplit + ' split again from the cache, ' : '') + c.skipped + ' skipped (already extracted)' +
         (c.failed ? ', ' + c.failed + ' failed — press Start to try those again' : '') + '.' +
         (earlier ? ' Avatar signers changed: press Start to run the avatar step for the earlier videos.' : ''), c.failed > 0 || earlier);
     } else {
@@ -1094,6 +1195,12 @@
     if (runAbort) runAbort.abort();
     updateRunButtons();
   }
+  // Stop (owner decision 6) = Pause, then the Review step with the videos done so far. The
+  // extraction stays paused: Resume on the Extract step carries on with the video that was stopped.
+  function stopRun() {
+    if (state.run.status === 'running') pauseRun();
+    showStep('review');
+  }
   function resumeRun() {
     if (!canStart() || state.run.status !== 'paused') return runPromise;
     state.run.status = 'resuming';       // until the paused pass has let go of its video
@@ -1110,7 +1217,8 @@
   var TEXT_MAX = 255;                       // SIGN_TEXT_MAX (php/api/sign_meta.php:7)
   var NOT_USED = 'not used for recognition (result kept in the cache)';
   var MODELS = ['ESL', 'FSL'];
-  var PROBLEM_KINDS = ['collision', 'set-differs', 'not-extracted', 'failed', 'no-reps', 'problem', 'bad-name'];
+  var PROBLEM_KINDS = ['collision', 'set-differs', 'not-extracted', 'failed', 'stale', 'no-reps', 'problem', 'bad-name'];
+  var MAX_SAMPLE_FRAMES = 301;              // MAX_FRAMES_PER_SAMPLE (php/api/save_gesture.php): a rep of 20 s at 15 fps
   var reviewToken = 0;
   var importPromise = null;
 
@@ -1125,7 +1233,7 @@
 
   function extracting() { return state.run.status === 'running' || state.run.status === 'resuming'; }
   // The models a sign's rows are loaded into on the kiosk: by its set, except that the control
-  // signs "start" and "stop" go into both whatever their set (js/sign-to-text-ui.js:118).
+  // signs "start" and "stop" go into both whatever their set (KnnCompile.inModel, js/knn-compile.js:43-45).
   function modelsOf(key, set) {
     return key === 'start' || key === 'stop' || set === 'BOTH' ? MODELS : set === 'FSL' ? ['FSL'] : ['ESL'];
   }
@@ -1133,7 +1241,7 @@
   // ── The knnPredict estimate ──
   // How long one camera frame takes to classify against a model of a given size, in this
   // browser. knnShape() is this page's OWN function with the whole shape of the kiosk's
-  // knnPredict() (js/sign-to-text-ui.js:204-243): the mirrored copy of the features (with the
+  // knnPredict() (js/sign-to-text-ui.js:109-148): the mirrored copy of the features (with the
   // two-hand swap), per label a map over its rows with the larger of two cosine similarities, a
   // descending sort and the mean of the top 5, then the final sort and normalisation. The kiosk's
   // function and model are never loaded here. It runs on a made-up model of the same shape as the
@@ -1285,33 +1393,76 @@
     }, KNN_DEBOUNCE_MS);
   }
 
-  // The importId of every cached repetition (SHA-256, so asynchronous): hashed once per video.
+  // ── Sample identity (re-import replaces, owner decision 7) ──
+  // A repetition's sample id is SHA-256 of Core.importIdSourceV2 (file name, size, rep index and
+  // the rep's place in the video), so the same split gives the same ids again (a re-import adds
+  // nothing) and another split gives new ids. The samples saved before for the same file are found
+  // by the ids the first importer version used (name|size|index, index 1..LEGACY_REPS_MAX) and by the
+  // video's cache record (meta.imported, written by Import); those on disk that the chosen split
+  // does not produce again are the "old samples" an import of the video replaces.
+  function isCurrent(v) { return !!(v.meta && Core.cacheState(v.meta, Split.SPLIT.VERSION) === 'current'); }
+  function timeOf(meta) {
+    var fps = meta.hands && meta.hands.fps > 0 ? meta.hands.fps : 15;
+    return function (k) { return Math.round(k * 1000 / fps); };
+  }
+  // The reps of a mode: 'found' = the dynamic split's reps (meta.reps); 'equal' = 3 equal parts
+  // (BulkRepSplit.equalSplit on the profile, the same reps the Import cuts). Each with its rows.
+  function repsOf(v, mode) {
+    var meta = v.meta;
+    if (mode === 'equal') {
+      return Split.equalSplit(meta.split.profile, timeOf(meta), Core.REQUIRED_REPS).map(function (rep) {
+        rep.rows = Math.min(Core.MAX_ROWS_PER_REP, Split.handFrames(meta.split.profile, rep));
+        return rep;
+      });
+    }
+    return (meta.reps || []).map(function (rep) {
+      return { index: rep.index, startFrame: rep.startFrame, endFrame: rep.endFrame, startMs: rep.startMs, endMs: rep.endMs, rows: rep.rows };
+    });
+  }
+  function idSource(v, rep) { return Core.importIdSourceV2(v, rep, v.meta.legacyReps); }
+  // Hashes (once per page load and source string) every id the Review may need: both modes' reps
+  // and the first version's ids. -> Promise.
   function ensureImportIds() {
     var jobs = [];
     state.videos.forEach(function (v) {
-      if (!v.meta || !Array.isArray(v.meta.reps)) return;
-      if (!v.importIds) v.importIds = {};
-      v.meta.reps.forEach(function (rep) {
-        if (v.importIds[rep.index]) return;
-        jobs.push(sha32(Core.importIdSource(v, rep.index)).then(function (id) { v.importIds[rep.index] = id; }));
+      if (!isCurrent(v)) return;
+      if (!v.idOf) v.idOf = {};
+      var sources = [];
+      ['found', 'equal'].forEach(function (mode) { repsOf(v, mode).forEach(function (rep) { sources.push(idSource(v, rep)); }); });
+      for (var i = 1; i <= Core.LEGACY_REPS_MAX; i++) sources.push(Core.importIdSource(v, i));
+      if (!v.idJobs) v.idJobs = {};
+      sources.forEach(function (src) {
+        if (typeof own(v.idOf, src) === 'string') return;
+        // one hash per source string; a second Review while it runs waits for the same one
+        if (!own(v.idJobs, src)) v.idJobs[src] = sha32(src).then(function (id) { v.idOf[src] = id; });
+        jobs.push(v.idJobs[src]);
       });
     });
     return Promise.all(jobs);
   }
+  // The ids of the samples saved before for this video file (whatever split they came from).
+  function previousIds(v) {
+    var ids = [];
+    for (var i = 1; i <= Core.LEGACY_REPS_MAX; i++) ids.push(own(v.idOf, Core.importIdSource(v, i)));
+    return ids.concat(Array.isArray(v.meta.imported) ? v.meta.imported : []).filter(function (id, k, all) {
+      return typeof id === 'string' && all.indexOf(id) === k;
+    });
+  }
 
-  // GET php/api/signs.php (the signs) and the dataset listing (GET save_gesture.php?no_sync=1,
-  // through GestureDataRecorder: the samples with their file names, turned into training rows by
-  // the same recordingsToTrainingRows() the trainer uses, which is what
-  // loadGestureDatasetForTraining(true) does with it). Two GETs; nothing is written.
+  // GET php/api/signs.php and the SUMMARY listing (GET save_gesture.php?no_sync=1&summary=1: every
+  // sample's file name, no frames), which is all the video statuses need. The rows per sample for
+  // the estimate are read afterwards, a batch of signs at a time (loadRowCounts), exactly as
+  // Compile reads them: the full listing with frames runs PHP out of memory at about 732 v3
+  // samples (DEBT 117). Nothing is written.
   function loadReviewData() {
     var R = state.review, token = ++reviewToken, rec = window.GestureDataRecorder;
     R.status = 'loading';
     R.error = null;
     updateImportControls();
-    return Promise.all([request(SIGNS_API, { cache: 'no-cache' }), rec.loadSavedGestureDataset(true)]).then(function (res) {
+    return Promise.all([request(SIGNS_API, { cache: 'no-cache' }), rec.loadSavedGestureDataset(true, { summary: true })]).then(function (res) {
       if (token !== reviewToken) return false;
       var listed = res[0].signs || {}, gestures = res[1] || {}, disk = rec.getSigns() || {};
-      var signs = {}, files = {}, current = { ESL: 0, FSL: 0 }, labels = { ESL: {}, FSL: {} };
+      var signs = {}, files = {}, samples = {};
       Object.keys(listed).forEach(function (k) {
         var s = listed[k];
         signs[k] = { set: s.set, textEn: s.textEn, textFil: s.textFil, samples: s.samples, avatar: !!s.avatar };
@@ -1320,21 +1471,20 @@
         var list = gestures[k] || [], d = own(disk, k), names = {};
         list.forEach(function (sample) { names[baseName(sample.file)] = true; });
         files[k] = names;
+        samples[k] = list.map(function (sample) { return { file: sample.file, name: baseName(sample.file), signLanguage: sample.signLanguage }; });
         if (!list.length || !d) return;
         // Disk is the source of truth (save_gesture.php checks it first): its set wins, and a
         // sign the database does not list yet still exists.
         if (own(signs, k)) signs[k].set = d.set;
         else signs[k] = { set: d.set, textEn: d.textEn, textFil: d.textFil, samples: list.length, avatar: false };
       });
-      // the rows each model holds, as the kiosk's mergeSavedGestureSamples() loads them
-      rec.recordingsToTrainingRows(gestures).forEach(function (row) {
-        modelsOf(row.label, row.signLanguage).forEach(function (m) { current[m]++; labels[m][row.label] = true; });
-      });
       R.signs = signs;
       R.files = files;
-      R.current = current;
-      R.labels = labels;
+      R.samples = samples;
       R.status = 'ready';
+      R.rowsStatus = 'loading';
+      R.rowsError = null;
+      loadRowCounts(token);                // the estimate fills in when its rows are read
       return true;
     }, function (e) {
       if (token !== reviewToken) return false;
@@ -1343,6 +1493,62 @@
       R.error = why(e);
       return false;
     });
+  }
+
+  // Rows per saved sample (GestureDataRecorder.recordingToFeatureRows on its frames, what Compile
+  // feeds the budget rule), for the estimate: read like Compile reads them
+  // (save_gesture.php?no_sync=1&labels=..., at most REVIEW_BATCH_SAMPLES samples or 200 signs a
+  // request, each batch's frames dropped before the next) and remembered per sample file for this
+  // page load, so a later Review (after an import) only reads the signs with new files.
+  var REVIEW_BATCH_SAMPLES = 60;   // COMPILE_BATCH_SAMPLES (js/gesture-training-ui.js)
+  var REVIEW_BATCH_SIGNS = 200;    // save_gesture.php's labels= limit (LIST_LABELS_MAX)
+  async function loadRowCounts(token) {
+    var R = state.review, cache = R.rowCache, rec = window.GestureDataRecorder;
+    var todo = Object.keys(R.samples).sort().filter(function (k) {
+      return R.samples[k].some(function (s) { return own(cache, s.file) === undefined; });
+    });
+    var batches = [], cur = [], curN = 0;
+    todo.forEach(function (k) {
+      var n = R.samples[k].length;
+      if (cur.length && (curN + n > REVIEW_BATCH_SAMPLES || cur.length >= REVIEW_BATCH_SIGNS)) { batches.push(cur); cur = []; curN = 0; }
+      cur.push(k); curN += n;
+    });
+    if (cur.length) batches.push(cur);
+    R.rowsDone = 0;
+    R.rowsTotal = todo.length;
+    for (var b = 0; b < batches.length; b++) {
+      if (token !== reviewToken) return;
+      if (b === 0 || b % 5 === 0) { computeTotals(); renderDerived(); }
+      var keys = batches[b], json = null, text = '', res;
+      try {
+        res = await fetch(SAVE_API + '?no_sync=1&labels=' + keys.map(encodeURIComponent).join(','), { cache: 'no-cache' });
+        text = await res.text();
+        try { json = JSON.parse(text); } catch (e) { /* not JSON: a PHP error page */ }
+        if (!json || json.success !== true || !json.gestures) throw new Error((json && json.error) || 'HTTP ' + res.status + ': ' + text.slice(0, 120));
+      } catch (e) {
+        if (token !== reviewToken) return;
+        console.warn('[bulk-import] reading the saved samples failed:', e);
+        R.rowsStatus = 'failed';
+        R.rowsError = why(e);
+        computeTotals();
+        renderDerived();
+        emit('review');
+        return;
+      }
+      keys.forEach(function (k) {
+        (json.gestures[k] || []).forEach(function (sample) { cache[sample.file] = rec.recordingToFeatureRows(sample).length; });
+        // a file listed by the summary and gone since: no rows
+        R.samples[k].forEach(function (s) { if (own(cache, s.file) === undefined) cache[s.file] = 0; });
+      });
+      json = null; text = '';
+      R.rowsDone += keys.length;
+      await nextTask();
+    }
+    if (token !== reviewToken) return;
+    R.rowsStatus = 'ready';
+    computeTotals();
+    renderDerived();
+    emit('review');
   }
 
   // reload: read the signs and the dataset again; false: only work the rows out again (the folder,
@@ -1357,17 +1563,21 @@
   }
 
   // One status per video, in this order: the key exists with another set; a new key whose set
-  // differs from the first file (in file-name order) of that key; not extracted; signer not used
-  // for recognition; no repetition; every repetition already saved; a repetition count other than
-  // 3 (importable, not ticked by default); OK.
+  // differs from the first file (in file-name order) of that key; not extracted; extracted by the
+  // old importer or split with older settings (Extract again); signer not used for recognition;
+  // no repetition; nothing to add or replace (already imported); a split the splitter is not sure
+  // of (a problem row: import the reps found, 3 equal parts or skip; not ticked by default); OK.
   function computeReview() {
     var R = state.review, rec = state.recognitionSigners, firstNew = {}, rows = [];
     state.videos.forEach(function (v) {
       var p = v.parsed, meta = v.meta, map = Core.mapRow(p, R.signs);
+      var cs = meta ? Core.cacheState(meta, Split.SPLIT.VERSION) : 'none';
       var r = {
         id: v.id, name: v.name, relPath: v.relPath, video: v, label: p.label, key: p.key, set: p.set, signer: p.signer,
-        reps: meta && meta.seg ? meta.seg.repsFound : null, kind: 'ok', text: 'OK', group: 'not ticked',
-        enabled: false, checked: false, isNew: map.status === 'new', newSign: false, problem: false, addReps: [], doneReps: 0
+        reps: cs === 'current' ? meta.reps.length : null, sure: cs === 'current' && !!meta.split.ok,
+        kind: 'ok', text: 'OK', group: 'not ticked',
+        enabled: false, checked: false, isNew: map.status === 'new', newSign: false, problem: false, addReps: [], doneReps: 0,
+        splitProblem: false, mode: 'found', modes: null, importReps: [], replace: [], tooLong: 0
       };
       function is(kind, text, group) { r.kind = kind; r.text = text; r.group = group || text; }
       var first = null;
@@ -1375,36 +1585,54 @@
         first = own(firstNew, p.key);
         if (!first) first = firstNew[p.key] = v;
       }
-      var rs = meta ? Core.rowStatus(meta) : null;
       var saved = own(R.files, p.key) || {};
       if (map.status === 'problem') is('collision', map.reason);
       else if (first && first !== v && first.parsed.set !== p.set) is('set-differs', 'set differs from ' + first.name, 'set differs from another file of the sign');
       else if (!meta && v.status === 'failed') is('failed', 'extraction failed: ' + v.error, 'extraction failed');
       else if (!meta) is('not-extracted', 'not extracted yet');
+      else if (cs === 'old') is('stale', 'extracted by the old importer: press Start on Extract to read it again', 'extracted by the old importer');
+      else if (cs === 'resplit') is('stale', 'split with older settings: press Start on Extract (the split is redone from the cache)', 'split with older settings');
       else if (rec.indexOf(p.signer) < 0) is('not-used', NOT_USED, 'not used for recognition');
-      else if (!rs.importable) is('no-reps', rs.reason);
       else {
-        (meta.reps || []).forEach(function (rep) {
-          var id = v.importIds && v.importIds[rep.index];
-          if (id && saved[sampleFile(id)] === true) r.doneReps++;
+        var ss = Core.splitStatus(meta);
+        var found = repsOf(v, 'found'), equal = repsOf(v, 'equal');
+        r.splitProblem = ss.status !== 'ok';
+        r.modes = { found: found.length, equal: equal.length };
+        if (r.splitProblem) {
+          var chosen = own(R.modes, v.id);
+          r.mode = chosen === 'equal' && equal.length ? 'equal' : found.length ? 'found' : 'equal';
+        }
+        var reps = r.mode === 'equal' ? equal : found, ids = [];
+        reps.forEach(function (rep) {
+          if (rep.endFrame - rep.startFrame + 1 > MAX_SAMPLE_FRAMES) { r.tooLong++; return; }
+          rep.importId = own(v.idOf, idSource(v, rep));
+          ids.push(rep.importId);
+          r.importReps.push(rep);
+          if (rep.importId && saved[sampleFile(rep.importId)] === true) r.doneReps++;
           else r.addReps.push({ index: rep.index, rows: rep.rows });
         });
-        if (!r.addReps.length) is('imported', 'already imported' + (rs.status === 'problem' ? ' (' + rs.reason + ')' : ''), 'already imported');
-        else if (rs.status === 'problem') is('problem', rs.reason);
-        else if (r.doneReps) is('ok', 'OK (' + r.doneReps + ' of ' + (r.doneReps + r.addReps.length) + ' repetitions already imported)', 'not ticked');
+        r.replace = previousIds(v).filter(function (id) { return ids.indexOf(id) < 0 && saved[sampleFile(id)] === true; });
+        var long = r.tooLong ? ' (' + plural(r.tooLong, 'repetition') + ' longer than 20 s left out)' : '';
+        var repl = r.replace.length ? ' — replaces ' + plural(r.replace.length, 'old sample') : '';
+        if (!r.importReps.length) is('no-reps', r.splitProblem ? ss.reason + long : 'no repetition to import' + long, 'no repetition to import');
+        else if (!r.addReps.length && !r.replace.length) is('imported', 'already imported' + (r.splitProblem ? ' (' + ss.reason + ')' : ''), 'already imported');
+        else if (r.splitProblem) is('problem', ss.reason + long + repl, 'split not sure (problem row not ticked)');
+        else if (r.doneReps) is('ok', 'OK (' + r.doneReps + ' of ' + r.importReps.length + ' repetitions already imported)' + long + repl, 'not ticked');
+        else is('ok', 'OK' + long + repl, 'not ticked');
       }
       r.enabled = r.kind === 'ok' || r.kind === 'problem';
-      r.problem = PROBLEM_KINDS.indexOf(r.kind) >= 0;
-      var chosen = own(R.checks, v.id);
-      r.checked = r.enabled && (chosen === undefined ? r.kind === 'ok' : !!chosen);
+      r.problem = PROBLEM_KINDS.indexOf(r.kind) >= 0 || (r.splitProblem && r.kind !== 'imported');
+      var tick = own(R.checks, v.id);
+      r.checked = r.enabled && (tick === undefined ? r.kind === 'ok' : !!tick);
       r.newSign = r.isNew && r.enabled;
       rows.push(r);
     });
     state.problems.forEach(function (p) {
       rows.push({
-        id: null, name: p.name, relPath: p.relPath, video: null, label: null, key: null, set: null, signer: null, reps: null,
+        id: null, name: p.name, relPath: p.relPath, video: null, label: null, key: null, set: null, signer: null, reps: null, sure: false,
         kind: 'bad-name', text: p.reason, group: /^same file as /.test(p.reason) ? 'same file twice in the folder' : p.reason,
-        enabled: false, checked: false, isNew: false, newSign: false, problem: true, addReps: [], doneReps: 0
+        enabled: false, checked: false, isNew: false, newSign: false, problem: true, addReps: [], doneReps: 0,
+        splitProblem: false, mode: 'found', modes: null, importReps: [], replace: [], tooLong: 0
       });
     });
     rows.sort(byName);
@@ -1448,36 +1676,52 @@
     return missingText(null);
   }
 
-  // What the ticked videos add: videos, samples, rows and labels per model; the knnPredict
-  // estimate for those model sizes follows (scheduleKnn).
+  // What the ticked videos add: videos, samples (and old samples they replace), and per model the
+  // training rows of the compiled model now and after the import, by the compile rule (owner
+  // decision 8; KnnCompile.selectSignRows through Core.budgetRows: at most 90 rows per sign), and
+  // its signs; the knnPredict estimate for those model sizes follows (scheduleKnn). The rows wait
+  // for loadRowCounts: until then they read "…".
   function computeTotals() {
-    var R = state.review, planned = [], videos = 0, samples = 0, active = {};
-    var nowLabels = { ESL: Object.keys(R.labels.ESL).length, FSL: Object.keys(R.labels.FSL).length };
-    var newLabels = { ESL: {}, FSL: {} };
+    var R = state.review, videos = 0, samples = 0, replaces = 0, active = {};
+    var rule = window.KnnCompile.DEFAULT_RULE;
+    var removed = {}, planned = {};         // key -> {file name: true}; key -> [rows of each new rep]
     R.rows.forEach(function (r) {
       if (!r.checked) return;
       videos++;
       active[r.key] = true;
-      var models = modelsOf(r.key, r.set);
-      r.addReps.forEach(function (rep) {
-        samples++;
-        planned.push({ set: models.length === 2 ? 'BOTH' : models[0], rows: rep.rows });
-        if (rep.rows > 0) models.forEach(function (m) { if (own(R.labels[m], r.key) === undefined) newLabels[m][r.key] = true; });
-      });
+      samples += r.addReps.length;
+      replaces += r.replace.length;
+      if (!own(planned, r.key)) { planned[r.key] = []; removed[r.key] = {}; }
+      r.addReps.forEach(function (rep) { planned[r.key].push(rep.rows); });
+      r.replace.forEach(function (id) { removed[r.key][sampleFile(id)] = true; });
     });
     R.newSigns.forEach(function (s) { s.active = own(active, s.key) === true; });
-    var cur = { ESL: R.current.ESL, FSL: R.current.FSL }, after = Core.projectRows(cur, planned);
-    R.toImport = { videos: videos, samples: samples };
-    R.projection = {
-      current: cur, added: { ESL: after.ESL - cur.ESL, FSL: after.FSL - cur.FSL }, projected: after,
-      knn: {
-        status: 'measuring', capped: false, current: { ESL: null, FSL: null }, projected: { ESL: null, FSL: null },
-        labels: {
-          current: nowLabels,
-          projected: { ESL: nowLabels.ESL + Object.keys(newLabels.ESL).length, FSL: nowLabels.FSL + Object.keys(newLabels.FSL).length }
-        }
-      }
-    };
+    R.toImport = { videos: videos, samples: samples, replaces: replaces };
+    var proj = null;
+    if (R.rowsStatus === 'ready') {
+      var cur = { ESL: 0, FSL: 0 }, after = { ESL: 0, FSL: 0 }, labels = { current: { ESL: 0, FSL: 0 }, projected: { ESL: 0, FSL: 0 } };
+      var keys = {};
+      Object.keys(R.samples).concat(Object.keys(planned)).forEach(function (k) { keys[k] = true; });
+      Object.keys(keys).forEach(function (k) {
+        var sign = own(R.signs, k), list = own(R.samples, k) || [], gone = own(removed, k) || {};
+        var set = sign && sign.set ? sign.set : null;
+        if (!set) R.rows.forEach(function (r) { if (!set && r.key === k) set = r.set; });
+        var nowRows = list.map(function (s) { return own(R.rowCache, s.file) || 0; });
+        var thenRows = list.filter(function (s) { return gone[s.name] !== true; }).map(function (s) { return own(R.rowCache, s.file) || 0; })
+          .concat(own(planned, k) || []);
+        var n = Core.budgetRows(nowRows, rule), m = Core.budgetRows(thenRows, rule);
+        modelsOf(k, set || (list[0] && list[0].signLanguage) || 'ESL').forEach(function (model) {
+          cur[model] += n; after[model] += m;
+          if (n) labels.current[model]++;
+          if (m) labels.projected[model]++;
+        });
+      });
+      proj = {
+        current: cur, added: { ESL: after.ESL - cur.ESL, FSL: after.FSL - cur.FSL }, projected: after,
+        knn: { status: 'measuring', capped: false, current: { ESL: null, FSL: null }, projected: { ESL: null, FSL: null }, labels: labels }
+      };
+    }
+    R.projection = proj;
     R.blocked = blockedReason();
     scheduleKnn();
   }
@@ -1489,9 +1733,53 @@
     R.rows.forEach(function (r) { if (r.id === id) r.checked = r.enabled && !!on; });
     computeTotals();
     renderDerived();
-    var box = document.querySelector('#bi-review tr[data-id="' + id + '"] input');
+    var box = document.querySelector('#bi-review tr[data-id="' + id + '"] input[type="checkbox"]');
     if (box) box.checked = R.rows.some(function (r) { return r.id === id && r.checked; });
+    var pick = document.querySelector('#bi-review tr[data-id="' + id + '"] select');
+    R.rows.forEach(function (r) { if (r.id === id && pick) pick.value = r.checked ? r.mode : 'skip'; });
+    renderHeadTick();
     emit('review');
+  }
+  // What a problem row imports (owner decision 3): 'found' (the reps the split found), 'equal' (3
+  // equal parts, the last resort) or 'skip' (not ticked). The reps, their ids and the old samples
+  // they replace change with it, so the rows are worked out again.
+  function setMode(id, mode) {
+    var R = state.review;
+    if (!id || ['found', 'equal', 'skip'].indexOf(mode) < 0) return;
+    if (mode === 'skip') { setChecked(id, false); return; }
+    R.modes[id] = mode;
+    R.checks[id] = true;
+    computeReview();
+    renderReview();
+    emit('review');
+  }
+  // The selection buttons (owner decision 5). 'all': every row that can be imported (OK rows and
+  // problem rows, each problem row with what it is set to import, "the reps found" unless changed);
+  // 'problems': every problem row with reps found, set to import them; 'none': nothing; 'shown':
+  // the header checkbox, every row under the current filter (on = tick, off = untick).
+  function selectRows(which, on) {
+    var R = state.review;
+    R.rows.forEach(function (r) {
+      if (!r.id) return;
+      if (which === 'none') R.checks[r.id] = false;
+      else if (which === 'all') { if (r.enabled) R.checks[r.id] = true; }
+      else if (which === 'problems') {
+        if (r.splitProblem && r.modes && r.modes.found > 0 && (r.enabled || r.mode !== 'found')) { R.modes[r.id] = 'found'; R.checks[r.id] = true; }
+      } else if (which === 'shown') { if (r.enabled && inFilter(r)) R.checks[r.id] = !!on; }
+    });
+    computeReview();
+    renderReview();
+    emit('review');
+  }
+  // The header checkbox: ticked when every importable row shown is ticked, mixed when some are.
+  function renderHeadTick() {
+    var box = $('bi-rv-all');
+    if (!box) return;
+    var shown = state.review.rows.filter(function (r) { return r.enabled && inFilter(r); });
+    var on = shown.filter(function (r) { return r.checked; }).length;
+    box.disabled = !shown.length;
+    box.checked = shown.length > 0 && on === shown.length;
+    box.indeterminate = on > 0 && on < shown.length;
   }
   function setSignText(key, field, value) {
     var R = state.review;
@@ -1526,6 +1814,48 @@
     });
     $('bi-review-count').textContent = R.rows.length ? '(' + R.rows.length + ')' : '';
   }
+  // ── The split timeline (owner decision 2): one small picture per video ──
+  // Top band: the per-frame rest score (dark = no hand, mid = hand lowered, light = nearly still and
+  // low, empty = signing). Bottom band: the reps that would be imported (numbered), so the gaps are
+  // the rests the split cut at. The title says the same in words.
+  var TL_W = 168, TL_H = 26;
+  var TL_REST = ['', '#9fb3c8', '#5f7894', '#2b3b52'];      // by profile class 0..3
+  var TL_REP = ['#16a34a', '#2563eb', '#d97706', '#9333ea'];
+  function sec(ms) { return (Math.round(ms / 100) / 10).toFixed(1); }
+  function timelineText(meta, reps, mode) {
+    var parts = reps.map(function (rep) { return 'rep ' + rep.index + ' ' + sec(rep.startMs) + '–' + sec(rep.endMs) + ' s'; });
+    var rests = (mode === 'equal' ? [] : meta.split.cuts || []).map(function (c) { return sec(c.startMs) + ' s (' + sec(c.ms) + ' s, ' + c.kind + ')'; });
+    return (mode === 'equal' ? '3 equal parts: ' : '') + (parts.join(', ') || 'no repetition') +
+      (rests.length ? '. Cut at the rests at ' + rests.join(' and ') : '') + '. Video ' + sec(meta.hands.durationMs) + ' s.';
+  }
+  function drawTimeline(canvas, meta, reps) {
+    var g = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
+    var dur = Math.max(1, meta.hands.durationMs), tf = timeOf(meta), prof = String(meta.split.profile || '');
+    var x = function (ms) { return Math.max(0, Math.min(w, ms / dur * w)); };
+    g.clearRect(0, 0, w, h);
+    g.fillStyle = '#eef2f7';
+    g.fillRect(0, 0, w, 9);
+    for (var k = 0, e; k < prof.length; k = e) {
+      for (e = k + 1; e < prof.length && prof.charAt(e) === prof.charAt(k); e++) { /* one rect per run of a class */ }
+      var c = TL_REST[+prof.charAt(k)] || '';
+      if (!c) continue;
+      var x0 = x(tf(k)), x1 = x(tf(e));
+      g.fillStyle = c;
+      g.fillRect(x0, 0, Math.max(1, x1 - x0), 9);
+    }
+    g.fillStyle = '#eef2f7';
+    g.fillRect(0, 11, w, h - 11);
+    g.font = 'bold 10px sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    reps.forEach(function (rep, i) {
+      var a = x(rep.startMs), b = Math.max(a + 2, x(tf(rep.endFrame + 1)));
+      g.fillStyle = TL_REP[i % TL_REP.length];
+      g.fillRect(a, 12, b - a, h - 13);
+      if (b - a >= 9) { g.fillStyle = '#fff'; g.fillText(String(rep.index), (a + b) / 2, 12 + (h - 13) / 2); }
+    });
+  }
+
   function renderReviewTable() {
     var R = state.review, body = $('bi-review').querySelector('tbody'), frag = document.createDocumentFragment();
     var shown = R.rows.filter(inFilter);
@@ -1547,17 +1877,44 @@
       cell(tr, r.key === null ? '—' : r.label === r.key ? r.key : r.label + ' → ' + r.key);
       cell(tr, r.set || '—');
       cell(tr, r.signer || '—');
-      var reps = cell(tr, r.reps === null ? '—' : String(r.reps), 'bi-num');
-      if (r.reps !== null && r.reps !== Core.REQUIRED_REPS) reps.classList.add('bi-warn');
+      var shownReps = r.mode === 'equal' ? r.importReps.length : r.reps;
+      var reps = cell(tr, shownReps === null ? '—' : String(shownReps) + (r.reps !== null && !r.sure && r.mode !== 'equal' ? ' ?' : ''), 'bi-num');
+      if (r.reps !== null && (shownReps !== Core.REQUIRED_REPS || (!r.sure && r.mode !== 'equal'))) reps.classList.add('bi-warn');
+      var tl = cell(tr, '', 'bi-tl');
+      if (r.video && r.reps !== null) {
+        var cv = document.createElement('canvas');
+        cv.width = TL_W; cv.height = TL_H;
+        cv.className = 'bi-tl-canvas';
+        var words = timelineText(r.video.meta, r.importReps, r.mode);
+        cv.title = words;
+        cv.setAttribute('role', 'img');
+        cv.setAttribute('aria-label', words);
+        drawTimeline(cv, r.video.meta, r.importReps);
+        tl.appendChild(cv);
+      }
       var st = cell(tr, r.text, 'bi-rst');
       if (r.newSign) {
         var tag = document.createElement('span'); tag.className = 'bi-tag'; tag.textContent = 'new sign';
         st.appendChild(tag);
       }
-      if (r.kind === 'problem') {
+      if (r.splitProblem && (r.kind === 'problem' || r.kind === 'imported' || r.kind === 'no-reps')) {
         var label = document.createElement('label');
-        label.htmlFor = box.id;
-        label.textContent = 'import the ' + plural(r.addReps.length, 'repetition') + (r.doneReps ? ' not imported yet' : ' found');
+        label.className = 'bi-mode';
+        var name = document.createElement('span');
+        name.textContent = 'Import: ';
+        var pick = document.createElement('select');
+        pick.className = 'bi-select bi-mode-select';
+        pick.setAttribute('aria-label', 'What to import from ' + r.name);
+        [['found', 'the ' + plural(r.modes.found, 'rep') + ' found', r.modes.found > 0],
+         ['equal', 'split into 3 equal parts', r.modes.equal > 0],
+         ['skip', 'skip', true]].forEach(function (o) {
+          var opt = document.createElement('option');
+          opt.value = o[0]; opt.textContent = o[1]; opt.disabled = !o[2];
+          pick.appendChild(opt);
+        });
+        pick.value = r.checked ? r.mode : 'skip';
+        pick.addEventListener('change', function () { setMode(r.id, pick.value); });
+        label.appendChild(name); label.appendChild(pick);
         st.appendChild(label);
       }
       frag.appendChild(tr);
@@ -1566,6 +1923,7 @@
     $('bi-review').hidden = !R.rows.length;
     $('bi-review-empty').hidden = shown.length > 0;
     $('bi-review-empty').textContent = R.rows.length ? 'No video under this filter.' : 'Choose a folder in step 1.';
+    renderHeadTick();
   }
   function renderNewSigns() {
     var R = state.review, list = $('bi-new-signs');
@@ -1598,9 +1956,19 @@
   }
   function fmtMs(v) { return (v < 10 ? v.toFixed(2) : v.toFixed(1)) + ' ms'; }
   function renderProjection() {
-    var proj = state.review.projection, body = $('bi-projection').querySelector('tbody');
+    var R = state.review, proj = R.projection, body = $('bi-projection').querySelector('tbody');
     body.textContent = '';
-    if (!proj) return;
+    $('bi-proj-capped').hidden = !proj || !proj.knn.capped;
+    if (!proj) {
+      // the rows per saved sample are still being read (or could not be)
+      if (R.status !== 'ready') return;
+      var tr0 = document.createElement('tr');
+      var td = cell(tr0, R.rowsStatus === 'failed' ? 'The saved samples could not be read for the estimate: ' + R.rowsError + '. Open this step again to retry. (Import still works.)'
+        : 'Reading the saved samples for the estimate… ' + R.rowsDone + ' of ' + R.rowsTotal + ' signs', R.rowsStatus === 'failed' ? 'bi-warn' : 'bi-proj-wait');
+      td.colSpan = 6;
+      body.appendChild(tr0);
+      return;
+    }
     MODELS.forEach(function (m) {
       var tr = document.createElement('tr'); tr.dataset.model = m;
       cell(tr, m);
@@ -1611,12 +1979,12 @@
       cell(tr, proj.knn.projected[m] === null ? '…' : fmtMs(proj.knn.projected[m]));
       body.appendChild(tr);
     });
-    $('bi-proj-capped').hidden = !proj.knn.capped;
   }
   function updateImportControls() {
     var R = state.review, t = R.toImport;
     R.blocked = blockedReason();
-    $('bi-import').textContent = 'Import ' + plural(t.videos, 'video') + ' (' + plural(t.samples, 'sample') + ')';
+    $('bi-import').textContent = 'Import ' + plural(t.videos, 'video') + ' (' + plural(t.samples, 'sample') +
+      (t.replaces ? ', replaces ' + plural(t.replaces, 'old sample') : '') + ')';
     $('bi-import').disabled = R.blocked !== null;
     $('bi-import-note').textContent = R.blocked || '';
     $('bi-import-note').classList.toggle('error', R.status === 'failed' || /^Type the /.test(R.blocked || ''));
@@ -1679,7 +2047,9 @@
       return Promise.resolve(null);
     }
     var picked = R.rows.filter(function (r) {
-      if (!r.video || !r.video.meta) return false;
+      if (!r.video || !r.video.meta || !r.importReps.length) return false;
+      // every sample needs its id (a sample sent without one would never be found again)
+      if (r.importReps.some(function (rep) { return typeof rep.importId !== 'string'; })) return false;
       if (ids) return ids.indexOf(r.id) >= 0 && (r.kind === 'ok' || r.kind === 'problem' || r.kind === 'imported');
       return r.enabled && r.checked;
     });
@@ -1695,7 +2065,7 @@
       var fresh = null;
       R.newSigns.forEach(function (s) { if (s.key === r.key) fresh = s; });
       signs[r.key] = {
-        key: r.key, set: r.set, isNew: !!fresh, created: false, accepted: false, existed: false, added: 0, duplicates: 0, textUpdated: false, textError: null,
+        key: r.key, set: r.set, isNew: !!fresh, created: false, accepted: false, existed: false, added: 0, duplicates: 0, replaced: 0, textUpdated: false, textError: null,
         texts: fresh ? {
           textEn: fresh.textEn === null ? null : fresh.textEn.trim(), textFil: fresh.textFil === null ? null : fresh.textFil.trim(),
           draftEn: fresh.draftEn, draftFil: fresh.draftFil
@@ -1704,13 +2074,20 @@
     });
     imp.status = 'running';
     imp.phase = 'samples';
+    // Each video: its reps of the chosen split (with their sample ids, worked out by the Review) and
+    // the old samples of the same file that the import replaces (owner decision 7).
     imp.queue = picked.map(function (r) {
-      return { id: r.id, name: r.name, video: r.video, key: r.key, set: r.set, isNew: r.isNew, rep: 0, reps: r.video.meta.reps.length, added: 0, duplicates: 0, skip: null, hands: null };
+      return {
+        id: r.id, name: r.name, video: r.video, key: r.key, set: r.set, isNew: r.isNew, mode: r.mode,
+        list: r.importReps.map(function (rep) { return { index: rep.index, startFrame: rep.startFrame, endFrame: rep.endFrame, importId: rep.importId }; }),
+        replace: r.replace.slice(), stage: 'record', rep: 0, reps: r.importReps.length,
+        added: 0, duplicates: 0, replaced: 0, skip: null, note: null, hands: null
+      };
     });
     imp.index = 0;
     imp.textAt = 0;
     imp.current = null;
-    imp.added = 0; imp.duplicates = 0; imp.skipped = 0;
+    imp.added = 0; imp.duplicates = 0; imp.skipped = 0; imp.replaced = 0;
     imp.signs = signs;
     imp.notPicked = R.rows.filter(function (r) { return picked.indexOf(r) < 0; }).map(function (r) { return { name: r.name, reason: r.group }; });
     imp.langs = {};
@@ -1755,6 +2132,28 @@
     return null;
   }
 
+  // meta.imported of a video in the cache: the ids of the samples Import saved for it. before:
+  // add this item's new ids to what is recorded (before they are saved; a failure pauses the
+  // import: -> the message); after: keep only the new ids (best effort: -> null either way).
+  async function recordImported(item, before) {
+    var v = item.video, meta = v.meta, had = Array.isArray(meta.imported) ? meta.imported : [];
+    var ids = item.list.map(function (rep) { return rep.importId; });
+    var next = before ? had.concat(ids.filter(function (id) { return had.indexOf(id) < 0; })) : ids;
+    if (next.length === had.length && next.every(function (id, i) { return had[i] === id; })) return null;
+    var copy = JSON.parse(JSON.stringify(meta));
+    copy.imported = next;
+    try {
+      await cachePost({ action: 'put_video', id: v.id, meta: copy });
+    } catch (e) {
+      if (!before) { console.warn('[bulk-import] the import record of ' + v.name + ' was not updated:', e); return null; }
+      if (e && e.cacheWrite) return 'The cache could not be written (' + why(e) + '): nothing of ' + v.name + ' was saved yet. Check that Apache is running, then Resume.';
+      item.skip = 'the cache refused the import record: ' + why(e);
+      return null;
+    }
+    adoptMeta(v, copy);
+    return null;
+  }
+
   async function runImport() {
     var imp = state.imp, res, paused;
     imp.status = 'running';
@@ -1770,26 +2169,34 @@
         var item = imp.current = imp.queue[imp.index];
         if (imp.pauseAsked) return importPaused(null);
         renderImport();
-        if (!item.hands && !item.skip) {
+        var sign = imp.signs[item.key];
+        // 1. The cache records the new ids BEFORE they are saved, so the samples of this split can
+        //    always be found and replaced later, whatever happens in between.
+        if (item.stage === 'record') {
+          var rec = item.skip ? null : await recordImported(item, true);
+          if (rec) return importPaused(rec);
+          item.stage = 'samples';
+        }
+        if (!item.hands && !item.skip && item.stage === 'samples') {
           try {
             item.hands = await apiGet('action=hands&id=' + item.id);
-            item.reps = item.hands.reps.length;
+            if (!Array.isArray(item.hands.frames)) { item.hands = null; item.skip = 'extracted by the old importer: run Extract again'; }
           } catch (e) {
             if (!e || !e.http || e.http >= 500) return importPaused('The cache could not be read: ' + why(e) + '. Check that Apache is running, then Resume.');
             item.skip = 'extraction result no longer in the cache';
           }
         }
-        var sign = imp.signs[item.key];
-        while (!item.skip && item.rep < item.hands.reps.length) {
+        // 2. One POST per repetition (the server answers "duplicate" for a sample it already has).
+        while (!item.skip && item.stage === 'samples' && item.rep < item.list.length) {
           if (imp.pauseAsked) return importPaused(null);
-          var rep = item.hands.reps[item.rep], hm = item.hands.meta || {};
-          var importId = await sha32(Core.importIdSource(item.video, rep.index));
+          var rep = item.list[item.rep], hm = item.hands.meta || {};
+          var frames = item.hands.frames.slice(rep.startFrame, rep.endFrame + 1);
           try {
             res = await postJson(SAVE_API, {
-              label: item.key, sign_language: item.set, frames: rep.frames,
+              label: item.key, sign_language: item.set, frames: frames,
               formatVersion: 3, source: 'video-import', repIndex: rep.index,
               videoWidth: hm.videoWidth, videoHeight: hm.videoHeight, fps: hm.fps, input: hm.input,
-              signer: item.video.parsed.signer, importId: importId
+              signer: item.video.parsed.signer, importId: rep.importId
             });
           } catch (e) {
             return importPaused('The server did not answer (' + why(e) + '). Nothing is lost: check that Apache is running, then Resume.');
@@ -1818,6 +2225,33 @@
           paused = await storeTexts();
           if (paused) return importPaused(paused);
         }
+        if (!item.skip && item.stage === 'samples') item.stage = 'replace';
+        // 3. Re-import replaces: the old samples of this file (another split) are removed through
+        //    save_gesture.php (sample files + their gesture_recordings rows), only once every new
+        //    repetition is saved.
+        if (!item.skip && item.stage === 'replace') {
+          if (item.replace.length) {
+            if (imp.pauseAsked) return importPaused(null);
+            try {
+              res = await postJson(SAVE_API, { action: 'delete_import_samples', label: item.key, importIds: item.replace });
+            } catch (e) {
+              return importPaused('The new samples are saved, but the server did not answer while removing the old ones (' + why(e) + '). Resume tries again.');
+            }
+            if (serverFailed(res)) return importPaused('The new samples are saved, but removing the old ones failed (' + ((res.json && res.json.error) || 'HTTP ' + res.http) + '). Resume tries again.');
+            if (res.json.success) {
+              var gone = res.json.deleted || 0;
+              item.replaced += gone; sign.replaced += gone; imp.replaced += gone;
+              if (gone) modelsOf(item.key, item.set).forEach(function (lang) { if (!imp.langs[lang]) { imp.langs[lang] = true; dropLabelsCache(lang); } });
+            } else item.note = 'old samples not removed: ' + (res.json.error || 'HTTP ' + res.http);
+          }
+          item.stage = 'final';
+        }
+        // 4. The record now holds exactly this split's ids (best effort: the larger record written
+        //    in step 1 is just as good for finding them later).
+        if (!item.skip && item.stage === 'final') {
+          await recordImported(item, false);
+          item.stage = 'done';
+        }
         if (item.skip) imp.skipped++;
         item.hands = null;                   // the frames are not needed any more
         imp.index++;
@@ -1840,7 +2274,8 @@
         imp.phase = 'done';
         imp.status = 'done';
         imp.current = null;
-        imp.message = 'Finished: ' + plural(imp.added, 'sample') + ' added, ' + plural(imp.duplicates, 'duplicate') + ' skipped.';
+        imp.message = 'Finished: ' + plural(imp.added, 'sample') + ' added, ' + plural(imp.duplicates, 'duplicate') + ' skipped' +
+          (imp.replaced ? ', ' + plural(imp.replaced, 'old sample') + ' replaced' : '') + '. Now Compile ESL and FSL on Train Gestures.';
       }
     } catch (e) {
       console.warn('[bulk-import] the import stopped:', e);
@@ -1879,13 +2314,15 @@
     var signs = Object.keys(imp.signs).sort().map(function (k) {
       var s = imp.signs[k], listed = own(signsNow, k);
       return {
-        key: k, set: s.set, added: s.added, duplicates: s.duplicates, total: listed ? listed.samples : 0,
+        key: k, set: s.set, added: s.added, duplicates: s.duplicates, replaced: s.replaced, total: listed ? listed.samples : 0,
         created: s.created, textUpdated: s.textUpdated, textError: s.textError
       };
     });
     return {
       finishedAt: new Date().toISOString(),
-      videos: imp.queue.length, videosSkipped: imp.skipped, added: imp.added, duplicates: imp.duplicates,
+      videos: imp.queue.length, videosSkipped: imp.skipped, added: imp.added, duplicates: imp.duplicates, replaced: imp.replaced,
+      notes: imp.queue.filter(function (item) { return item.note; }).map(function (item) { return { name: item.name, note: item.note }; }),
+      equalSplit: imp.queue.filter(function (item) { return item.mode === 'equal' && !item.skip; }).map(function (item) { return item.name; }),
       signs: signs,
       newSigns: signs.filter(function (s) { return s.created; }).map(function (s) { return s.key; }),
       textsUpdated: signs.filter(function (s) { return s.textUpdated; }).map(function (s) { return s.key; }),
@@ -1909,6 +2346,7 @@
     $('bi-imp-file').textContent = item ? item.name : imp.status === 'done' ? 'Finished.' : imp.status === 'paused' ? 'Paused.' : '—';
     $('bi-imp-added').textContent = String(imp.added);
     $('bi-imp-dup').textContent = String(imp.duplicates);
+    $('bi-imp-replaced').textContent = String(imp.replaced);
     $('bi-imp-skip').textContent = String(imp.skipped);
     $('bi-imp-pause').disabled = imp.status !== 'running' || imp.pauseAsked;
     $('bi-imp-resume').disabled = imp.status !== 'paused' || extracting();
@@ -1941,13 +2379,17 @@
     if (!S) return;
     box.textContent = '';
     sumHead(box, 'This import');
-    sumLine(box, plural(S.added, 'sample') + ' added, ' + plural(S.duplicates, 'duplicate') + ' skipped, from ' + plural(S.videos - S.videosSkipped, 'video') + '.').id = 'bi-sum-total';
-    var body = sumTable(box, 'bi-sum-signs', ['Sign', 'Set', 'Added', 'Duplicates skipped', 'Samples now']);
+    sumLine(box, plural(S.added, 'sample') + ' added, ' + plural(S.duplicates, 'duplicate') + ' skipped, ' +
+      plural(S.replaced, 'old sample') + ' replaced, from ' + plural(S.videos - S.videosSkipped, 'video') + '.').id = 'bi-sum-total';
+    sumLine(box, 'Next: Compile ESL and Compile FSL on Train Gestures (Step 2). The kiosk keeps its old model until then.', 'bi-warn').id = 'bi-sum-compile';
+    if (S.equalSplit.length) sumLine(box, 'Split into 3 equal parts: ' + S.equalSplit.join(', ') + '.');
+    S.notes.forEach(function (n) { sumLine(box, n.name + ': ' + n.note + '.', 'bi-warn'); });
+    var body = sumTable(box, 'bi-sum-signs', ['Sign', 'Set', 'Added', 'Duplicates skipped', 'Old replaced', 'Samples now']);
     S.signs.forEach(function (s) {
       var tr = document.createElement('tr'); tr.dataset.key = s.key;
       var key = cell(tr, s.key);
       if (s.created) { var tag = document.createElement('span'); tag.className = 'bi-tag'; tag.textContent = 'new sign'; key.appendChild(tag); }
-      cell(tr, s.set); cell(tr, String(s.added), 'bi-num'); cell(tr, String(s.duplicates), 'bi-num'); cell(tr, String(s.total), 'bi-num');
+      cell(tr, s.set); cell(tr, String(s.added), 'bi-num'); cell(tr, String(s.duplicates), 'bi-num'); cell(tr, String(s.replaced), 'bi-num'); cell(tr, String(s.total), 'bi-num');
       body.appendChild(tr);
     });
     sumHead(box, 'New signs created (' + S.newSigns.length + ')');
@@ -2464,6 +2906,7 @@
     });
     $('bi-start').addEventListener('click', startRun);
     $('bi-pause').addEventListener('click', pauseRun);
+    $('bi-stop').addEventListener('click', stopRun);
     $('bi-resume').addEventListener('click', resumeRun);
     $('bi-retry').addEventListener('click', function () { if (state.engines === 'failed') loadEngines(); });
     $('bi-preview-on').addEventListener('change', function () { state.preview = $('bi-preview-on').checked; if (!state.preview) fit(null); });
@@ -2510,6 +2953,10 @@
       b.addEventListener('click', function () { setFilter(b.dataset.filter); });
     });
     $('bi-import').addEventListener('click', function () { startImport(); });
+    $('bi-sel-all').addEventListener('click', function () { selectRows('all'); });
+    $('bi-sel-problems').addEventListener('click', function () { selectRows('problems'); });
+    $('bi-sel-none').addEventListener('click', function () { selectRows('none'); });
+    $('bi-rv-all').addEventListener('change', function () { selectRows('shown', $('bi-rv-all').checked); });
     $('bi-imp-pause').addEventListener('click', pauseImport);
     $('bi-imp-resume').addEventListener('click', resumeImport);
     fit(null);
@@ -2547,10 +2994,13 @@
     planWork: planWork,
     start: startRun,
     pause: pauseRun,
+    stop: stopRun,
     resume: resumeRun,
     showStep: showStep,
     refreshReview: refreshReview,
     setChecked: setChecked,
+    setMode: setMode,
+    selectRows: selectRows,
     setSignText: function (key, field, value) { setSignText(key, field, value); renderNewSigns(); },
     setFilter: setFilter,
     knnTime: knnTime,

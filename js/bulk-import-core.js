@@ -251,6 +251,60 @@
     return SETS.indexOf(a) < 0 || SETS.indexOf(b) < 0 || a === b;
   }
 
+  // ── Dynamic rep split (2026-10-16, js/bulk-rep-split.js) ──
+  // Cache meta version 2: hands.json holds every frame of the video (not only the reps' frames),
+  // so a split can be redone from the cache, and meta.split holds the split (js/bulk-rep-split.js).
+  var META_VERSION = 2;
+  var LEGACY_REPS_MAX = 5;     // a v1 import could have saved reps 1..n (more than 3 on too-many-reps)
+
+  // meta: a cached video's meta; splitVersion: BulkRepSplit.SPLIT.VERSION.
+  // -> 'none' (not cached) | 'old' (v1: only the reps' frames are cached, so the video is read
+  // again) | 'resplit' (v2 split with other thresholds: redone from the cached frames) | 'current'.
+  function cacheState(meta, splitVersion) {
+    if (!meta) return 'none';
+    if (meta.v !== META_VERSION) return 'old';
+    return meta.split && meta.split.version === splitVersion ? 'current' : 'resplit';
+  }
+
+  // The string a v2 sample id is hashed from: the rep's place in the video is part of it, so a
+  // different split of the same video gives different samples (and the old ones can be replaced),
+  // while the same split gives the same ids again (a re-import adds nothing). A rep identical to a
+  // rep the v1 importer saved (legacyReps: the v1 meta's reps, same index, start and end) keeps
+  // that sample's v1 id. file: {name, size}; rep: {index, startMs, endMs}.
+  function importIdSourceV2(file, rep, legacyReps) {
+    var same = (legacyReps || []).some(function (r) {
+      return r && r.index === rep.index && r.startMs === rep.startMs && r.endMs === rep.endMs;
+    });
+    if (same) return importIdSource(file, rep.index);
+    return file.name + '|' + file.size + '|' + rep.index + '|' + rep.startMs + '-' + rep.endMs;
+  }
+
+  // meta (v2) -> {status:'ok', importable:true} for 3 reps the splitter is sure of, else
+  // {status:'problem', reason (the splitter's reasons), importable (a rep was found)}.
+  function splitStatus(meta) {
+    var split = (meta && meta.split) || {};
+    var reps = (meta && meta.reps) || [];
+    if (split.ok && reps.length === REQUIRED_REPS) return { status: 'ok', importable: true };
+    var reasons = Array.isArray(split.reasons) ? split.reasons : [];
+    var reason = reasons.length ? reasons.join('; ')
+      : 'found ' + reps.length + ' repetition' + (reps.length === 1 ? '' : 's') + ', need ' + REQUIRED_REPS;
+    return { status: 'problem', reason: reason, importable: reps.length > 0 };
+  }
+
+  // The compile rule's row count for one sign (KnnCompile.selectSignRows, js/knn-compile.js): rows
+  // per sample in, rows the model keeps out. Samples with no rows do not count; at most `budget`
+  // rows in all, else each sample keeps max(minRowsPerSample, floor(budget / samples)) rows.
+  // rule: KnnCompile.DEFAULT_RULE (its budget and minRowsPerSample are the defaults here).
+  function budgetRows(rowCounts, rule) {
+    var budget = rule && rule.budget > 0 ? rule.budget : 90;
+    var minRows = rule && rule.minRowsPerSample > 0 ? rule.minRowsPerSample : 3;
+    var list = (rowCounts || []).filter(function (n) { return typeof n === 'number' && n > 0; });
+    var total = list.reduce(function (s, n) { return s + n; }, 0);
+    if (total <= budget) return total;
+    var k = Math.max(minRows, Math.floor(budget / list.length));
+    return list.reduce(function (s, n) { return s + Math.min(n, k); }, 0);
+  }
+
   // sampleCounts: {key: samples}. -> {median, low:[keys with fewer than half the median], sorted}
   function imbalance(sampleCounts) {
     var keys = Object.keys(sampleCounts || {}).sort();
@@ -267,6 +321,12 @@
     REQUIRED_REPS: REQUIRED_REPS,
     REST_MS: REST_MS,
     MAX_ROWS_PER_REP: MAX_ROWS_PER_REP,
+    META_VERSION: META_VERSION,
+    LEGACY_REPS_MAX: LEGACY_REPS_MAX,
+    cacheState: cacheState,
+    importIdSourceV2: importIdSourceV2,
+    splitStatus: splitStatus,
+    budgetRows: budgetRows,
     cleanLabel: cleanLabel,
     parseName: parseName,
     videoIdSource: videoIdSource,

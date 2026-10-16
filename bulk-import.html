@@ -6,7 +6,8 @@
   <title>Bulk Video Import ✿ Sining Kamay</title>
   <!-- Bulk video importer (docs/reports/2026-10-13-bulk-import-step1.md): choose a folder of
        <SET>_<label>_<SIGNER>.<ext> videos, extract hand landmarks (the live capture's own Hands
-       pass + segmenter) and, for the avatar signers, an avatar candidate clip (MediaPipe Holistic
+       pass; the 3 repetitions are then found by the dynamic split, js/bulk-rep-split.js) and, for
+       the avatar signers, an avatar candidate clip (MediaPipe Holistic
        on the best repetition only), cached per video in bulk_import_cache/. Laptop only (1366x768):
        nothing on the kiosk links here. The videos never leave the browser: the only requests are
        the landmark JSON to php/api/bulk_import.php and, once Import is pressed in step 3, one
@@ -15,7 +16,7 @@
        GestureDataRecorder.setupMediaPipe() (which forces non-SIMD WebAssembly for Hands). -->
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/gesture-training.css?v=1.0.10">
-  <link rel="stylesheet" href="css/bulk-import.css?v=1.0.5">
+  <link rel="stylesheet" href="css/bulk-import.css?v=1.0.6">
   <script src="js/lib/holistic/holistic.js" defer></script>
   <script src="js/lib/mediapipe/hands.js" defer></script>
   <script src="js/gesture-data.js" defer></script>
@@ -23,6 +24,8 @@
   <script src="js/video-landmarks.js" defer></script>
   <script src="js/avatar-clip.js" defer></script>
   <script src="js/avatar-extract.js" defer></script>
+  <script src="js/knn-compile.js" defer></script>
+  <script src="js/bulk-rep-split.js" defer></script>
   <script src="js/bulk-import-core.js" defer></script>
   <script src="js/bulk-import-ui.js" defer></script>
 </head>
@@ -134,6 +137,7 @@
             <button type="button" class="bi-btn bi-primary" id="bi-start" disabled>Start</button>
             <button type="button" class="bi-btn" id="bi-pause" disabled>Pause</button>
             <button type="button" class="bi-btn" id="bi-resume" disabled>Resume</button>
+            <button type="button" class="bi-btn" id="bi-stop" disabled title="Pause, and review the videos done so far">Stop</button>
           </div>
           <progress id="bi-progress" class="bi-progress" value="0" max="1"></progress>
           <div class="bi-run-line"><span id="bi-run-count">Video 0 of 0</span><span id="bi-run-pct"></span></div>
@@ -170,7 +174,7 @@
       <div class="bi-col bi-col-side">
         <div class="bi-card">
           <h2 class="bi-h">Import</h2>
-          <p class="bi-note">Tick the videos to import. Each repetition becomes one training sample of its sign. Nothing is saved until Import is pressed.</p>
+          <p class="bi-note">Tick the videos to import. Each repetition becomes one training sample of its sign. A video imported before with another split has its old samples replaced. Nothing is saved until Import is pressed.</p>
           <button type="button" class="bi-btn bi-primary bi-wide" id="bi-import" disabled>Import 0 videos (0 samples)</button>
           <div class="bi-import-note" id="bi-import-note" role="status" aria-live="polite"></div>
         </div>
@@ -178,12 +182,12 @@
           <h2 class="bi-h">After this import</h2>
           <table class="bi-table bi-proj" id="bi-projection">
             <thead>
-              <tr><th rowspan="2">Model</th><th colspan="3">Training rows</th><th colspan="2">knnPredict (estimate)</th></tr>
+              <tr><th rowspan="2">Model</th><th colspan="3">Rows in the compiled model</th><th colspan="2">knnPredict (estimate)</th></tr>
               <tr><th>now</th><th>added</th><th>after</th><th>now</th><th>after</th></tr>
             </thead>
             <tbody></tbody>
           </table>
-          <p class="bi-note bi-proj-note">The ESL model holds the ESL and BOTH signs, the FSL model the FSL and BOTH signs (and both hold <code>start</code> and <code>stop</code>). knnPredict: estimate, this laptop's Chrome, for one camera frame on a made-up model of that size. The Pi is slower.</p>
+          <p class="bi-note bi-proj-note">The ESL model holds the ESL and BOTH signs, the FSL model the FSL and BOTH signs (and both hold <code>start</code> and <code>stop</code>). Rows: what Compile keeps (at most 90 rows per sign). knnPredict: estimate, this laptop's Chrome, for one camera frame on a made-up model of that size. The Pi is slower.</p>
           <p class="bi-note bi-proj-note bi-warn-note" id="bi-proj-capped" hidden>A model above 100,000 rows is timed at 100,000 rows: the real time is higher.</p>
         </div>
       </div>
@@ -203,9 +207,15 @@
               <button type="button" class="bi-filter" data-filter="import" aria-pressed="false">To import <span></span></button>
             </div>
           </div>
+          <div class="bi-select-row" role="group" aria-label="Select">
+            <button type="button" class="bi-btn bi-small" id="bi-sel-all" title="Tick every video that can be imported (problem rows import what they are set to: the reps found unless changed)">Select all</button>
+            <button type="button" class="bi-btn bi-small" id="bi-sel-problems" title="Tick every problem row that found reps, set to import the reps found">Select all problems (reps found)</button>
+            <button type="button" class="bi-btn bi-small" id="bi-sel-none">Clear</button>
+            <span class="bi-tl-legend"><i class="tl-r0"></i>no hand <i class="tl-r1"></i>lowered <i class="tl-r2"></i>still and low <i class="tl-rep"></i>reps</span>
+          </div>
           <div class="bi-scroll">
             <table class="bi-table" id="bi-review">
-              <thead><tr><th><span class="bi-sr">Import</span></th><th>File</th><th>Sign</th><th>Set</th><th>Signer</th><th>Reps</th><th>Status</th></tr></thead>
+              <thead><tr><th class="bi-tick"><input type="checkbox" id="bi-rv-all" aria-label="Tick every video shown"></th><th>File</th><th>Sign</th><th>Set</th><th>Signer</th><th>Reps</th><th>Split</th><th>Status</th></tr></thead>
               <tbody></tbody>
             </table>
             <div class="bi-empty" id="bi-review-empty">Choose a folder in step 1.</div>
@@ -229,13 +239,14 @@
           <dl class="bi-times">
             <div><dt>Samples added</dt><dd id="bi-imp-added">0</dd></div>
             <div><dt>Duplicates</dt><dd id="bi-imp-dup">0</dd></div>
+            <div><dt>Old samples replaced</dt><dd id="bi-imp-replaced">0</dd></div>
             <div><dt>Videos skipped</dt><dd id="bi-imp-skip">0</dd></div>
           </dl>
           <div class="bi-import-note" id="bi-imp-note" role="status" aria-live="polite">Tick the videos in step 3, then press Import there.</div>
         </div>
         <div class="bi-card bi-remind" id="bi-remind" hidden>
           <h2 class="bi-h">Next step</h2>
-          <p id="bi-remind-text">Now run Compile (Train AI) on Train Gestures for ESL and for FSL.</p>
+          <p id="bi-remind-text">Now run Compile on Train Gestures (Step 2) for ESL and for FSL.</p>
           <p class="bi-note">The kiosk keeps using its old model until then.</p>
           <a href="gesture-training.html" class="bi-btn">Open Train Gestures</a>
         </div>
