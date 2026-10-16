@@ -683,3 +683,33 @@ test('the module is pure: no DOM, network, crypto or clock in its source', () =>
   assert.equal(src.match(/\bmodule\b/g).length, 3);   // only the module.exports branch
   assert.equal(src.match(/\bwindow\b/g).length, 2);   // only the window.BulkImportCore attach line
 });
+
+// ---------- py-extractor phase: skipFolder, cacheSource ----------
+
+test('skipFolder: "unzipping" and "_duplicates*" sub-folders, any case, at any depth below the chosen folder', () => {
+  assert.equal(Core.skipFolder('letters/unzipping/ESL_a_P01.mp4'), true);
+  assert.equal(Core.skipFolder('letters/UnZipping/ESL_a_P01.mp4'), true);
+  assert.equal(Core.skipFolder('letters/_duplicates/ESL_a_P01.mp4'), true);
+  assert.equal(Core.skipFolder('letters/x/_Duplicates_2026/ESL_a_P01.mp4'), true);
+  assert.equal(Core.skipFolder('letters/ESL_a_P01.mp4'), false);
+  assert.equal(Core.skipFolder('letters/sub/ESL_a_P01.mp4'), false);
+  assert.equal(Core.skipFolder('letters/unzipping2/ESL_a_P01.mp4'), false);
+  assert.equal(Core.skipFolder('letters/x_duplicates/ESL_a_P01.mp4'), false);
+  // the chosen folder itself and the file name are not looked at
+  assert.equal(Core.skipFolder('unzipping/ESL_a_P01.mp4'), false);
+  assert.equal(Core.skipFolder('_duplicates/ESL_a_P01.mp4'), false);
+  assert.equal(Core.skipFolder('letters/_duplicates'), false);
+  assert.equal(Core.skipFolder('ESL_a_P01.mp4'), false);
+  assert.equal(Core.skipFolder(''), false);
+});
+
+test('cacheSource: python, browser, a meta from before the field (browser), no meta', () => {
+  assert.deepEqual(Core.cacheSource({ source: 'python mediapipe 0.10.21' }), { kind: 'python', text: 'python mediapipe 0.10.21' });
+  assert.deepEqual(Core.cacheSource({ source: 'browser mediapipe hands 0.4.1675469240' }), { kind: 'browser', text: 'browser mediapipe hands 0.4.1675469240' });
+  assert.deepEqual(Core.cacheSource({ v: 2 }), { kind: 'browser', text: 'browser' });
+  assert.deepEqual(Core.cacheSource(null), { kind: 'none', text: '—' });
+});
+
+test('cacheState: a python entry (split null) is split by the page from the cache', () => {
+  assert.equal(Core.cacheState({ v: 2, split: null, source: 'python mediapipe 0.10.21' }, 1), 'resplit');
+});

@@ -45,6 +45,28 @@
     return { ok: true, set: m[1].toUpperCase(), label: m[2], key: key, signer: m[3].toUpperCase(), ext: ext };
   }
 
+  // Sub-folders the dataset keeps for itself, not videos to import (py-extractor phase, owner
+  // decision 6): a folder named "unzipping" or starting with "_duplicates", any case, anywhere below
+  // the chosen folder. relPath: webkitRelativePath ("<chosen folder>/.../<name>"); the chosen folder
+  // itself and the file name are not looked at. tools/py_extract/skcore.py skip_folder() is the same rule.
+  function skipFolder(relPath) {
+    var parts = String(relPath || '').split('/');
+    for (var i = 1; i < parts.length - 1; i++) {
+      var d = parts[i].toLowerCase();
+      if (d === 'unzipping' || d.indexOf('_duplicates') === 0) return true;
+    }
+    return false;
+  }
+
+  // Who made a cached video's Hands result (py-extractor phase): meta.source, written by the page
+  // ("browser mediapipe hands <version>") and by tools/py_extract ("python mediapipe <version>"). A
+  // meta written before the field existed was made by the page. -> {kind:'python'|'browser'|'none', text}
+  function cacheSource(meta) {
+    if (!meta) return { kind: 'none', text: '—' };
+    var src = typeof meta.source === 'string' && meta.source ? meta.source : 'browser';
+    return { kind: src.indexOf('python') === 0 ? 'python' : 'browser', text: src };
+  }
+
   // The strings to hash (SHA-256, first 32 hex chars): the cache identity of a video file, and the
   // identity of one saved sample (file + repetition). file: {name, size, lastModified}.
   function videoIdSource(file) { return file.name + '|' + file.size + '|' + file.lastModified; }
@@ -329,6 +351,8 @@
     budgetRows: budgetRows,
     cleanLabel: cleanLabel,
     parseName: parseName,
+    skipFolder: skipFolder,
+    cacheSource: cacheSource,
     videoIdSource: videoIdSource,
     importIdSource: importIdSource,
     summarizeReps: summarizeReps,

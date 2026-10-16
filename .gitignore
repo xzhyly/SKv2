@@ -12,3 +12,5 @@ saved_gestures/*/sample_i*.json
 models/*.tmp
 # Temporary folders the browser checks make under tests/ (left behind only by an aborted run).
 tests/**/.tmp-*/
+# Python extractor (py-extractor phase): bytecode caches.
+__pycache__/

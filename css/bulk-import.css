@@ -101,6 +101,8 @@
 .bi-table tr.failed td.bi-st{color:#b91c1c;font-weight:700}
 .bi-table tr.done td.bi-st{color:#15803d;font-weight:700}
 .bi-table tr.cached td.bi-st{color:var(--text-mid)}
+.bi-table td.bi-src{color:var(--text-mid);font-size:.85em;white-space:nowrap}
+.bi-table td.bi-src.bi-src-python{color:#1d4ed8;font-weight:600}
 .bi-table td.bi-warn{color:#b45309;font-weight:700}
 .bi-empty{padding:14px;color:var(--text-mid);font-size:14px}
 

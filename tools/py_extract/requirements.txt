@@ -1,0 +1,8 @@
+# tools/py_extract: the owner's environment (Python 3.12.13, venv E:\ACADSS\IOT\mp_env, made with uv).
+# mediapipe 0.10.21 still has mp.solutions.hands; 0.10.35 and 1.x removed mp.solutions: do not upgrade.
+# opencv-python and opencv-contrib-python both install the same "cv2" package; both are pinned as the
+# owner's working environment has them.
+mediapipe==0.10.21
+numpy==1.26.4
+opencv-python==4.10.0.84
+opencv-contrib-python==4.11.0.86

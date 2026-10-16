@@ -32,6 +32,10 @@
   var TOO_LONG = 'video longer than 60 s';
   // js/gesture-data.js: detect() / createVideoDetector() gave up waiting for MediaPipe Hands.
   var DETECTOR_TIMEOUT_RE = /timed out waiting for MediaPipe results|createVideoDetector\(\): timed out/;
+  // meta.source of a Hands result this page extracts (py-extractor phase): the vendored MediaPipe
+  // Hands version (js/lib/mediapipe/hands.js VERSION, docs/system/VENDORED.md). tools/py_extract
+  // writes "python mediapipe <version>"; BulkImportCore.cacheSource() reads either.
+  var BROWSER_SOURCE = 'browser mediapipe hands 0.4.1675469240';
   var NO_SIMD = 'This page must be run on the laptop\'s Chrome: this browser has no WebAssembly SIMD, which the extractor needs. Extraction is disabled.';
   var Core = window.BulkImportCore;
   var Split = window.BulkRepSplit;
@@ -55,7 +59,7 @@
     simd: false,
     engines: 'idle',            // idle | loading | ready | failed
     engineError: null,
-    folder: { name: '', files: 0, ignored: 0, loading: false },
+    folder: { name: '', files: 0, ignored: 0, skipped: 0, loading: false },
     videos: [],                 // sorted by file name: the extraction queue
     problems: [],               // [{name, relPath, reason}]
     signs: [],                  // sign keys found, sorted
@@ -310,9 +314,12 @@
     if (state.imp.status === 'running') { toast('Wait for the import to finish, or pause it, before choosing another folder.'); return Promise.resolve(false); }
     var token = ++folderToken;
     var list = Array.prototype.slice.call(files || []);
-    var rows = [], problems = [], ignored = 0;
+    var rows = [], problems = [], ignored = 0, skipped = 0;
     list.forEach(function (f) {
       var relPath = f.webkitRelativePath || f.name;
+      // "unzipping" and "_duplicates*" sub-folders hold no dataset videos (the same rule as
+      // tools/py_extract): not listed, only counted
+      if (Core.skipFolder(relPath)) { skipped++; return; }
       var parsed = Core.parseName(f.name);
       if (!parsed.ok) {
         if (JUNK_RE.test(f.name)) ignored++;
@@ -326,7 +333,7 @@
       });
     });
     var first = list.length ? (list[0].webkitRelativePath || '') : '';
-    state.folder = { name: first.indexOf('/') > 0 ? first.split('/')[0] : '', files: list.length, ignored: ignored, loading: true };
+    state.folder = { name: first.indexOf('/') > 0 ? first.split('/')[0] : '', files: list.length, ignored: ignored, skipped: skipped, loading: true };
     state.run.status = 'idle';
     state.run.index = -1;
     state.run.current = null;
@@ -534,6 +541,7 @@
 
   function renderCounts() {
     var cached = state.videos.filter(function (r) { return r.cached; }).length;
+    var byPython = state.videos.filter(function (r) { return r.cached && Core.cacheSource(r.meta).kind === 'python'; }).length;
     $('bi-n-videos').textContent = state.videos.length;
     $('bi-n-signs').textContent = state.signs.length;
     $('bi-n-signers').textContent = state.signers.length;
@@ -541,9 +549,10 @@
     $('bi-n-cached').textContent = cached;
     $('bi-folder-name').textContent = state.folder.files
       ? (state.folder.name ? state.folder.name + ' · ' : '') + state.folder.files + ' files' +
-        (state.folder.ignored ? ' (' + state.folder.ignored + ' ignored)' : '')
+        (state.folder.ignored ? ' (' + state.folder.ignored + ' ignored)' : '') +
+        (state.folder.skipped ? ' (' + state.folder.skipped + ' in unzipping / _duplicates folders, skipped)' : '')
       : 'No folder chosen.';
-    $('bi-count').textContent = state.videos.length ? state.videos.length + ' videos · ' + cached + ' extracted' : '';
+    $('bi-count').textContent = state.videos.length ? state.videos.length + ' videos · ' + cached + ' extracted' + (byPython ? ' (' + byPython + ' by python)' : '') : '';
     $('bi-problem-count').textContent = state.problems.length ? '(' + state.problems.length + ')' : '';
     $('bi-video-count').textContent = state.videos.length ? '(' + state.videos.length + ')' : '';
     $('bi-to-extract').disabled = !state.videos.length;
@@ -575,16 +584,25 @@
   var STATUS_TEXT = {
     pending: 'waiting', cached: 'already extracted', saving: 'saving…', done: 'done', skipped: 'skipped (already extracted)'
   };
+  // A cached Hands result that was never split: tools/py_extract writes split null and leaves the
+  // split to this page (Start makes it from the cached frames; no video is read).
+  function notSplitYet(meta) { return !!(meta && meta.v === Core.META_VERSION && !meta.split); }
   function statusText(row) {
     var cs = row.meta && (row.status === 'cached' || row.status === 'skipped') ? Core.cacheState(row.meta, Split.SPLIT.VERSION) : null;
     if (cs === 'old') return 'extracted by the old importer: Start reads it again';
+    if (cs === 'resplit' && notSplitYet(row.meta)) {
+      return 'already extracted (' + Core.cacheSource(row.meta).kind + '): Start splits it from the cache' +
+        (needsCandidate(row, row.meta) ? ', then makes the avatar clip' : '');
+    }
     if (cs === 'resplit') return 'split with older settings: Start splits it again from the cache';
     if (row.status === 'hands') return 'reading hands ' + Math.round(row.progress * 100) + '%';
     if (row.status === 'holistic') return 'avatar clip ' + Math.round(row.progress * 100) + '%';
     if (row.status === 'failed' && row.failedStep === 'holistic') return 'avatar clip failed: ' + row.error + ' (recognition data kept)';
     if (row.status === 'failed') return 'failed: ' + row.error;
-    if (row.status === 'done' && row.did && row.did.resplit && !row.did.hands && !row.did.holistic) return 'done (split again from the cache)';
+    if (row.status === 'done' && row.did && row.did.resplit && !row.did.hands && !row.did.holistic) return row.did.firstSplit ? 'done (split from the cache)' : 'done (split again from the cache)';
+    if (row.status === 'done' && row.did && row.did.resplit && !row.did.hands) return 'done (split from the cache + avatar clip)';
     if (row.status === 'done' && row.did && !row.did.hands) return 'done (avatar clip only)';
+    if (row.status === 'cached' && Core.cacheSource(row.meta).kind === 'python') return 'already extracted (python)';
     return STATUS_TEXT[row.status] || row.status;
   }
   // A video's meta.candidate ({state:'ok'|'none', ...}), or null while it has none.
@@ -633,6 +651,7 @@
       cell(tr, '', 'bi-num bi-reps');
       cell(tr, '', 'bi-st');
       cell(tr, '', 'bi-cand');
+      cell(tr, '', 'bi-src');
       rowEls[row.id] = tr;
       frag.appendChild(tr);
     });
@@ -656,6 +675,9 @@
     var c = candidateOf(row.meta);
     cand.classList.toggle('bi-warn', !!(c && c.state === 'none') || !!(c && clipTakenBy(row)) ||
       (!c && !mayMakeCandidate(row) && state.avatarSigners.indexOf(row.parsed.signer) >= 0));
+    var src = tr.querySelector('.bi-src');
+    src.textContent = Core.cacheSource(row.meta).text;
+    src.classList.toggle('bi-src-python', Core.cacheSource(row.meta).kind === 'python');
     tr.className = (row.status === 'failed' ? 'failed' : row.status === 'done' ? 'done' : row.cached ? 'cached' : '') +
       (state.run.current === row ? ' current' : '');
   }
@@ -855,7 +877,9 @@
   // from it: the record of the samples Import saved for this video (imported: their importIds),
   // the reps the first importer version saved (legacyReps), and the avatar candidate when the old
   // split was the 3 clear reps (otherwise its clip may hold two reps: the avatar step makes it again).
-  function buildMeta(row, r, split, handsMs, old) {
+  // source: who made the Hands result r (meta.source): BROWSER_SOURCE after this page's own Hands
+  // pass; on a split redone from the cache, the source of the cached frames (old.source).
+  function buildMeta(row, r, split, handsMs, old, source) {
     var reps = Core.summarizeReps(r, split).map(function (rep, i) {
       rep.startFrame = split.reps[i].startFrame;
       rep.endFrame = split.reps[i].endFrame;
@@ -888,7 +912,8 @@
       imported: old && Array.isArray(old.imported) ? old.imported.slice() : [],
       legacyReps: legacy,
       // when the Hands result was first cached; later updates keep it
-      savedAt: old && old.v === Core.META_VERSION && old.savedAt ? old.savedAt : new Date().toISOString()
+      savedAt: old && old.v === Core.META_VERSION && old.savedAt ? old.savedAt : new Date().toISOString(),
+      source: source || BROWSER_SOURCE
     };
   }
 
@@ -928,7 +953,8 @@
       if (!cached) plan = 'full';          // no frames in the cache: read the video again
       else {
         if (!cached.durationMs) cached.durationMs = meta.hands.durationMs;
-        var resplit = buildMeta(row, cached, splitOf(cached.frames, cached), meta.hands.ms || 0, meta);
+        did.firstSplit = notSplitYet(meta);
+        var resplit = buildMeta(row, cached, splitOf(cached.frames, cached), meta.hands.ms || 0, meta, Core.cacheSource(meta).text);
         await cachePost({ action: 'put_video', id: row.id, meta: resplit });
         adoptMeta(row, resplit);
         meta = resplit;
@@ -943,12 +969,13 @@
       var r = h.result;
       timing.handsMs = h.ms;
       timing.handsFrames = r.frames.length;
-      meta = buildMeta(row, r, h.split, h.ms, row.meta);
+      meta = buildMeta(row, r, h.split, h.ms, row.meta, BROWSER_SOURCE);
       // every frame (not only the reps'): the split can be redone from the cache
       var hands = {
         id: row.id, v: Core.META_VERSION,
         meta: { videoWidth: r.videoWidth, videoHeight: r.videoHeight, fps: r.fps, durationMs: r.durationMs, input: r.input },
-        frames: r.frames
+        frames: r.frames,
+        source: BROWSER_SOURCE
       };
       if (signal.aborted) throw abortError();
       row.status = 'saving';
@@ -1011,7 +1038,9 @@
     var left = 0;
     for (var i = Math.max(0, run.index); i < state.videos.length; i++) {
       var p = planWork(state.videos[i]);
-      if (p === 'full' || p === 'candidate') left++;   // a re-split from the cache takes no time
+      // a re-split from the cache takes no time; one followed by the avatar step (a video the
+      // python extractor cached, of an avatar signer) costs a Holistic pass
+      if (p === 'full' || p === 'candidate' || (p === 'resplit' && needsCandidate(state.videos[i], state.videos[i].meta))) left++;
     }
     var mean = w.ms / w.videos;
     var spent = run.status === 'running' && run.current ? Math.min(mean, now() - videoSince) : 0;
@@ -1591,6 +1620,7 @@
       else if (!meta && v.status === 'failed') is('failed', 'extraction failed: ' + v.error, 'extraction failed');
       else if (!meta) is('not-extracted', 'not extracted yet');
       else if (cs === 'old') is('stale', 'extracted by the old importer: press Start on Extract to read it again', 'extracted by the old importer');
+      else if (cs === 'resplit' && notSplitYet(meta)) is('stale', 'extracted (' + Core.cacheSource(meta).kind + '), not split yet: press Start on Extract (the split is made from the cache)', 'not split yet');
       else if (cs === 'resplit') is('stale', 'split with older settings: press Start on Extract (the split is redone from the cache)', 'split with older settings');
       else if (rec.indexOf(p.signer) < 0) is('not-used', NOT_USED, 'not used for recognition');
       else {
