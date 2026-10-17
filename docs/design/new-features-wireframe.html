@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>New Features Wireframe</title>
+<style>
+:root{--navy:#1c3560;--orange:#f47b20;--bg:#eef1f5;--card:#fff;--line:#dfe3ea;--text:#1c2b44;--muted:#6b7a90;--ok:#1e9e5a;--bad:#d64541}
+*{box-sizing:border-box;margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif}
+body{background:#2b2b2b;color:var(--text);padding:24px}
+h2{color:#fff;font-size:15px;margin:28px 0 8px}h2 small{color:#bbb;font-weight:400}
+.frame{width:1024px;height:600px;background:var(--bg);position:relative;overflow:hidden;border-radius:4px;display:flex;flex-direction:column}
+.bar{height:64px;flex:none;background:var(--navy);display:flex;align-items:center;justify-content:space-between;padding:0 16px;color:#fff;gap:12px}
+.back{min-width:110px;height:44px;border:2px solid #fff;border-radius:22px;display:grid;place-items:center;font-weight:700;padding:0 14px}
+.ttl{font-size:20px;font-weight:800;letter-spacing:1px}
+.chip{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);border-radius:22px;padding:6px 14px 6px 6px;display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600}
+.av{width:30px;height:30px;border-radius:50%;background:var(--orange);display:grid;place-items:center;font-weight:800}
+.tag{font-size:10px;background:var(--orange);border-radius:8px;padding:1px 6px}
+.body{flex:1;padding:16px 24px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.lbl{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.seg{display:flex;border:2px solid var(--navy);border-radius:10px;overflow:hidden}
+.seg div{flex:1;height:52px;display:grid;place-items:center;font-weight:700;color:var(--navy);font-size:15px}
+.seg .on{background:var(--navy);color:#fff}
+.btn{height:52px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:16px;padding:0 20px}
+.pri{background:var(--orange);color:#fff}.sec{border:2px solid var(--navy);color:var(--navy);background:#fff}
+.prog{display:flex;align-items:center;gap:12px;font-weight:700}
+.pbar{flex:1;height:10px;background:#d8dee8;border-radius:5px;overflow:hidden}.pbar i{display:block;height:100%;background:var(--orange)}
+.vid{background:#cfd6e1;border-radius:10px;display:grid;place-items:center;color:var(--muted);font-size:13px;position:relative}
+.play{width:46px;height:46px;border-radius:50%;background:rgba(28,53,96,.85);color:#fff;display:grid;place-items:center;font-size:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ch{height:64px;background:#fff;border:2px solid var(--line);border-radius:10px;display:flex;align-items:center;padding:0 18px;font-size:18px;font-weight:700;gap:12px}
+.ch b{width:30px;height:30px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font-size:14px;color:var(--muted)}
+.ch.ok{border-color:var(--ok);background:#e8f7ef}.ch.bad{border-color:var(--bad);background:#fdecec}
+.vc{background:#fff;border:2px solid var(--line);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px}
+.vc .vid{height:150px}.vc.ok{border-color:var(--ok)}.vc.bad{border-color:var(--bad)}
+.vc span{font-size:13px;font-weight:700;color:var(--muted)}
+.box{background:#fff;border:1px solid var(--line);border-radius:10px}
+.list{overflow:hidden;display:flex;flex-direction:column}
+.li{display:flex;align-items:center;gap:14px;padding:0 18px;height:64px;border-bottom:1px solid var(--line)}
+.li .m{flex:1}.li .m b{display:block;font-size:15px}.li .m small{color:var(--muted);font-size:12px}
+.pill{font-size:11px;font-weight:700;border-radius:10px;padding:3px 8px;background:var(--bg);color:var(--muted)}
+.pill.g{background:#fff1e6;color:var(--orange)}.pill.ok{background:#e8f7ef;color:var(--ok)}.pill.bad{background:#fdecec;color:var(--bad)}
+.arrow{color:var(--muted);font-size:22px}
+.filters{display:flex;gap:10px}.sel{height:44px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.thread{flex:1;padding:14px 20px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
+.msg{max-width:60%;padding:10px 14px;border-radius:16px;font-size:15px}
+.msg small{display:block;font-size:11px;opacity:.75;margin-bottom:2px;font-weight:700}
+.msg.l{background:#fff;border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
+.msg.r{background:var(--navy);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
+.day{align-self:center;font-size:11px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;color:var(--muted);padding:10px 14px;border-bottom:1px solid var(--line)}
+td{padding:0 14px;height:56px;border-bottom:1px solid var(--line)}
+.mini{height:36px;border-radius:8px;padding:0 12px;font-size:13px;font-weight:700;display:inline-grid;place-items:center;border:2px solid var(--navy);color:var(--navy);margin-right:6px}
+.mini.r{border-color:var(--bad);color:var(--bad)}
+.big{font-size:64px;font-weight:800;color:var(--navy);line-height:1}
+.note{background:#fff1e6;border:1px solid #f7c9a3;border-radius:10px;padding:12px 16px;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+.notes{width:1024px;background:#fff;color:var(--text);border-radius:4px;padding:16px 20px;font-size:13px;line-height:1.6;margin-top:28px}
+.notes li{margin-left:18px}
+</style></head><body>
+
+<!-- 1 -->
+<h2>1. Quiz setup <small>(guest, user, admin)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Home</div><div class="ttl">QUIZ</div><div class="chip"><span class="av">G</span>Guest</div></div>
+ <div class="body" style="gap:14px;padding-top:22px">
+  <div class="lbl">Mode</div>
+  <div class="seg"><div class="on">Sign → Text<br></div><div>Text → Sign</div></div>
+  <div class="lbl">Language</div>
+  <div class="seg" style="width:50%"><div>ESL</div><div class="on">FSL</div></div>
+  <div class="lbl">Category</div>
+  <div class="seg"><div>Letters</div><div>Numbers</div><div class="on">Words</div><div>Phrases</div><div>All</div></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto">
+   <span style="color:var(--muted);font-size:14px">10 questions · score saved only when logged in</span>
+   <div class="btn pri" style="width:260px">Start quiz</div></div>
+ </div>
+</div>
+
+<!-- 2 -->
+<h2>2. Sign → Text question <small>(after tapping an answer: green/red right away, then Next)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">✕ Quit</div><div class="ttl">WHAT IS THIS SIGN?</div><div style="min-width:110px;text-align:right;font-weight:700">Score 2</div></div>
+ <div class="body">
+  <div class="prog">3 / 10<div class="pbar"><i style="width:30%"></i></div></div>
+  <div style="display:flex;gap:16px;flex:1;min-height:0">
+   <div class="vid" style="width:420px"><div class="play">↻</div><span style="position:absolute;bottom:10px">sign video / avatar · loops · tap ↻ to replay</span></div>
+   <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+    <div class="ch"><b>A</b>Hello</div>
+    <div class="ch ok"><b>B</b>Thank you ✓</div>
+    <div class="ch bad"><b>C</b>Sorry ✕</div>
+    <div class="ch"><b>D</b>Good morning</div>
+    <div class="btn pri" style="margin-top:auto">Next →</div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- 3 -->
+<h2>3. Text → Sign question <small>(4 videos: still image first, only the tapped one plays)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">✕ Quit</div><div class="ttl">WHICH SIGN IS “SALAMAT”?</div><div style="min-width:110px;text-align:right;font-weight:700">Score 2</div></div>
+ <div class="body">
+  <div class="prog">4 / 10<div class="pbar"><i style="width:40%"></i></div></div>
+  <div class="grid2" style="grid-template-columns:repeat(4,1fr)">
+   <div class="vc"><div class="vid"><div class="play">▶</div></div><span>A</span></div>
+   <div class="vc ok"><div class="vid"><div class="play">▶</div></div><span style="color:var(--ok)">B ✓ Salamat</span></div>
+   <div class="vc bad"><div class="vid"><div class="play">▶</div></div><span style="color:var(--bad)">C ✕ Paalam</span></div>
+   <div class="vc"><div class="vid"><div class="play">▶</div></div><span>D</span></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto">
+   <span style="color:var(--muted);font-size:14px">Tap ▶ to watch · tap the card again to choose</span>
+   <div class="btn pri" style="width:260px">Next →</div></div>
+ </div>
+</div>
+
+<!-- 4 -->
+<h2>4. Result <small>(guest sees the log-in note)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Home</div><div class="ttl">RESULT</div><div class="chip"><span class="av">G</span>Guest</div></div>
+ <div class="body" style="flex-direction:row;gap:20px">
+  <div class="box" style="width:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
+   <div class="big">7/10</div><div style="color:var(--muted)">Sign → Text · FSL · Words</div>
+   <div class="btn pri" style="width:260px;margin-top:20px">Try again</div>
+   <div class="btn sec" style="width:260px">New quiz</div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;gap:12px;min-height:0">
+   <div class="note"><span>Log in to save your score.</span><div class="mini" style="margin:0">Log in</div></div>
+   <div class="lbl">Missed (3)</div>
+   <div class="box list">
+    <div class="li"><div class="m"><b>Paalam</b><small>You chose: Salamat</small></div><span class="pill">▶ Watch</span></div>
+    <div class="li"><div class="m"><b>Magandang umaga</b><small>You chose: Kumusta</small></div><span class="pill">▶ Watch</span></div>
+    <div class="li" style="border:0"><div class="m"><b>Tubig</b><small>You chose: Pagkain</small></div><span class="pill">▶ Watch</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- 5 -->
+<h2>5. Conversations <small>(user: own only · admin: all + filter, guest included)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Home</div><div class="ttl">CONVERSATIONS</div><div class="chip"><span class="av">A</span>Admin <span class="tag">ADMIN</span></div></div>
+ <div class="body">
+  <div class="filters"><div class="sel">User: All ▾</div><div class="sel">Language: All ▾</div><span style="margin-left:auto;align-self:center;color:var(--muted);font-size:13px">admin only — users don't see filters</span></div>
+  <div class="box list">
+   <div class="li"><div class="m"><b>Hello, how are you?</b><small>Oct 17, 2:14 PM · 12 messages · FSL</small></div><span class="pill g">Guest</span><span class="arrow">›</span></div>
+   <div class="li"><div class="m"><b>Where is the clinic?</b><small>Oct 17, 11:02 AM · 8 messages · ESL</small></div><span class="pill">janel</span><span class="arrow">›</span></div>
+   <div class="li"><div class="m"><b>Thank you very much</b><small>Oct 16, 4:40 PM · 5 messages · FSL</small></div><span class="pill">rhaiza</span><span class="arrow">›</span></div>
+   <div class="li"><div class="m"><b>Good morning</b><small>Oct 16, 9:15 AM · 3 messages · ESL</small></div><span class="pill g">Guest</span><span class="arrow">›</span></div>
+   <div class="li" style="border:0;justify-content:center;color:var(--muted)">Load more</div>
+  </div>
+ </div>
+</div>
+
+<!-- 6 -->
+<h2>6. Conversation view <small>(read-only thread)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Back</div><div class="ttl" style="font-size:17px">Hello, how are you?</div><div style="min-width:110px;text-align:right;font-size:13px">Guest · FSL</div></div>
+ <div class="thread">
+  <div class="day">Oct 17, 2:14 PM</div>
+  <div class="msg l"><small>🤟 Signer</small>Hello, how are you?</div>
+  <div class="msg r"><small>⌨ / 🎤 Speaker</small>I'm fine. How can I help you?</div>
+  <div class="msg l"><small>🤟 Signer</small>Where is the comfort room?</div>
+  <div class="msg r"><small>⌨ / 🎤 Speaker</small>Second floor, to the left.</div>
+  <div class="msg l"><small>🤟 Signer</small>Thank you</div>
+ </div>
+</div>
+
+<!-- 7 -->
+<h2>7. Quiz scores <small>(user: own · admin: all + filter)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Home</div><div class="ttl">QUIZ SCORES</div><div class="chip"><span class="av">J</span>Janel</div></div>
+ <div class="body">
+  <div style="display:flex;gap:12px">
+   <div class="box" style="flex:1;padding:14px 18px"><div class="lbl">Quizzes taken</div><div style="font-size:30px;font-weight:800">12</div></div>
+   <div class="box" style="flex:1;padding:14px 18px"><div class="lbl">Average</div><div style="font-size:30px;font-weight:800">78%</div></div>
+   <div class="box" style="flex:1;padding:14px 18px"><div class="lbl">Best</div><div style="font-size:30px;font-weight:800">10/10</div></div>
+  </div>
+  <div class="box list">
+   <div class="li"><div class="m"><b>Sign → Text · FSL · Words</b><small>Oct 17, 3:10 PM</small></div><span class="pill ok">9/10</span></div>
+   <div class="li"><div class="m"><b>Text → Sign · ESL · Letters</b><small>Oct 17, 2:55 PM</small></div><span class="pill bad">5/10</span></div>
+   <div class="li" style="border:0"><div class="m"><b>Sign → Text · FSL · Numbers</b><small>Oct 16, 1:20 PM</small></div><span class="pill ok">8/10</span></div>
+  </div>
+ </div>
+</div>
+
+<!-- 8 -->
+<h2>8. Manage users <small>(admin only · Add / Reset password open a full-screen form like Login)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Home</div><div class="ttl">MANAGE USERS</div><div class="chip"><span class="av">A</span>Admin <span class="tag">ADMIN</span></div></div>
+ <div class="body">
+  <div style="display:flex;justify-content:space-between"><div class="sel">Show: Active ▾</div><div class="btn pri" style="height:44px">+ Add user</div></div>
+  <div class="box"><table>
+   <tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Last login</th><th></th></tr>
+   <tr><td><b>Admin</b></td><td>admin</td><td><span class="pill g">Admin</span></td><td><span class="pill ok">Active</span></td><td>Today</td><td><span class="mini">Reset password</span></td></tr>
+   <tr><td><b>Janel</b></td><td>janel</td><td><span class="pill">User</span></td><td><span class="pill ok">Active</span></td><td>Today</td><td><span class="mini">Reset password</span><span class="mini r">Deactivate</span></td></tr>
+   <tr><td><b>Rhaiza</b></td><td>rhaiza</td><td><span class="pill">User</span></td><td><span class="pill ok">Active</span></td><td>Oct 16</td><td><span class="mini">Reset password</span><span class="mini r">Deactivate</span></td></tr>
+   <tr><td><b>Test</b></td><td>test1</td><td><span class="pill">User</span></td><td><span class="pill bad">Inactive</span></td><td>—</td><td><span class="mini">Activate</span></td></tr>
+  </table></div>
+ </div>
+</div>
+
+<!-- 9 -->
+<h2>9. Let's Talk header <small>(only the top bar changes; the rest of Let's Talk stays)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="back">← Home</div><div class="ttl">LET'S TALK</div><div style="display:flex;gap:10px;align-items:center"><div class="back" style="min-width:0">+ New conversation</div><div class="chip"><span class="av">J</span>Janel</div></div></div>
+ <div class="thread" style="background:repeating-linear-gradient(45deg,#e4e8ee 0 10px,#eceff4 10px 20px);align-items:center;justify-content:center;color:var(--muted)">
+  Existing Let's Talk screen (camera, chat, avatar, mic/text) — unchanged. Every message auto-saves to the current conversation.
+ </div>
+</div>
+
+<div class="notes"><b>Rules (para sa Claude Code later)</b><ul>
+<li>Same theme as dashboard. Plain HTML/CSS + inline SVG, walang blur/animation/images. Touch targets ≥ 44 px, inputs 52 px.</li>
+<li>Quiz: 10 random questions from the chosen language + category; 3 wrong choices from the same category. Text → Sign: still image muna (poster), isang video lang ang nagpe-play. Answer = 1 tap, then green/red + Next. Guest: walang save; user: save to quiz_attempts + quiz_answers.</li>
+<li>Conversations & Quiz scores: iisang page bawat isa; user = own only, admin = all + filter. List: 20 per load + "Load more".</li>
+<li>Let's Talk: title = first message; "New conversation" starts a new one. Guest conversations saved (user_id NULL), admin lang nakakakita.</li>
+<li>Manage users: no delete — deactivate only. Add / Reset password = full-screen form, fields on top (keyboard-safe).</li>
+<li>Admin pages redirect non-admins to the dashboard.</li>
+</ul></div>
+</body></html>
