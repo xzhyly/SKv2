@@ -1038,6 +1038,8 @@ so a later session does not re-litigate them:
       also unauthenticated. The gesture-training page's PIN gate
       (`CORRECT_PIN`, `gesture-training-ui.js:23`) is client-side only.
     - Not fixed; logged per owner instruction.
+      (*2026-10-18: the client-side PIN gate is gone — the logged-in account's admin role is the gate now,
+      see item 158 and the accounts-quiz update below.*)
 
     **Update (2026-09-24, DB normalization):** the `core_api.php` half of
     this item is resolved by that file's deletion (see item 2). `admin_api.php`
@@ -1840,8 +1842,9 @@ so a later session does not re-litigate them:
      (both); the `candidates` listing (`php/api/bulk_import.php`) returns its fixed fields only, so avatar-clips.html's
      candidate picker does not show it. The clip itself names its build in `extractor.lib` ("python mediapipe 0.10.21
      holistic" or "@mediapipe/holistic 0.5.1675471629"), which "Use this" / Step 5 Apply keep in `avatar.json`.
-157. **Medium, open (accounts-quiz, 2026-10-18, owner decision needed): the training/import write endpoints have
-     no session check.** The admin pages now send a non-admin to the dashboard (`js/sk-account.js` `adminPage()`)
+157. **Medium, open — accepted by the owner (accounts-quiz, 2026-10-18): the training/import write endpoints have
+     no session check.** Owner answer: leave them open (demo; the bulk importer and the py tools call them
+     without a login). The admin pages now send a non-admin to the dashboard (`js/sk-account.js` `adminPage()`)
      and the admin APIs of this phase answer 403 (`php/admin_api.php`, `conversations.php`, quiz results), but
      `save_gesture.php`, `signs.php` POST, `gesture_category.php`, `compile_model.php`, `bulk_import.php` and
      `avatar_clip.php` still answer anyone who reaches them, as before. They were left unchanged because the bulk
@@ -1849,11 +1852,13 @@ so a later session does not re-litigate them:
      logic, py tools") and so do ~20 php-cgi tests. Adding `sk_require_admin($conn)` at the top of each write
      path is one line per file plus a login in each test helper (`tests/conversations/helper.mjs`
      `adminCookie()` shows how).
-158. **Low, open (accounts-quiz): the admin pages keep their client-side PIN pad.** Owner rule "keep how admin
-     login works today": a logged-in admin still types PIN 2026 on Train Gestures / View Reports / Bulk import /
-     Avatar clips (`CORRECT_PIN`, `js/gesture-training-ui.js:33`). Dropping it for a logged-in admin is a small
-     change in `SKAccount.adminPage()` (set the `sk_train_unlocked` flag, which bulk-import and avatar-clips
-     already honour, and unlock gesture-training / reports the way `trVerifyPin()` does).
+158. **Resolved 2026-10-18 (accounts-quiz, owner answer (a)): the admin PIN is gone.** The PIN pad markup, its
+     JavaScript (`CORRECT_PIN = '2026'`, `trPressPin`/`trVerifyPin`, the `data-pin` pads, the 10-minute
+     `sessionStorage.sk_train_unlocked` flag) and its CSS were removed from `gesture-training.html`,
+     `reports.html`, `bulk-import.html`, `avatar-clips.html`, `js/gesture-training-ui.js`, `js/bulk-import-ui.js`,
+     `js/avatar-clips-ui.js`, `css/gesture-training.css`. There never was a PHP PIN check. The admin pages and
+     admin APIs are protected only by the logged-in admin role (`SKAccount.adminPage()` in each page's `<head>`;
+     `sk_require_admin()` in the admin APIs). `tests/accounts-quiz/no-pin.test.mjs` fails if any of it comes back.
 159. **Low, open (accounts-quiz): no idle log-out.** The wireframe lists "auto log out after ~5 min idle" as
      optional; not built. A session lasts until Log out, until the browser closes (session cookie), or until
      PHP's session garbage collection removes it (`session.gc_maxlifetime`, PHP default 1440 s of no request;

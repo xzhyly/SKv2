@@ -1,12 +1,12 @@
 Phase: Accounts, conversation history, quiz, dashboard revision (accounts-quiz)
 Date: 2026-10-18
 Status: DONE
-Decision needed from owner: two small yes/no choices, nothing blocks testing. (a) Should a logged-in admin still type the PIN on Train Gestures / Reports / Bulk import (kept, per "keep how admin login works today")? (b) Should the training/import write APIs also answer 403 to non-admins (left open, DEBT 157)?
+Decision needed from owner: none. Owner answers applied: (a) admin PIN removed completely; (b) training/import save endpoints stay open.
 
 # Accounts, conversation history, quiz, dashboard revision — report
 
-Branch `accounts-quiz`, made from `py-avatar` (`9672310`). Two commits: code, then docs (this report, the
-screenshots and `docs/system/`). Nothing merged; nothing pushed to `revision` or `main`. No video touched, no
+Branch `accounts-quiz`, made from `py-avatar` (`9672310`). First round: two commits, code then docs. After the owner's
+answers (section 2a): two more commits, code then docs. Nothing merged; nothing pushed to `revision` or `main`. No video touched, no
 `saved_gestures` data changed, nothing under `archive/`, `docs/revision/MEMORY.md` and
 `docs/system/MANUAL-CHECKS.md` untouched. Recognition (knnPredict, compile, models), live capture, the avatar
 renderer, the bulk import logic and the py tools are unchanged.
@@ -25,7 +25,7 @@ interception — nothing was written into `saved_gestures/`.
 |---|---|---|
 | 1 | Dashboard: 3 cards for everyone; "Log in" or a name chip with a menu top-right | `index.html`: Learn Signs, Let's Talk, Quiz (same 200x270 cards, `css/style.css` grid `repeat(3, 200px)`). Guest: "Log in". Logged in: chip (initial, name, ADMIN tag, caret) -> menu. User: My conversations, My quiz scores, Log out. Admin: Train Gestures, View Reports, Bulk import, Manage users, All conversations, Quiz results, Log out. Items 48 px. |
 | 2 | Login: own full-screen page, two tabs, fields on top, 52 px inputs, >= 44 px buttons; Create account = display name, username, password (min 4), role always user, logged in at once; deactivated users cannot log in; `last_login_at` | `login.html` + `php/auth.php`. Every field and button ends at y <= 320 (the on-screen keyboard is 280 px tall and starts at y = 320 — measured); inputs 52 px, buttons 52 px. Username: 2-30 letters and numbers. A login sets `last_login_at`; a deactivated account gets "This account is turned off. Ask an admin to turn it back on." and its open session stops working. The on-screen keyboard now also opens for password fields (`js/virtual-keyboard.js`, one condition). |
-| 3 | Admin-only pages redirect a non-admin to the dashboard; admin APIs 403; keep how admin login works; same login | `gesture-training`, `reports`, `bulk-import`, `avatar-clips`, `diagnostic`, `users`: a guest or user lands on `index.html` before the page shows. `php/admin_api.php` (now on the PHP session, no more trusted `requester_id`), `conversations.php` list-all/delete/clear_all and quiz results for all users answer 403. Admin = a `users` row with role admin, seeded admin / admin123, logging in on the same `login.html`; the admin pages' PIN pad is kept (see section 2). |
+| 3 | Admin-only pages redirect a non-admin to the dashboard; admin APIs 403; keep how admin login works; same login | `gesture-training`, `reports`, `bulk-import`, `avatar-clips`, `diagnostic`, `users`: a guest or user lands on `index.html` before the page shows. `php/admin_api.php` (now on the PHP session, no more trusted `requester_id`), `conversations.php` list-all/delete/clear_all and quiz results for all users answer 403. Admin = a `users` row with role admin, seeded admin / admin123, logging in on the same `login.html`. **No PIN** (owner answer (a), section 2a): the logged-in admin role is the only gate. |
 | 4 | Let's Talk: name chip and "+ New conversation" in the top bar; `user_id`, `title` = first message | `talk.html` header right side; guest sees a "Guest" chip. Saved with the session's user id (NULL for a guest) and the first message (trimmed, 120 characters) as title (`php/api/save_conversation.php`). "+ New conversation" ends the conversation like End Conversation and starts a new one. Nothing else in Let's Talk changed. |
 | 5 | Conversations page: user own, admin all + User and Language filters, 20 per load + Load more, read-only thread | `conversations.html` + `php/api/conversations.php` (the server applies the same rule). |
 | 6 | Quiz: setup, 10 questions, clips, one-tap answers, result, save only when logged in, scores page | `quiz.html`, `js/quiz-core.js`, `js/quiz-ui.js`, `php/api/quiz.php`, `quiz-scores.html`. |
@@ -35,14 +35,15 @@ interception — nothing was written into `saved_gestures/`.
 
 ## 2. Choices I made (please confirm or overrule)
 
-1. **Admin PIN kept.** "Keep how admin login works today; make it the same login" was read as: same `users`
+1. **Admin PIN kept** — *replaced by owner answer (a), see 2a: the PIN is removed.* First reading: same `users`
    table and seeded admin, same `login.html` for everyone, and the admin pages behave exactly as before for an
    admin — PIN pad included. A non-admin never reaches the PIN (sent to the dashboard first). Dropping the PIN for a
-   logged-in admin is a small change (DEBT 158). **Decision (a).**
+   logged-in admin is a small change (DEBT 158).
 2. **Training/import write APIs left open.** `save_gesture.php`, `signs.php` POST, `gesture_category.php`,
    `compile_model.php`, `bulk_import.php`, `avatar_clip.php` still answer anyone, as before: the bulk import logic
    and the py tools (both "must not change") and ~20 existing php-cgi tests call them without a session. The admin
-   APIs of this phase (users, all conversations, quiz results) do answer 403. **Decision (b)**, DEBT 157.
+   APIs of this phase (users, all conversations, quiz results) do answer 403. *Owner answer (b): keep them open*
+   (DEBT 157, accepted).
 3. **Seeded admin password.** The admin hash in the old `database_setup.sql` (the same one as in the laptop's dumps,
    `users.id = 1`) does **not** match `admin123` — checked with `password_verify()`. So on the laptop the admin could
    not log in with admin123. The migration replaces that exact hash (and only that hash) with a real hash of
@@ -62,6 +63,30 @@ interception — nothing was written into `saved_gestures/`.
    self-deactivation), as `auth.php` answered before: the browser logs every non-2xx answer as a console error. "Not
    an admin" is 403.
 8. **Not built (optional in the wireframe):** auto log-out after ~5 min idle (DEBT 159).
+
+## 2a. Owner answers (applied after the first push)
+
+**(a) "Remove the admin PIN completely."** Done. Removed: the PIN pad markup from `gesture-training.html`,
+`reports.html`, `bulk-import.html`, `avatar-clips.html`; its JavaScript (`CORRECT_PIN = '2026'`,
+`trPressPin`/`trDeletePin`/`trClearPin`/`trVerifyPin`, the `data-pin` handlers, the 10-minute
+`sessionStorage.sk_train_unlocked` flag) from `js/gesture-training-ui.js`, `reports.html`, `js/bulk-import-ui.js`,
+`js/avatar-clips-ui.js` and `js/sk-account.js`; its CSS from `css/gesture-training.css` and `reports.html`. There was
+no PHP PIN check and no stored PIN setting to remove (the PIN only ever lived in those scripts). Each page now opens
+its UI directly; `reports.html` loads its Conversations tab on page load; Bulk import and Avatar clips start on
+`DOMContentLoaded`. Protection is only the logged-in admin role: a non-admin opening an admin page goes to the
+dashboard (`SKAccount.adminPage()` in the page `<head>`), and the admin APIs answer 403 (`sk_require_admin()`).
+New `tests/accounts-quiz/no-pin.test.mjs` scans every served file for any PIN remnant and checks every admin page's
+`<head>` guard; the e2e check now asserts each admin page opens at once for an admin with no PIN element.
+
+**(b) "Leave the training/import save endpoints open."** Unchanged; DEBT 157 marked accepted.
+
+Tests that typed the PIN or set the unlock flag now just open the page (they log in as admin through
+`tests/video-capture/cdp.mjs`): `tests/sign-texts/step1-check`, `dataset-check`, `reports-keyboard-check`,
+`verify-e2e`; `tests/compact-model/training-check`, `scale-check`; `tests/video-capture/e2e`, `capture-ui-check`,
+`screenshots`, `startup-check`; `tests/bulk-import/extract-check` (its PIN section is now "admin: the page opens at
+once, no PIN pad"; its Holistic-failure case injects the failing init before the page starts, since there is no PIN
+wait any more — verified here on the page), `avatar-step-check`, `candidates-panel-check`, `import-flow-check`,
+`verify-e2e`; `tests/avatar/admin-check` ("direct visit opens the page"), `import-check`, `talk-avatar-check`.
 
 ## 3. Files
 
@@ -122,14 +147,20 @@ fails" case). `tests/avatar/avatar-clip-endpoint.test.mjs` failed 1 in the basel
 on a second baseline run too, so that one is timing). Changed for this phase: `conversations-admin.test.mjs` now logs in
 as admin (16/16), `schema-guard.test.mjs` expects 7 tables (3/3).
 
-**New tests:** `tests/accounts-quiz/*.test.mjs` 37 tests, 0 fail (auth 8, admin API 7, conversations scope 5, quiz
-API 5, quiz core 7, migration 5).
+**New tests:** `tests/accounts-quiz/*.test.mjs` 39 tests, 0 fail (auth 8, admin API 7, conversations scope 5, quiz
+API 5, quiz core 7, migration 5, no PIN 2).
 
-**End-to-end (`tests/accounts-quiz/e2e-check.mjs`, Playwright, 1024x600): 88/88 checks passed**, including:
+After the PIN removal, all 37 test files: 387 pass, 5 fail — the existing 30 files exactly as above (348 / 5, the same
+Windows-only failures) plus the 39 new tests.
+
+**End-to-end (`tests/accounts-quiz/e2e-check.mjs`, Playwright, 1024x600): 87/87 checks passed** (after the PIN
+removal; 88/88 before it — the 6 "admin stays" checks and the "still shows its PIN pad" check became 6 "admin gets the
+page at once, no PIN" checks), including:
 
 - Guest / user / admin dashboards: cards and menus exactly as in the wireframe; menu items >= 44 px; admin menu fits
   the screen.
-- Each of the 6 admin pages: guest -> dashboard, user -> dashboard, admin stays (Train Gestures still shows its PIN).
+- Each of the 6 admin pages: guest -> dashboard, user -> dashboard, admin gets the page at once with no PIN element and
+  no "enter the PIN" text.
   Admin APIs: 403 for guest and user; 403 again after Log out.
 - Create account -> logged in as a user, role `user`, `last_login_at` set. Deactivate -> cannot log in (message) and the
   open session is sent to the login page; Activate + Reset password -> logs in with the new password. No Deactivate
@@ -155,13 +186,15 @@ there, nothing else changed).
 
 | Result | Checks (same on both, unless noted) |
 |---|---|
-| All pass | `sign-texts/reports-keyboard-check` (reports.html behind the new guard + PIN, keyboard on Train Gestures and Let's Talk), `step1-check`, `talk-check`, `xss-check`, `bulk-import/avatar-step-check` (43/43), `candidates-panel-check` (33/33), `compact-model/bench-check`, `scale-check` |
+| All pass | `sign-texts/reports-keyboard-check` (reports.html behind the new guard, keyboard on Train Gestures and Let's Talk), `step1-check`, `talk-check`, `xss-check`, `bulk-import/avatar-step-check` (43/43), `candidates-panel-check` (33/33), `compact-model/bench-check`, `scale-check` |
 | Skipped by the check itself | `avatar/admin-check`, `avatar/import-check` (the owner's sample files in `C:/Users/ADMIN/Downloads/Avatar` are not here) |
 | Cannot run here | 11 checks stop at `ffmpeg.exe` (a Windows binary) for the fake camera / test videos; `sign-texts/verify-e2e` needs `E:/ACADSS/...`; `compact-model/store-check` 3 fails need Apache's `.htaccess` (the PHP built-in server sends no ETag/Last-Modified) |
 | Known stale check | `sign-texts/dataset-check`: 1 fail, the 7th "Avatar" column (DEBT 135), same before |
 | Different | `avatar/talk-avatar-check`: this branch passes the 3 clip imports on avatar-clips.html and then stops at `ffmpeg.exe`; the baseline run failed those 3 imports (clip not saved) before reaching it. No check got worse. |
 
-The admin pages' checks reached the pages because `cdp.mjs` now logs the test Chrome in as admin first.
+The admin pages' checks reached the pages because `cdp.mjs` now logs the test Chrome in as admin first. After the
+PIN removal the same 25 checks were run again with the edited tests: every result identical to the table above
+(compared line by line).
 
 ## 6. Screenshots (1024x600)
 
@@ -196,10 +229,11 @@ The admin pages' checks reached the pages because `cdp.mjs` now logs the test Ch
 | Add user (keyboard up) | ![](img/accounts-quiz-19-add-user.png) |
 | Reset password | ![](img/accounts-quiz-20-reset-password.png) |
 | Log in refused (deactivated) | ![](img/accounts-quiz-21-login-deactivated.png) |
+| Train Gestures for a logged-in admin (no PIN) | ![](img/accounts-quiz-22-train-gestures-admin-no-pin.png) |
 
 ## 7. Known gaps (all in `docs/system/DEBT.md`)
 
-157 training/import write APIs not session-checked · 158 admin PIN still asked · 159 no idle log-out (a user who
+157 training/import write APIs not session-checked (accepted by the owner) · 158 resolved (PIN removed) · 159 no idle log-out (a user who
 walks away stays logged in) · 160 quiz uses Let's Talk's clip source · 161 ESL Numbers has no playable clip in this
 data (videos are `1.webm`..`10.webm`) · 162 old conversations have no title/user · 163 Let's Talk's preview logs a
 404 for words without their own video (pre-existing) · 164 guests are not told Let's Talk is saved · 165 change the
@@ -219,7 +253,8 @@ clip plays at a time.
 5. **Guest:** the dashboard shows Learn Signs, Let's Talk, Quiz and "Log in" top-right. Open
    `http://localhost/SKR/gesture-training.html` -> you are back on the dashboard.
 6. **Admin:** Log in -> `admin` / `admin123` (if that fails, the admin password was changed before; use yours).
-   Chip "Admin ADMIN" -> menu has the 6 admin items. Open Train Gestures -> PIN pad as before (2026). Then
+   Chip "Admin ADMIN" -> menu has the 6 admin items. Open Train Gestures, View Reports, Bulk import: each opens at
+   once, **no PIN pad**. Then
    **Manage users -> Reset password** on your admin row and set a new password.
 7. **Create a user:** Log out -> Log in -> Create account (name, username, password of 4+) -> you are on the
    dashboard as that user; menu = My conversations, My quiz scores, Log out. Type
@@ -235,4 +270,4 @@ clip plays at a time.
 12. **Optional, laptop tests:** `node --test tests/accounts-quiz/` (needs `SK_PHP_CGI` / `SK_PHP_CLI` like the other
     php-cgi tests; set `SK_TEST_ADMIN_PASS=<your new admin password>` after step 6) and the existing browser checks
     (they log in as admin by themselves with the same variable).
-13. **Tell me** your answers to decisions (a) and (b) at the top.
+13. **Log out**, then type `http://localhost/SKR/bulk-import.html`: you land on the dashboard (no PIN pad to try).

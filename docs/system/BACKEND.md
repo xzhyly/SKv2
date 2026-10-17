@@ -1148,5 +1148,5 @@ in one transaction; client times are used only within the last 6 hours (`:252`).
 `summary {count, average_pct, best}` and 20 attempts per page (`limit`/`offset`, `has_more`); a user always gets
 their own, an admin everyone's or `user=<id>`. `mode` per attempt is read back from `quiz_answers.question_type`.
 
-**Not session-checked (DEBT 157):** `save_gesture.php`, `signs.php` POST, `gesture_category.php`,
+**Not session-checked (DEBT 157, kept open by owner decision 2026-10-18):** `save_gesture.php`, `signs.php` POST, `gesture_category.php`,
 `compile_model.php`, `bulk_import.php`, `avatar_clip.php` — unchanged, still open to any caller.

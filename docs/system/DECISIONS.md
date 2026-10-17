@@ -2046,10 +2046,14 @@ Report: `docs/reports/2026-10-17-py-avatar.md`.
 Report: `docs/reports/2026-10-18-accounts-quiz.md`. Owner decisions 1-9 are in the phase brief (quoted in the report);
 the choices below were made while building and are recorded so a later session does not re-litigate them.
 
-- **"Keep how admin login works today; make it the same login."** Read as: the admin is still a `users` row with
-  role `admin` (admin / admin123 seeded when none exists), it logs in on the same `login.html` as everyone, and the
-  admin pages keep their PIN pad for a logged-in admin. A non-admin never reaches the PIN pad: `SKAccount.adminPage()`
-  sends them to the dashboard from the page's `<head>` (DEBT 158 says how to drop the PIN if the owner wants).
+- **"Keep how admin login works today; make it the same login."** The admin is still a `users` row with role
+  `admin` (admin / admin123 seeded when none exists) and logs in on the same `login.html` as everyone.
+  *Superseded the same day by owner answer (a):* the admin PIN is removed completely — no PIN pad, no PIN
+  setting, no PIN anywhere. The admin pages and admin APIs are protected only by the logged-in admin role
+  (non-admin -> dashboard from the page's `<head>` via `SKAccount.adminPage()`; admin APIs -> 403). The earlier
+  PIN entries in this file (Avatar clips "without a second PIN", bulk importer "same PIN") describe the pages
+  before 2026-10-18.
+- **Owner answer (b), 2026-10-18:** the training/import save endpoints stay open (demo; DEBT 157).
 - **Who is logged in is known before the page draws.** `<script src="php/api/me.php">` (a classic, blocking script)
   instead of a `fetch`: the chip never flashes "Log in", and an admin page can leave before any of its scripts run
   (`window.stop()` then `location.replace()`). No synchronous XHR.

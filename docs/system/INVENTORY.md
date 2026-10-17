@@ -261,7 +261,7 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 
 | File | Owns |
 |---|---|
-| `avatar-clips.html`, `css/avatar-clips.css`, `js/avatar-clips-ui.js` | Admin page "Avatar clips" (PIN; extract or import JSON / trim / preview / save / delete / export JSON) |
+| `avatar-clips.html`, `css/avatar-clips.css`, `js/avatar-clips-ui.js` | Admin page "Avatar clips" (PIN until 2026-10-18, now admin login; extract or import JSON / trim / preview / save / delete / export JSON) |
 | `js/avatar-extract.js` | Video -> raw clip frames with Holistic (admin page only) |
 | `js/avatar-rig.js` | Avatar geometry (parts, sockets, face anchors, bone lengths, rest pose) |
 | `js/avatar-clip.js` | Clip format `sk_avatar_clip_v1`: pack, validate, import (own format or the prototype's `avatar_pose_hands_v1`), auto-trim, calibrate |
@@ -282,7 +282,7 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 
 | File | Owns |
 |---|---|
-| `bulk-import.html`, `css/bulk-import.css`, `js/bulk-import-ui.js` | Laptop-only page: PIN; Folder / Extract / Review / Import / Avatar steps |
+| `bulk-import.html`, `css/bulk-import.css`, `js/bulk-import-ui.js` | Laptop-only page: PIN until 2026-10-18, now admin login; Folder / Extract / Review / Import / Avatar steps |
 | `js/bulk-import-core.js` | Pure helpers: file-name parsing, best repetition and its window, candidate clip, row status, row projection, default-signer assignment, imbalance |
 | `php/api/bulk_import.php` | Cache, candidates and picks under the git-ignored `bulk_import_cache/` (files only, no DB) |
 | `php/api/save_gesture.php` (changed) | Optional v3 fields `signer` and `importId`; duplicate answer |
@@ -367,13 +367,17 @@ Report: `docs/reports/2026-10-18-accounts-quiz.md`. Details: `docs/system/UI.md`
 | `tests/accounts-quiz/auth.test.mjs`, `admin-api.test.mjs`, `conversations-scope.test.mjs`, `quiz-api.test.mjs` | 87, 87, 96, 124 | php-cgi tests of the endpoints (live DB) |
 | `tests/accounts-quiz/quiz-core.test.mjs` | 83 | node tests of `js/quiz-core.js` |
 | `tests/accounts-quiz/migration.test.mjs` | 134 | The migration on throw-away databases |
-| `tests/accounts-quiz/e2e-check.mjs` | 521 | Playwright check, guest/user/admin through every new screen, writes the report screenshots |
+| `tests/accounts-quiz/e2e-check.mjs` | 527 | Playwright check, guest/user/admin through every new screen, writes the report screenshots |
 
 Changed: `index.html`, `css/style.css`, `talk.html`, `js/virtual-keyboard.js`, `php/auth.php`, `php/admin_api.php`,
 `php/api/save_conversation.php`, `php/api/conversations.php`, `db-schema/database_setup.sql`, the `<head>` of the five
 admin pages; tests `tests/conversations/helper.mjs` + `conversations-admin.test.mjs` (log in as admin),
 `tests/normalization/schema-guard.test.mjs` (7 tables), `tests/video-capture/cdp.mjs` (admin log-in before an
-admin page; `SK_CHROME`, `SK_CHROME_ARGS`).
+admin page; `SK_CHROME`, `SK_CHROME_ARGS`). PIN removal (owner answer (a)): the browser checks that typed the PIN or
+set `sk_train_unlocked` now just open the page (`tests/sign-texts/*-check.mjs`, `verify-e2e.mjs`,
+`tests/compact-model/training-check.mjs`, `scale-check.mjs`, `tests/video-capture/e2e.mjs`, `capture-ui-check.mjs`,
+`screenshots.mjs`, `startup-check.mjs`, `tests/bulk-import/*-check.mjs`, `verify-e2e.mjs`, `tests/avatar/*-check.mjs`);
+new `tests/accounts-quiz/no-pin.test.mjs` (38 lines).
 
 ### `.superpowers/` (4 files)
 
@@ -438,7 +442,7 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 | `php/api/core_api.php` | deleted 2026-09-24; was called only by `js/db-local.js` (also deleted), described as "unified api router" in `js/db-local.js:10` |
 | `php/api/reports.php` | `reports.html` |
 | `php/api/save_conversation.php` | `js/talk-history.js` (loaded by `talk.html`) — new 2026-09-25 |
-| `php/api/conversations.php` | `reports.html`, after its PIN — new 2026-09-25; `conversations.html` since 2026-10-18 |
+| `php/api/conversations.php` | `reports.html` (after its PIN until 2026-10-18, now on page load for an admin) — new 2026-09-25; `conversations.html` since 2026-10-18 |
 | `php/api/save_history.php` | none found (file deleted 2026-09-24) |
 | `php/api/get_history.php` | none found (file deleted 2026-09-24) |
 | `php/admin_api.php` | `users.html`, `conversations.html` and `quiz-scores.html` (admin user list) — none before 2026-10-18 |

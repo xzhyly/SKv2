@@ -100,7 +100,7 @@ clip per sign from a video or an imported landmark JSON, saved as
 the avatar when its sign has a clip and as video otherwise — see
 `docs/system/UI.md` ("Avatar clips", Part 3 3e).
 
-`bulk-import.html` (laptop only, same PIN; **no kiosk page links to it** — open it
+`bulk-import.html` (laptop only, admin only; **no kiosk page links to it** — open it
 by typing `http://localhost/SKR/bulk-import.html`) turns a folder of videos named
 `<SET>_<label>_<SIGNER>.<ext>` into recognition samples (through
 `php/api/save_gesture.php`) and avatar clip candidates. Its cache and the
@@ -168,11 +168,12 @@ Create account; Create account always makes a `user`), the PHP session is in `ph
 `<script src="php/api/me.php">` tells a page who is logged in. The dashboard has 3 cards (Learn Signs, Let's
 Talk, Quiz) and a name chip whose menu holds the user's lists and, for an admin, every admin tool (Train
 Gestures, View Reports, Bulk import, Manage users = `users.html`, All conversations, Quiz results). Admin pages
-send non-admins to the dashboard (`js/sk-account.js` `adminPage()`); admins still get the PIN pad. Let's Talk
+send non-admins to the dashboard (`js/sk-account.js` `adminPage()`); there is no PIN any more (the admin role is
+the only gate; admin APIs answer 403). Let's Talk
 saves the logged-in user's id and a title and has "+ New conversation". `quiz.html` (Sign -> Text / Text -> Sign,
 10 questions from signs with a clip, `php/api/quiz.php`) saves scores only for logged-in accounts
-(`quiz-scores.html`). The training/import write endpoints are still not session-checked (`docs/system/DEBT.md`
-item 157). See `docs/system/UI.md` Part 4 and `docs/reports/2026-10-18-accounts-quiz.md`.
+(`quiz-scores.html`). The training/import write endpoints are deliberately not session-checked (owner decision,
+`docs/system/DEBT.md` item 157). See `docs/system/UI.md` Part 4 and `docs/reports/2026-10-18-accounts-quiz.md`.
 
 Open it at `/SKR/talk.html`. `index.html` is now a **pure dashboard**: the old
 `#translator-pane` (`?screen=voice`) and `js/script.js` were retired into this screen

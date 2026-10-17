@@ -404,7 +404,9 @@ below. None of that ran.
 > **Update 2026-10-18 (accounts-quiz phase):** the dashboard has three cards for everyone (Learn Signs, Let's Talk,
 > Quiz) and an account area top-right; Train Gestures and View Reports moved into the admin account menu. Every
 > admin page (gesture-training, reports, bulk-import, avatar-clips, diagnostic, users) sends a non-admin to the
-> dashboard before it shows; a logged-in admin still gets the PIN pad. See Part 4.
+> dashboard before it shows. Since owner answer (a) the same day there is **no PIN anywhere**: a logged-in admin gets
+> each admin page at once. Every "PIN-gated" / "PIN pad" / `CORRECT_PIN` / `sk_train_unlocked` description
+> below describes the pages before 2026-10-18. See Part 4.
 
 > **Update 2026-09-21:** `index.html` is now a pure dashboard. `#translator-pane` (the text/voice-to-sign screen,
 > `?screen=voice`) and `js/script.js` were retired into `talk.html`'s Speak or Type screen (Part 3b; archived at
@@ -2036,8 +2038,10 @@ Report: `docs/reports/2026-10-18-accounts-quiz.md` (screenshots of every screen 
   `js/quiz-core.js` (130) — pure quiz logic (node-testable); `js/quiz-ui.js` (412) — quiz screens and clip playback.
 - New stylesheet: `css/sk-pages.css` (305) — the shared look of the new pages and of the chip/menu.
 - Changed: `index.html`, `css/style.css` (3-card grid, account area), `talk.html` (header right side),
-  `js/virtual-keyboard.js` (also opens for `type=password`), and one guard line block in the `<head>` of
-  `gesture-training.html`, `reports.html`, `bulk-import.html`, `avatar-clips.html`, `diagnostic.html`.
+  `js/virtual-keyboard.js` (also opens for `type=password`), the admin guard in the `<head>` of
+  `gesture-training.html`, `reports.html`, `bulk-import.html`, `avatar-clips.html`, `diagnostic.html`, and the PIN
+  removed from the first four (with `js/gesture-training-ui.js`, `js/bulk-import-ui.js`, `js/avatar-clips-ui.js`,
+  `css/gesture-training.css`).
 
 ### 2. What it does
 
@@ -2055,8 +2059,10 @@ Report: `docs/reports/2026-10-18-accounts-quiz.md` (screenshots of every screen 
   after a login (quiz result "Log in", guarded lists); `?tab=create` opens Create account. Admins log in here too.
 - **Admin pages.** `SKAccount.adminPage()` (`:129`) runs in each admin page's `<head>`: not an admin ->
   `window.stop()` and `location.replace('index.html')` (`leave()`, `:120`), so none of the page's own scripts run.
-  An admin stays and sees the page exactly as before, PIN pad included (owner: "keep how admin login works today";
-  DEBT 158). Log out also clears the `sk_train_unlocked` PIN flag.
+  An admin stays and the page opens at once: the logged-in admin role is the only gate (owner answer (a),
+  2026-10-18: the PIN pad, its code and its 10-minute `sk_train_unlocked` flag were removed from Train Gestures,
+  Reports, Bulk import and Avatar clips; DEBT 158). `reports.html` loads its Conversations tab on page load
+  (it used to wait for the PIN); Bulk import and Avatar clips start on `DOMContentLoaded`.
 - **Let's Talk (`talk.html`).** Header right side (`.talk-header-right`): the status pill (now in the row, shown
   only while the keyboard is up, when "+ New conversation" hides so the row never reaches the title), "+ New
   conversation" and a plain chip (Guest for a guest; no menu, no log-in button here). "+ New conversation"
