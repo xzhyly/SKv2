@@ -7,6 +7,11 @@
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/virtual-keyboard.css">
+<link rel="stylesheet" href="css/sk-pages.css">
+<!-- Accounts (accounts-quiz phase): who is logged in, for the header chip; conversations save with
+     that user's id (php/api/save_conversation.php reads the PHP session itself). -->
+<script src="php/api/me.php"></script>
+<script src="js/sk-account.js"></script>
 <style>
   /* ── Reset ── */
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -109,6 +114,27 @@
   }
   .status-pill.listening,
   .status-pill.typing{display:flex}
+
+  /* ── Header right side (accounts-quiz phase) ──
+     "+ New conversation" and the account chip (docs/design/new-features-wireframe.html screen 9).
+     The status pill moves into the same row, left of them. It only shows while the on-screen
+     keyboard is up (the observer near the end of the script), and then "+ New conversation" hides,
+     so the row never reaches the centred title. */
+  .talk-header-right{
+    position:absolute;right:16px;top:50%;transform:translateY(-50%);
+    display:flex;align-items:center;gap:10px;
+  }
+  .talk-header-right .status-pill{position:static;transform:none}
+  .new-conv-btn{
+    height:44px;padding:0 16px;
+    border:2px solid rgba(255,255,255,0.85);border-radius:22px;
+    background:transparent;color:var(--surface);
+    font-family:inherit;font-size:15px;font-weight:700;white-space:nowrap;
+    cursor:pointer;
+  }
+  .new-conv-btn:active{background:rgba(255,255,255,0.18)}
+  body.keyboard-active .new-conv-btn{display:none}
+  .talk-header-right .sk-chip{max-width:170px}
   .status-dot{
     width:10px;height:10px;border-radius:50%;
     flex:0 0 auto;
@@ -1026,9 +1052,13 @@
   <div class="talk-header">
     <button type="button" class="back-btn" id="backBtn">&#8249; Back</button>
     <h1>NEW CONVERSATION</h1>
-    <div class="status-pill" id="statusPill">
-      <span class="status-dot"></span>
-      <span class="status-text"></span>
+    <div class="talk-header-right">
+      <div class="status-pill" id="statusPill">
+        <span class="status-dot"></span>
+        <span class="status-text"></span>
+      </div>
+      <button type="button" class="new-conv-btn" id="newConversationBtn">+ New conversation</button>
+      <div id="talkAccount"></div>
     </div>
   </div>
 
@@ -2072,6 +2102,21 @@
       onEndConversation('ended');
       location.href = 'index.html';
     });
+
+    // "+ New conversation" (accounts-quiz phase): the current conversation ends exactly as End
+    // Conversation ends it (saved as 'ended'), then talk.html loads again, so the next message
+    // starts a new saved conversation (js/talk-history.js makes a new client_key per page load).
+    // With no message in the thread yet there is nothing to end: back to "Who speaks first?".
+    document.getElementById('newConversationBtn').addEventListener('click', function () {
+      if (document.querySelector('#thread-list .bubble-row') === null) {
+        closeModal();
+        showScreen('who-first');
+        return;
+      }
+      onEndConversation('ended');
+      location.href = 'talk.html';
+    });
+    SKAccount.renderAccount(document.getElementById('talkAccount'), { menu: false, login: false });
 
     // ── Task 6: idle timer ──
     // Page-level setTimeout, re-armed on any real input. Fires

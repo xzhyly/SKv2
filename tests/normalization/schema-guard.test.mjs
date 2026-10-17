@@ -20,7 +20,8 @@ import { callEndpoint, fixtureFrames, fixtureVideo, repo } from '../multi-sample
 import { query } from '../categorization/db.mjs';
 
 const LABEL = 'zz_schemaguard_probe';
-const EXPECTED_TABLES = ['conversations', 'gesture_recordings', 'gestures', 'messages', 'users'];
+// quiz_attempts / quiz_answers: added by the accounts-quiz phase (db-schema/2026-10-accounts-quiz.sql).
+const EXPECTED_TABLES = ['conversations', 'gesture_recordings', 'gestures', 'messages', 'quiz_answers', 'quiz_attempts', 'users'];
 
 function cleanupProbe() {
   callEndpoint({ body: { action: 'delete_gesture', label: LABEL }, stub: false });
@@ -54,7 +55,7 @@ function fkExists() {
 
 function assertSyncedSchemaIntact() {
   assert.deepEqual(showTables(), EXPECTED_TABLES.slice().sort(),
-    'SHOW TABLES must be exactly {conversations, gesture_recordings, gestures, messages, users} after a sync');
+    'SHOW TABLES must be exactly {conversations, gesture_recordings, gestures, messages, quiz_answers, quiz_attempts, users} after a sync');
 
   const gestureCols = columnsOf('gestures');
   assert.equal(gestureCols.includes('word'), false, 'gestures.word must not be recreated by the sync');

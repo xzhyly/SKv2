@@ -21,10 +21,12 @@ export const repo = path.resolve(here, '..', '..');
 const PHP_CGI = process.env.SK_PHP_CGI || 'C:\\xampp\\php\\php-cgi.exe';
 
 // Runs php/api/<script> under php-cgi exactly as Apache would.
+// script may also be '../auth.php' (php/auth.php). cookie: a "SKSESSID=..." Cookie header (the
+// accounts-quiz phase's PHP session, see adminCookie() below).
 // body: a JS value to JSON.stringify and send as the request body.
 // raw: a literal string to send as-is instead (used for invalid-JSON tests) — takes precedence
 // over body when both are omitted/undefined this stays empty (no body, e.g. for GET).
-export function callPhp({ script, method = 'POST', body, raw, query = '' } = {}) {
+export function callPhp({ script, method = 'POST', body, raw, query = '', cookie = '' } = {}) {
   const payload = raw !== undefined
     ? Buffer.from(raw, 'utf8')
     : (body !== undefined ? Buffer.from(JSON.stringify(body), 'utf8') : Buffer.alloc(0));
@@ -39,6 +41,7 @@ export function callPhp({ script, method = 'POST', body, raw, query = '' } = {})
     QUERY_STRING: query,
     CONTENT_TYPE: 'application/json',
     CONTENT_LENGTH: String(payload.length),
+    HTTP_COOKIE: cookie,
   };
   const r = spawnSync(PHP_CGI, [], { env, input: payload, maxBuffer: 64 * 1024 * 1024 });
   const out = r.stdout.toString('utf8');
@@ -49,7 +52,27 @@ export function callPhp({ script, method = 'POST', body, raw, query = '' } = {})
   const status = statusMatch ? parseInt(statusMatch[1], 10) : 200;
   let json = null;
   try { json = JSON.parse(bodyPart); } catch { json = null; }
-  return { status, json, raw: bodyPart, stderr: r.stderr.toString('utf8') };
+  const setCookie = (headerPart.match(/^Set-Cookie:\s*SKSESSID=([^;\r\n]*)/mi) || [])[1];
+  return { status, json, raw: bodyPart, stderr: r.stderr.toString('utf8'), cookie: setCookie ? `SKSESSID=${setCookie}` : null };
+}
+
+// Logs in through php/auth.php and returns the session's Cookie header. Since the accounts-quiz
+// phase conversations.php needs a logged-in account (an admin for the full list / delete).
+// SK_TEST_ADMIN_USER / SK_TEST_ADMIN_PASS override the seeded admin / admin123.
+export function loginCookie(username, password) {
+  const r = callPhp({ script: '../auth.php', body: { action: 'login', username, password } });
+  if (r.status !== 200 || !r.cookie) {
+    throw new Error(`login as ${username} failed (HTTP ${r.status}: ${r.raw.slice(0, 200)})`);
+  }
+  return r.cookie;
+}
+
+let adminCookieCache = null;
+export function adminCookie() {
+  if (!adminCookieCache) {
+    adminCookieCache = loginCookie(process.env.SK_TEST_ADMIN_USER || 'admin', process.env.SK_TEST_ADMIN_PASS || 'admin123');
+  }
+  return adminCookieCache;
 }
 
 // Hex-valid probe client_key: "deadbeef00000000" (16 hex chars) + 16 random hex chars = 32 chars

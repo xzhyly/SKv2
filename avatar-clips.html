@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Avatar Clips ✿ Sining Kamay</title>
+  <!-- Admin only (accounts-quiz phase): a non-admin is sent to the dashboard before this page
+       shows (js/sk-account.js adminPage()). A logged-in admin then gets the PIN pad as before. -->
+  <script src="php/api/me.php"></script>
+  <script src="js/sk-account.js"></script>
+  <script>SKAccount.adminPage();</script>
   <!-- Avatar clips (avatar phase, docs/reports/2026-10-05-avatar-step1.md (f)): pick a sign, pick a
        video (or import a landmark JSON), extract pose + hands with MediaPipe Holistic (vendored,
        offline), trim, preview on the avatar, Save / Redo / Delete / Export JSON. Meant to be run on the laptop; the Pi only plays clips. The video

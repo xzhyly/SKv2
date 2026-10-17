@@ -5,15 +5,16 @@
 // created_at/seq ordering must be controlled — each such case says so inline.
 import test, { beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { callPhp, probeKey, cleanupProbes, PROBE_PREFIX } from './helper.mjs';
+import { callPhp, probeKey, cleanupProbes, PROBE_PREFIX, adminCookie } from './helper.mjs';
 import { query, exec } from '../categorization/db.mjs';
 
 const SAVE_SCRIPT = 'save_conversation.php';
 const SCRIPT = 'conversations.php';
 
 const save = (body) => callPhp({ script: SAVE_SCRIPT, body });
-const get = (query_ = '') => callPhp({ script: SCRIPT, method: 'GET', query: query_ });
-const post = (body) => callPhp({ script: SCRIPT, method: 'POST', body });
+// Accounts-quiz phase: conversations.php needs a logged-in admin for everything tested here.
+const get = (query_ = '') => callPhp({ script: SCRIPT, method: 'GET', query: query_, cookie: adminCookie() });
+const post = (body) => callPhp({ script: SCRIPT, method: 'POST', body, cookie: adminCookie() });
 
 function signerMessage(key, overrides = {}) {
   return {
@@ -264,13 +265,13 @@ test('POST with missing action -> 400', () => {
 });
 
 test('DELETE method -> 405', () => {
-  const r = callPhp({ script: SCRIPT, method: 'DELETE' });
+  const r = callPhp({ script: SCRIPT, method: 'DELETE', cookie: adminCookie() });
   assert.equal(r.status, 405);
   assert.equal(r.json.success, false);
 });
 
 test('PUT method -> 405', () => {
-  const r = callPhp({ script: SCRIPT, method: 'PUT' });
+  const r = callPhp({ script: SCRIPT, method: 'PUT', cookie: adminCookie() });
   assert.equal(r.status, 405);
   assert.equal(r.json.success, false);
 });

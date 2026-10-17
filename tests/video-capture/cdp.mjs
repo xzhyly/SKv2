@@ -10,7 +10,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const CHROME_PATH = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// SK_CHROME: another Chrome/Chromium binary (accounts-quiz phase: the cloud session's Chromium).
+const CHROME_PATH = process.env.SK_CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+
+// Accounts-quiz phase: the admin pages send anyone who is not a logged-in admin to the dashboard.
+// navigate() logs this Chrome in as an admin (php/auth.php) the first time it opens one of them,
+// so every check that drives an admin page keeps working. SK_TEST_ADMIN_USER / SK_TEST_ADMIN_PASS
+// override the seeded admin / admin123.
+const ADMIN_PAGE_RE = /\/(gesture-training|reports|bulk-import|avatar-clips|diagnostic|users)\.html(\?|#|$)/;
 
 // extraArgs: additional Chrome command-line flags (e.g. the fake-camera flags used by
 // capture-ui-check.mjs).
@@ -27,6 +34,8 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
       '--disable-renderer-backgrounding',
       `--window-size=${width},${height}`,
       ...extraArgs,
+      // SK_CHROME_ARGS: extra flags from the environment (e.g. "--no-sandbox" for Chromium run as root).
+      ...(process.env.SK_CHROME_ARGS ? process.env.SK_CHROME_ARGS.split(' ').filter(Boolean) : []),
       'about:blank',
     ],
     { stdio: 'ignore' }
@@ -103,7 +112,29 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
     mobile: false,
   });
 
+  let adminSession = false;
+  async function ensureAdminSession(url) {
+    const base = url.replace(/[^/]*$/, '');
+    const res = await fetch(base + 'php/auth.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'login',
+        username: process.env.SK_TEST_ADMIN_USER || 'admin',
+        password: process.env.SK_TEST_ADMIN_PASS || 'admin123',
+      }),
+    });
+    const cookie = (res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie') || ''])
+      .map((c) => /^SKSESSID=([^;]+)/.exec(c)).find(Boolean);
+    if (!res.ok || !cookie) {
+      throw new Error(`admin login for ${url} failed (HTTP ${res.status}); set SK_TEST_ADMIN_USER / SK_TEST_ADMIN_PASS`);
+    }
+    await send('Network.setCookie', { name: 'SKSESSID', value: cookie[1], url: base, path: '/', httpOnly: true });
+    adminSession = true;
+  }
+
   async function navigate(url) {
+    if (!adminSession && ADMIN_PAGE_RE.test(url)) await ensureAdminSession(url);
     await send('Page.navigate', { url });
     await sleep(1500);
   }

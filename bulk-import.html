@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bulk Video Import ✿ Sining Kamay</title>
+  <!-- Admin only (accounts-quiz phase): a non-admin is sent to the dashboard before this page
+       shows (js/sk-account.js adminPage()). A logged-in admin then gets the PIN pad as before. -->
+  <script src="php/api/me.php"></script>
+  <script src="js/sk-account.js"></script>
+  <script>SKAccount.adminPage();</script>
   <!-- Bulk video importer (docs/reports/2026-10-13-bulk-import-step1.md): choose a folder of
        <SET>_<label>_<SIGNER>.<ext> videos, extract hand landmarks (the live capture's own Hands
        pass; the 3 repetitions are then found by the dynamic split, js/bulk-rep-split.js) and, for

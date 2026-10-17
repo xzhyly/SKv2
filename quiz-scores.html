@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quiz Scores — Sining Kamay</title>
+<!-- Quiz scores (accounts-quiz phase, docs/design/new-features-wireframe.html screen 7): a user sees
+     their own (quizzes taken, average, best, list); an admin sees everyone's, with a User filter.
+     20 per load + Load more. Read from php/api/quiz.php ?action=scores, which applies the same rule
+     server-side. Guests are sent to the login page. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/sk-pages.css">
+<script src="php/api/me.php"></script>
+<script src="js/sk-account.js"></script>
+<script>SKAccount.loginPage('quiz-scores.html');</script>
+</head>
+<body class="sk-page">
+  <div class="sk-bar">
+    <div class="sk-bar-side"><a class="sk-back" href="index.html">&#8592; Home</a></div>
+    <h1 class="sk-title" id="bar-title">QUIZ SCORES</h1>
+    <div class="sk-bar-side right"><div id="acct"></div></div>
+  </div>
+  <div class="sk-body">
+    <div class="sk-filters" id="filters" hidden>
+      <select class="sk-sel" id="f-user" aria-label="User"><option value="">User: All</option></select>
+      <a class="sk-btn pri h44" href="quiz.html" style="margin-left:auto">Take a quiz</a>
+    </div>
+    <div class="sk-stats">
+      <div class="sk-box sk-stat"><div class="sk-lbl">Quizzes taken</div><div id="st-count">–</div></div>
+      <div class="sk-box sk-stat"><div class="sk-lbl">Average</div><div id="st-avg">–</div></div>
+      <div class="sk-box sk-stat"><div class="sk-lbl">Best</div><div id="st-best">–</div></div>
+    </div>
+    <div class="sk-box sk-list" id="list"></div>
+  </div>
+  <script>
+  (function () {
+    'use strict';
+    var A = window.SKAccount;
+    var user = A.me();
+    if (!user) return;
+    var admin = user.role === 'admin';
+    var MODE = { video_to_text: 'Sign → Text', text_to_video: 'Text → Sign', mixed: 'Mixed' };
+    var CAT = { letters: 'Letters', numbers: 'Numbers', words: 'Words', phrases: 'Phrases', mixed: 'All' };
+    var PAGE = 20;
+    var offset = 0;
+    var token = 0;
+    var listEl = document.getElementById('list');
+
+    A.renderAccount(document.getElementById('acct'), { menu: false });
+    document.getElementById('bar-title').textContent = admin ? 'QUIZ RESULTS' : 'MY QUIZ SCORES';
+
+    function pill(a) {
+      var pct = a.total_items ? a.correct_items / a.total_items : 0;
+      var cls = pct >= 0.7 ? 'ok' : pct <= 0.5 ? 'bad' : '';
+      return '<span class="sk-pill ' + cls + '">' + a.correct_items + '/' + a.total_items + '</span>';
+    }
+
+    function load(reset) {
+      var my = ++token;
+      if (reset) {
+        offset = 0;
+        listEl.innerHTML = '<div class="sk-empty">Loading…</div>';
+      }
+      var q = 'action=scores&limit=' + PAGE + '&offset=' + offset;
+      if (admin) q += '&user=' + encodeURIComponent(document.getElementById('f-user').value);
+      A.api('php/api/quiz.php?' + q).then(function (data) {
+        if (my !== token) return;
+        if (reset) listEl.innerHTML = '';
+        var more = listEl.querySelector('.sk-more');
+        if (more) more.remove();
+        if (!data || !data.success) { listEl.insertAdjacentHTML('beforeend', '<div class="sk-empty">Could not load scores.</div>'); return; }
+        if (reset) {
+          var s = data.summary;
+          document.getElementById('st-count').textContent = s.count;
+          document.getElementById('st-avg').textContent = s.average_pct === null ? '–' : s.average_pct + '%';
+          document.getElementById('st-best').textContent = s.best ? s.best.correct + '/' + s.best.total : '–';
+        }
+        data.attempts.forEach(function (a) {
+          var li = document.createElement('div');
+          li.className = 'sk-li';
+          var who = admin ? '<span class="sk-pill">' + A.esc(a.username) + '</span>' : '';
+          li.innerHTML = '<div class="m"><b>' + A.esc((MODE[a.mode] || 'Quiz') + ' · ' + a.sign_language + ' · ' + (CAT[a.category] || a.category)) +
+            '</b><small>' + A.esc(A.fmtDateTime(a.finished_at)) + (admin ? ' · ' + A.esc(a.display_name) : '') + '</small></div>' + who + pill(a);
+          listEl.appendChild(li);
+        });
+        offset += data.attempts.length;
+        if (offset === 0) {
+          listEl.innerHTML = '<div class="sk-empty">' + (admin ? 'No quiz results yet.' : 'No quizzes yet. Take one from the dashboard while you are logged in.') + '</div>';
+        }
+        if (data.has_more) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'sk-more';
+          btn.id = 'load-more';
+          btn.textContent = 'Load more';
+          btn.addEventListener('click', function () { btn.disabled = true; load(false); });
+          listEl.appendChild(btn);
+        }
+      }, function () {
+        if (my !== token) return;
+        listEl.innerHTML = '<div class="sk-empty">Cannot reach the kiosk server.</div>';
+      });
+    }
+
+    if (admin) {
+      document.getElementById('filters').hidden = false;
+      A.api('php/admin_api.php', { action: 'list_users' }).then(function (data) {
+        if (!data || !data.success) return;
+        var sel = document.getElementById('f-user');
+        data.users.forEach(function (u) {
+          var o = document.createElement('option');
+          o.value = String(u.id);
+          o.textContent = 'User: ' + u.display_name + ' (' + u.username + ')';
+          sel.appendChild(o);
+        });
+      });
+      document.getElementById('f-user').addEventListener('change', function () { load(true); });
+    }
+    load(true);
+  })();
+  </script>
+</body>
+</html>

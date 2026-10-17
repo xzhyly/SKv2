@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — Sining Kamay</title>
+<!-- Log in / Create account (accounts-quiz phase, docs/design/dashboard-login-wireframe.html screens 2
+     and 3): its own full-screen page, two tabs, no page load between them. Every field and button
+     sits in the top 320px, above the on-screen keyboard (js/virtual-keyboard.js, 280px tall).
+     Admins log in here too. ?next=<page>.html returns there afterwards (else the dashboard). -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/virtual-keyboard.css">
+<link rel="stylesheet" href="css/sk-pages.css">
+<style>
+  .login-hint { flex: 1; font-size: 14px; color: var(--muted); }
+  #auth-msg { flex: none; height: 20px; text-align: center; }
+</style>
+<script src="php/api/me.php"></script>
+<script src="js/sk-account.js"></script>
+</head>
+<body class="sk-page">
+  <div class="sk-bar">
+    <div class="sk-bar-side"><a class="sk-back" href="index.html">&#8592; Back</a></div>
+    <div class="sk-logo"><b>SK</b>SINING KAMAY</div>
+    <div class="sk-bar-side right"></div>
+  </div>
+
+  <form class="sk-form" id="auth-form" autocomplete="off" novalidate>
+    <div class="sk-seg" role="tablist">
+      <button type="button" class="on" id="tab-login" role="tab" aria-selected="true">Log in</button>
+      <button type="button" id="tab-create" role="tab" aria-selected="false">Create account</button>
+    </div>
+    <div class="sk-msg" id="auth-msg" role="alert"></div>
+
+    <div id="pane-login">
+      <div class="sk-row">
+        <div class="sk-field"><label for="login-username">Username</label>
+          <input class="sk-input" type="text" id="login-username" autocapitalize="off" spellcheck="false" maxlength="150"></div>
+        <div class="sk-field"><label for="login-password">Password</label>
+          <input class="sk-input" type="password" id="login-password" maxlength="200"></div>
+      </div>
+      <div class="sk-row" style="align-items:center">
+        <div class="login-hint">Forgot your password? Ask an admin to reset it.</div>
+        <button type="submit" class="sk-btn pri" id="login-submit">Log in</button>
+      </div>
+    </div>
+
+    <div id="pane-create" hidden>
+      <div class="sk-row">
+        <div class="sk-field"><label for="reg-name">Display name</label>
+          <input class="sk-input" type="text" id="reg-name" maxlength="80" placeholder="Your name"></div>
+        <div class="sk-field"><label for="reg-username">Username</label>
+          <input class="sk-input" type="text" id="reg-username" autocapitalize="off" spellcheck="false" maxlength="30" placeholder="letters and numbers"></div>
+      </div>
+      <div class="sk-row">
+        <div class="sk-field"><label for="reg-password">Password</label>
+          <input class="sk-input" type="password" id="reg-password" maxlength="200" placeholder="at least 4 characters"></div>
+        <button type="submit" class="sk-btn pri" id="reg-submit">Create and log in</button>
+      </div>
+    </div>
+  </form>
+
+  <script src="js/virtual-keyboard.js" defer></script>
+  <script>
+  (function () {
+    'use strict';
+    var A = window.SKAccount;
+    var params = new URLSearchParams(location.search);
+    var next = params.get('next') || '';
+    if (!/^[a-z0-9-]+\.html$/.test(next)) next = 'index.html';
+    if (A.me()) { location.replace(next); return; }
+
+    var mode = params.get('tab') === 'create' ? 'create' : 'login';
+    var msg = document.getElementById('auth-msg');
+    var busy = false;
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('tab-login').classList.toggle('on', m === 'login');
+      document.getElementById('tab-create').classList.toggle('on', m === 'create');
+      document.getElementById('tab-login').setAttribute('aria-selected', String(m === 'login'));
+      document.getElementById('tab-create').setAttribute('aria-selected', String(m === 'create'));
+      document.getElementById('pane-login').hidden = m !== 'login';
+      document.getElementById('pane-create').hidden = m !== 'create';
+      msg.textContent = '';
+    }
+    document.getElementById('tab-login').addEventListener('click', function () { setMode('login'); });
+    document.getElementById('tab-create').addEventListener('click', function () { setMode('create'); });
+    setMode(mode);
+
+    function val(id) { return document.getElementById(id).value; }
+
+    document.getElementById('auth-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (busy) return;
+      var body;
+      if (mode === 'login') {
+        if (!val('login-username').trim() || !val('login-password')) { msg.textContent = 'Enter your username and password.'; return; }
+        body = { action: 'login', username: val('login-username').trim(), password: val('login-password') };
+      } else {
+        var name = val('reg-name').trim(), user = val('reg-username').trim(), pass = val('reg-password');
+        if (!name || !user || !pass) { msg.textContent = 'Fill in all three fields.'; return; }
+        if (!/^[A-Za-z0-9]{2,30}$/.test(user)) { msg.textContent = 'Username: 2 to 30 letters and numbers, no spaces.'; return; }
+        if (pass.length < 4) { msg.textContent = 'Password must be at least 4 characters.'; return; }
+        body = { action: 'register', display_name: name, username: user, password: pass };
+      }
+      busy = true;
+      msg.textContent = '';
+      A.api('php/auth.php', body).then(function (data) {
+        busy = false;
+        if (data && data.success) { location.replace(next); return; }
+        msg.textContent = (data && data.message) || 'Something went wrong. Try again.';
+        if (mode === 'login') document.getElementById('login-password').value = '';
+      }, function () {
+        busy = false;
+        msg.textContent = 'Cannot reach the kiosk server. Try again.';
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

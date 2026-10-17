@@ -93,7 +93,8 @@
 
     function handleFocusIn(e) {
         const target = e.target;
-        if (target && (target.tagName === 'INPUT' && (target.type === 'text' || target.type === 'search' || !target.type) || target.tagName === 'TEXTAREA')) {
+        // type=password too (accounts-quiz phase: login.html and users.html have password fields).
+        if (target && (target.tagName === 'INPUT' && (target.type === 'text' || target.type === 'search' || target.type === 'password' || !target.type) || target.tagName === 'TEXTAREA')) {
             // Prevent virtual keyboard popup if it's explicitly disabled via a dataset
             if (target.dataset.noKeyboard === 'true') return;
 

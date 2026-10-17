@@ -1,163 +1,176 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Content-Type: application/json");
+// Admin-only API (accounts-quiz phase, 2026-10-18). Every action needs a logged-in admin (the PHP
+// session, php/session.php); anyone else gets HTTP 403. The old client-supplied requester_id is
+// no longer trusted (DEBT 72, for this file).
+//
+// Manage users (users.html):
+//   {action:"list_users"}                                    -> {success, users:[...]}
+//   {action:"create_user", display_name, username, password, role}
+//   {action:"reset_password", id, password}
+//   {action:"set_active", id, active: true|false}            (an admin cannot deactivate itself)
+// There is no delete: a user is deactivated instead.
+//
+// Every refusal caused by the input (a field left empty, a taken username, deactivating yourself) is
+// HTTP 200 with {success:false, code, message} -- the browser logs any non-2xx answer as a console
+// error. code: invalid | taken | not_found | self. Not an admin: 403. A database failure: 500.
+//
+// Kept from before (no page calls them): get_gestures, get_stats. delete_gesture / clear_gestures
+// were removed with delete_user / update_user: nothing called them and gestures rows are owned by
+// php/api/save_gesture.php.
+header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit(0); }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'POST only.']);
+    exit;
+}
 
 require_once __DIR__ . '/connect.php';
+require_once __DIR__ . '/session.php';
 
-$data   = json_decode(file_get_contents("php://input"), true);
-$action = $data['action'] ?? '';
+$admin = sk_require_admin($conn);
 
-// ── Simple session-style admin check via passed user_id + role ────────────────
-// In production, use session tokens. Here we verify by re-querying the DB.
-$requesterId   = intval($data['requester_id'] ?? 0);
-$requesterRole = '';
-if ($requesterId > 0) {
-    $rRow = mysqli_fetch_assoc(mysqli_query($conn, "SELECT role FROM users WHERE id=$requesterId"));
-    $requesterRole = $rRow['role'] ?? '';
-}
+$data   = json_decode((string)file_get_contents('php://input'), true);
+$action = is_array($data) ? ($data['action'] ?? '') : '';
 
-function requireAdmin($role) {
-    if ($role !== 'admin') {
-        echo json_encode(["success" => false, "message" => "Admin access required."]);
-        exit;
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// USERS CRUD
-// ══════════════════════════════════════════════════════════════════════════════
-
-if ($action === 'get_users') {
-    requireAdmin($requesterRole);
-    $res  = mysqli_query($conn, "SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC");
-    $rows = [];
-    while ($r = mysqli_fetch_assoc($res)) $rows[] = $r;
-    echo json_encode(["success" => true, "data" => $rows]);
+function api_reply($payload, $code = 200) {
+    http_response_code($code);
+    echo json_encode($payload);
     exit;
 }
 
-if ($action === 'create_user') {
-    requireAdmin($requesterRole);
-    $username = trim($data['username'] ?? '');
-    $email    = trim($data['email']    ?? '');
-    $password = $data['password'] ?? '';
-    $role     = in_array($data['role'] ?? '', ['user','admin']) ? $data['role'] : 'user';
-
-    if (!$username || !$email || !$password) {
-        echo json_encode(["success" => false, "message" => "All fields required."]);
-        exit;
-    }
-
-    $uEsc = mysqli_real_escape_string($conn, $username);
-    $eEsc = mysqli_real_escape_string($conn, $email);
-    $hash = password_hash($password, PASSWORD_BCRYPT);
-
-    $chk = mysqli_query($conn, "SELECT id FROM users WHERE username='$uEsc' OR email='$eEsc'");
-    if (mysqli_num_rows($chk) > 0) {
-        echo json_encode(["success" => false, "message" => "Username or email already exists."]);
-        exit;
-    }
-
-    $ok = mysqli_query($conn, "INSERT INTO users (username, email, password_hash, role) VALUES ('$uEsc','$eEsc','$hash','$role')");
-    echo json_encode(["success" => (bool)$ok, "message" => $ok ? "User created." : mysqli_error($conn)]);
-    exit;
+function api_fail($message, $reason = 'invalid', $http = 200) {
+    api_reply(['success' => false, 'code' => $reason, 'message' => $message], $http);
 }
 
-if ($action === 'update_user') {
-    requireAdmin($requesterRole);
-    $id       = intval($data['id'] ?? 0);
-    $username = trim($data['username'] ?? '');
-    $email    = trim($data['email']    ?? '');
-    $role     = in_array($data['role'] ?? '', ['user','admin']) ? $data['role'] : 'user';
-    $password = $data['password'] ?? ''; // optional — blank = don't change
+function valid_password($password) {
+    return is_string($password) && strlen($password) >= 4;
+}
 
-    if (!$id || !$username || !$email) {
-        echo json_encode(["success" => false, "message" => "ID, username and email required."]);
-        exit;
+function user_exists($conn, $id) {
+    $stmt = mysqli_prepare($conn, 'SELECT id FROM users WHERE id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $id);
+    mysqli_stmt_execute($stmt);
+    $row = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+    mysqli_stmt_close($stmt);
+    return (bool)$row;
+}
+
+try {
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // USERS
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    if ($action === 'list_users') {
+        $res = mysqli_query($conn, 'SELECT id, username, display_name, role, is_active, last_login_at, created_at FROM users ORDER BY role = \'admin\' DESC, COALESCE(display_name, username), id');
+        $rows = [];
+        while ($r = mysqli_fetch_assoc($res)) {
+            $rows[] = [
+                'id'            => (int)$r['id'],
+                'username'      => $r['username'],
+                'display_name'  => ($r['display_name'] !== null && $r['display_name'] !== '') ? $r['display_name'] : $r['username'],
+                'role'          => $r['role'] === 'admin' ? 'admin' : 'user',
+                'is_active'     => (int)$r['is_active'] === 1,
+                'last_login_at' => $r['last_login_at'],
+                'created_at'    => $r['created_at'],
+                'is_me'         => (int)$r['id'] === $admin['id'],
+            ];
+        }
+        api_reply(['success' => true, 'users' => $rows]);
     }
 
-    $uEsc = mysqli_real_escape_string($conn, $username);
-    $eEsc = mysqli_real_escape_string($conn, $email);
+    if ($action === 'create_user') {
+        $displayName = trim((string)($data['display_name'] ?? ''));
+        $username    = trim((string)($data['username'] ?? ''));
+        $password    = $data['password'] ?? '';
+        $role        = ($data['role'] ?? 'user') === 'admin' ? 'admin' : 'user';
 
-    // Check uniqueness excluding self
-    $chk = mysqli_query($conn, "SELECT id FROM users WHERE (username='$uEsc' OR email='$eEsc') AND id != $id");
-    if (mysqli_num_rows($chk) > 0) {
-        echo json_encode(["success" => false, "message" => "Username or email taken by another user."]);
-        exit;
-    }
+        if ($displayName === '' || $username === '' || $password === '') {
+            api_fail('Fill in all three fields.');
+        }
+        if (preg_match('/^.{1,80}$/us', $displayName) !== 1) {
+            api_fail('Display name can be at most 80 characters.');
+        }
+        if (preg_match('/^[A-Za-z0-9]{2,30}$/', $username) !== 1) {
+            api_fail('Username: 2 to 30 letters and numbers, no spaces.');
+        }
+        if (!valid_password($password)) {
+            api_fail('Password must be at least 4 characters.');
+        }
 
-    $passClause = '';
-    if (!empty($password)) {
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        $passClause = ", password_hash='$hash'";
+        $ins = mysqli_prepare($conn, 'INSERT INTO users (username, display_name, password_hash, role) VALUES (?, ?, ?, ?)');
+        mysqli_stmt_bind_param($ins, 'ssss', $username, $displayName, $hash, $role);
+        if (!mysqli_stmt_execute($ins)) {
+            if (mysqli_stmt_errno($ins) === 1062) api_fail('That username is taken.', 'taken');
+            throw new RuntimeException(mysqli_stmt_error($ins));
+        }
+        $id = mysqli_insert_id($conn);
+        mysqli_stmt_close($ins);
+        api_reply(['success' => true, 'id' => (int)$id, 'message' => 'User added.']);
     }
 
-    $ok = mysqli_query($conn, "UPDATE users SET username='$uEsc', email='$eEsc', role='$role' $passClause WHERE id=$id");
-    echo json_encode(["success" => (bool)$ok, "message" => $ok ? "User updated." : mysqli_error($conn)]);
-    exit;
-}
-
-if ($action === 'delete_user') {
-    requireAdmin($requesterRole);
-    $id = intval($data['id'] ?? 0);
-    if ($id === $requesterId) {
-        echo json_encode(["success" => false, "message" => "Cannot delete yourself."]);
-        exit;
+    if ($action === 'reset_password') {
+        $id       = $data['id'] ?? null;
+        $password = $data['password'] ?? '';
+        if (!is_int($id) || $id < 1 || !user_exists($conn, $id)) {
+            api_fail('User not found.', 'not_found');
+        }
+        if (!valid_password($password)) {
+            api_fail('Password must be at least 4 characters.');
+        }
+        $hash = password_hash($password, PASSWORD_BCRYPT);
+        $upd = mysqli_prepare($conn, 'UPDATE users SET password_hash = ? WHERE id = ?');
+        mysqli_stmt_bind_param($upd, 'si', $hash, $id);
+        mysqli_stmt_execute($upd);
+        mysqli_stmt_close($upd);
+        api_reply(['success' => true, 'message' => 'Password changed.']);
     }
-    $ok = mysqli_query($conn, "DELETE FROM users WHERE id=$id");
-    echo json_encode(["success" => (bool)$ok, "message" => $ok ? "User deleted." : mysqli_error($conn)]);
-    exit;
+
+    if ($action === 'set_active') {
+        $id     = $data['id'] ?? null;
+        $active = $data['active'] ?? null;
+        if (!is_int($id) || $id < 1 || !user_exists($conn, $id)) {
+            api_fail('User not found.', 'not_found');
+        }
+        if (!is_bool($active)) {
+            api_fail('active must be true or false.');
+        }
+        if (!$active && $id === $admin['id']) {
+            api_fail('You cannot deactivate your own account.', 'self');
+        }
+        $flag = $active ? 1 : 0;
+        $upd = mysqli_prepare($conn, 'UPDATE users SET is_active = ? WHERE id = ?');
+        mysqli_stmt_bind_param($upd, 'ii', $flag, $id);
+        mysqli_stmt_execute($upd);
+        mysqli_stmt_close($upd);
+        api_reply(['success' => true, 'message' => $active ? 'User activated.' : 'User deactivated.']);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // GESTURES / STATS (read-only, kept from before)
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    if ($action === 'get_gestures') {
+        $res  = mysqli_query($conn, 'SELECT * FROM gestures ORDER BY id DESC LIMIT 200');
+        $rows = [];
+        while ($r = mysqli_fetch_assoc($res)) $rows[] = $r;
+        api_reply(['success' => true, 'data' => $rows]);
+    }
+
+    if ($action === 'get_stats') {
+        $totalUsers    = mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM users'))[0];
+        $totalGestures = mysqli_fetch_row(mysqli_query($conn, 'SELECT COUNT(*) FROM gestures'))[0];
+        api_reply(['success' => true, 'stats' => [
+            'total_users'    => (int)$totalUsers,
+            'total_gestures' => (int)$totalGestures,
+        ]]);
+    }
+} catch (Throwable $e) {
+    if ((int)$e->getCode() === 1062) {
+        api_fail('That username is taken.', 'taken');
+    }
+    api_fail('Database error.', 'db', 500);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// GESTURES CRUD
-// ══════════════════════════════════════════════════════════════════════════════
-
-if ($action === 'get_gestures') {
-    requireAdmin($requesterRole);
-    $res  = mysqli_query($conn, "SELECT * FROM gestures ORDER BY id DESC LIMIT 200");
-    $rows = [];
-    while ($r = mysqli_fetch_assoc($res)) $rows[] = $r;
-    echo json_encode(["success" => true, "data" => $rows]);
-    exit;
-}
-
-if ($action === 'delete_gesture') {
-    requireAdmin($requesterRole);
-    $id = intval($data['id'] ?? 0);
-    $ok = mysqli_query($conn, "DELETE FROM gestures WHERE id=$id");
-    echo json_encode(["success" => (bool)$ok]);
-    exit;
-}
-
-if ($action === 'clear_gestures') {
-    requireAdmin($requesterRole);
-    $ok = mysqli_query($conn, "TRUNCATE TABLE gestures");
-    echo json_encode(["success" => (bool)$ok]);
-    exit;
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// DASHBOARD STATS
-// ══════════════════════════════════════════════════════════════════════════════
-
-if ($action === 'get_stats') {
-    requireAdmin($requesterRole);
-    $totalUsers    = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM users"))[0];
-    $totalGestures = mysqli_fetch_row(mysqli_query($conn, "SELECT COUNT(*) FROM gestures"))[0];
-    echo json_encode([
-        "success" => true,
-        "stats" => [
-            "total_users"    => (int)$totalUsers,
-            "total_gestures" => (int)$totalGestures
-        ]
-    ]);
-    exit;
-}
-
-echo json_encode(["success" => false, "message" => "Unknown action."]);
-?>
+api_fail('Unknown action.', 'unknown_action');

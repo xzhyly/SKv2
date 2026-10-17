@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage Users — Sining Kamay</title>
+<!-- Manage users (accounts-quiz phase, docs/design/new-features-wireframe.html screen 8), admin only:
+     list (name, username, role, status, last login), Add user and Reset password as full-screen
+     forms with the fields on top (clear of the on-screen keyboard), Activate / Deactivate. No delete.
+     An admin cannot deactivate their own account. All through php/admin_api.php (403 for anyone
+     who is not a logged-in admin). -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/virtual-keyboard.css">
+<link rel="stylesheet" href="css/sk-pages.css">
+<style>
+  .tbl-wrap { flex: 1; min-height: 0; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th { position: sticky; top: 0; background: #fff; text-align: left; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 6px 12px; height: 60px; border-bottom: 1px solid var(--border); }
+  td.name { font-weight: 700; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.acts { white-space: nowrap; text-align: right; }
+  td.acts .sk-mini + .sk-mini { margin-left: 6px; }
+  .list-top { display: flex; align-items: center; gap: 12px; }
+  .list-top .sk-msg { flex: 1; }
+  .form-sub { font-size: 16px; font-weight: 600; }
+  .form-sub + .sk-row { margin-top: 10px; }
+  .role-field { flex: none; width: 220px; }
+  .role-field .sk-seg { width: 100%; margin: 0; }
+  .role-field .sk-seg button { height: 48px; }
+  #form-msg { flex: none; height: 20px; }
+</style>
+<script src="php/api/me.php"></script>
+<script src="js/sk-account.js"></script>
+<script>SKAccount.adminPage();</script>
+</head>
+<body class="sk-page">
+  <div class="sk-bar">
+    <div class="sk-bar-side"><button type="button" class="sk-back" id="back-btn">&#8592; Home</button></div>
+    <h1 class="sk-title" id="bar-title">MANAGE USERS</h1>
+    <div class="sk-bar-side right"><div id="acct"></div></div>
+  </div>
+
+  <div class="sk-screen on" id="screen-list">
+    <div class="sk-body">
+      <div class="list-top">
+        <select class="sk-sel" id="f-show" aria-label="Show">
+          <option value="all">Show: All</option>
+          <option value="active">Show: Active</option>
+          <option value="inactive">Show: Inactive</option>
+        </select>
+        <div class="sk-msg ok" id="list-msg" role="status"></div>
+        <button type="button" class="sk-btn pri h44" id="add-btn">+ Add user</button>
+      </div>
+      <div class="sk-box tbl-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Last login</th><th></th></tr></thead>
+          <tbody id="rows"><tr><td colspan="6" class="sk-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add user / Reset password: same full-screen form, fields at the top -->
+  <div class="sk-screen" id="screen-form">
+    <form class="sk-form" id="user-form" autocomplete="off" novalidate>
+      <div class="sk-msg" id="form-msg" role="alert"></div>
+      <div id="pane-add">
+        <div class="sk-row">
+          <div class="sk-field"><label for="f-name">Display name</label><input class="sk-input" type="text" id="f-name" maxlength="80"></div>
+          <div class="sk-field"><label for="f-username">Username</label><input class="sk-input" type="text" id="f-username" maxlength="30" autocapitalize="off" spellcheck="false" placeholder="letters and numbers"></div>
+          <div class="sk-field role-field"><label>Role</label>
+            <div class="sk-seg small" id="f-role"><button type="button" data-v="user" class="on">User</button><button type="button" data-v="admin">Admin</button></div></div>
+        </div>
+        <div class="sk-row">
+          <div class="sk-field"><label for="f-password">Password</label><input class="sk-input" type="password" id="f-password" maxlength="200" placeholder="at least 4 characters"></div>
+          <button type="submit" class="sk-btn pri" id="f-add-submit">Add user</button>
+        </div>
+      </div>
+      <div id="pane-reset" hidden>
+        <div class="form-sub" id="reset-who"></div>
+        <div class="sk-row">
+          <div class="sk-field"><label for="f-newpass">New password</label><input class="sk-input" type="password" id="f-newpass" maxlength="200" placeholder="at least 4 characters"></div>
+          <button type="submit" class="sk-btn pri" id="f-reset-submit">Save password</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <script src="js/virtual-keyboard.js" defer></script>
+  <script>
+  (function () {
+    'use strict';
+    var A = window.SKAccount;
+    if (!A.isAdmin()) return;
+    var users = [];
+    var screen = 'list';
+    var formMode = 'add';
+    var resetId = 0;
+    var busy = false;
+
+    A.renderAccount(document.getElementById('acct'), { menu: false });
+
+    function show(name) {
+      screen = name;
+      document.getElementById('screen-list').classList.toggle('on', name === 'list');
+      document.getElementById('screen-form').classList.toggle('on', name === 'form');
+      document.getElementById('back-btn').innerHTML = name === 'list' ? '&#8592; Home' : '&#8592; Back';
+      document.getElementById('acct').hidden = name !== 'list';
+      document.getElementById('bar-title').textContent = name === 'list' ? 'MANAGE USERS' : (formMode === 'add' ? 'ADD USER' : 'RESET PASSWORD');
+    }
+
+    function render() {
+      var f = document.getElementById('f-show').value;
+      var rows = users.filter(function (u) { return f === 'all' || (f === 'active') === u.is_active; });
+      var tb = document.getElementById('rows');
+      if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="sk-empty">No users.</td></tr>'; return; }
+      tb.innerHTML = rows.map(function (u) {
+        var acts = '<button type="button" class="sk-mini" data-act="reset" data-id="' + u.id + '">Reset password</button>';
+        if (u.is_active && !u.is_me) acts += '<button type="button" class="sk-mini red" data-act="off" data-id="' + u.id + '">Deactivate</button>';
+        if (!u.is_active) acts += '<button type="button" class="sk-mini ok" data-act="on" data-id="' + u.id + '">Activate</button>';
+        return '<tr data-username="' + A.esc(u.username) + '"><td class="name">' + A.esc(u.display_name) + (u.is_me ? ' <span class="sk-pill">You</span>' : '') + '</td>' +
+          '<td>' + A.esc(u.username) + '</td>' +
+          '<td>' + (u.role === 'admin' ? '<span class="sk-pill g">Admin</span>' : '<span class="sk-pill">User</span>') + '</td>' +
+          '<td>' + (u.is_active ? '<span class="sk-pill ok">Active</span>' : '<span class="sk-pill bad">Inactive</span>') + '</td>' +
+          '<td>' + A.esc(A.fmtDay(u.last_login_at)) + '</td>' +
+          '<td class="acts">' + acts + '</td></tr>';
+      }).join('');
+    }
+
+    function load() {
+      return A.api('php/admin_api.php', { action: 'list_users' }).then(function (data) {
+        if (!data || !data.success) {
+          document.getElementById('rows').innerHTML = '<tr><td colspan="6" class="sk-empty">' + A.esc((data && data.message) || 'Could not load users.') + '</td></tr>';
+          return;
+        }
+        users = data.users;
+        render();
+      }, function () {
+        document.getElementById('rows').innerHTML = '<tr><td colspan="6" class="sk-empty">Cannot reach the kiosk server.</td></tr>';
+      });
+    }
+
+    function listMessage(text, ok) {
+      var m = document.getElementById('list-msg');
+      m.textContent = text;
+      m.classList.toggle('ok', ok !== false);
+    }
+
+    document.getElementById('f-show').addEventListener('change', render);
+
+    document.getElementById('rows').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-act]');
+      if (!b || busy) return;
+      var id = Number(b.dataset.id);
+      var u = users.filter(function (x) { return x.id === id; })[0];
+      if (!u) return;
+      if (b.dataset.act === 'reset') { openForm('reset', u); return; }
+      busy = true;
+      A.api('php/admin_api.php', { action: 'set_active', id: id, active: b.dataset.act === 'on' }).then(function (data) {
+        busy = false;
+        listMessage((data && data.message) || 'Something went wrong.', !!(data && data.success));
+        return load();
+      }, function () { busy = false; listMessage('Cannot reach the kiosk server.', false); });
+    });
+
+    // ── Forms ──
+    var role = 'user';
+    document.getElementById('f-role').querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        role = b.dataset.v;
+        document.getElementById('f-role').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      });
+    });
+
+    function openForm(mode, u) {
+      formMode = mode;
+      document.getElementById('form-msg').textContent = '';
+      document.getElementById('pane-add').hidden = mode !== 'add';
+      document.getElementById('pane-reset').hidden = mode !== 'reset';
+      ['f-name', 'f-username', 'f-password', 'f-newpass'].forEach(function (id) { document.getElementById(id).value = ''; });
+      if (mode === 'reset') {
+        resetId = u.id;
+        document.getElementById('reset-who').textContent = 'New password for ' + u.display_name + ' (' + u.username + ')';
+      } else {
+        role = 'user';
+        document.getElementById('f-role').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x.dataset.v === 'user'); });
+      }
+      listMessage('');
+      show('form');
+    }
+    document.getElementById('add-btn').addEventListener('click', function () { openForm('add'); });
+
+    document.getElementById('user-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (busy) return;
+      var msg = document.getElementById('form-msg');
+      var body;
+      if (formMode === 'add') {
+        var name = document.getElementById('f-name').value.trim();
+        var un = document.getElementById('f-username').value.trim();
+        var pw = document.getElementById('f-password').value;
+        if (!name || !un || !pw) { msg.textContent = 'Fill in all three fields.'; return; }
+        if (!/^[A-Za-z0-9]{2,30}$/.test(un)) { msg.textContent = 'Username: 2 to 30 letters and numbers, no spaces.'; return; }
+        if (pw.length < 4) { msg.textContent = 'Password must be at least 4 characters.'; return; }
+        body = { action: 'create_user', display_name: name, username: un, password: pw, role: role };
+      } else {
+        var np = document.getElementById('f-newpass').value;
+        if (np.length < 4) { msg.textContent = 'Password must be at least 4 characters.'; return; }
+        body = { action: 'reset_password', id: resetId, password: np };
+      }
+      busy = true;
+      msg.textContent = '';
+      A.api('php/admin_api.php', body).then(function (data) {
+        busy = false;
+        if (!data || !data.success) { msg.textContent = (data && data.message) || 'Something went wrong.'; return; }
+        show('list');
+        listMessage(data.message);
+        load();
+      }, function () { busy = false; msg.textContent = 'Cannot reach the kiosk server.'; });
+    });
+
+    document.getElementById('back-btn').addEventListener('click', function () {
+      if (screen === 'form') { show('list'); return; }
+      location.href = 'index.html';
+    });
+
+    load();
+  })();
+  </script>
+</body>
+</html>

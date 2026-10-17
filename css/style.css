@@ -90,6 +90,7 @@ select:focus-visible {
 }
 
 #dashboard-pane .title-container {
+    position: relative; /* anchors the account area (.dash-acct) */
     background-color: #1b355a; /* Dark Blue banner */
     padding: 24px 20px 20px;
     display: flex;
@@ -100,6 +101,14 @@ select:focus-visible {
     width: 100%;
     gap: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Account area, top-right of the banner (accounts-quiz phase; chip/menu styles: css/sk-pages.css). */
+#dashboard-pane .dash-acct {
+    position: absolute;
+    top: 18px;
+    right: 20px;
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
 }
 
 #dashboard-pane .logo-and-title {
@@ -153,7 +162,9 @@ select:focus-visible {
        this to repeat(4, 180px) would leave a fifth, empty 180px column
        track — a lopsided row with a blank slot, not a centred four-card
        row. Track count must match card count. */
-    grid-template-columns: repeat(4, 200px);
+    /* Accounts-quiz phase: three cards (Learn Signs, Let's Talk, Quiz) — Train Gestures and View
+       Reports moved into the admin account menu. Same 200px card, three tracks. */
+    grid-template-columns: repeat(3, 200px);
     gap: 24px;
     justify-content: center;
     align-items: stretch;

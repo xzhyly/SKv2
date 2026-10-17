@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversations — Sining Kamay</title>
+<!-- Saved Let's Talk conversations (accounts-quiz phase, docs/design/new-features-wireframe.html
+     screens 5 and 6). One page: the list (a user sees their own; an admin sees all of them, guests'
+     included, with User and Language filters; 20 per load + Load more) and a read-only thread
+     (signer left, speaker right). Read through php/api/conversations.php, which enforces the same
+     rule server-side. Guests are sent to the login page. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/sk-pages.css">
+<style>
+  .thread { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 24px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .day { align-self: center; font-size: 12px; color: var(--muted); }
+  .msg { max-width: 60%; padding: 10px 14px; border-radius: 16px; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+  .msg small { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; opacity: 0.8; margin-bottom: 3px; }
+  .msg.l { align-self: flex-start; background: #fff; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg.r { align-self: flex-end; background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+  .msg time { display: block; margin-top: 4px; font-size: 11px; opacity: 0.6; }
+  .bar-meta { font-size: 14px; font-weight: 600; text-align: right; white-space: nowrap; }
+</style>
+<script src="php/api/me.php"></script>
+<script src="js/sk-account.js"></script>
+<script>SKAccount.loginPage('conversations.html');</script>
+</head>
+<body class="sk-page">
+  <div class="sk-bar">
+    <div class="sk-bar-side"><button type="button" class="sk-back" id="back-btn">&#8592; Home</button></div>
+    <h1 class="sk-title" id="bar-title">CONVERSATIONS</h1>
+    <div class="sk-bar-side right" id="bar-right"><div id="acct"></div><div class="bar-meta" id="bar-meta" hidden></div></div>
+  </div>
+
+  <div class="sk-screen on" id="screen-list">
+    <div class="sk-body">
+      <div class="sk-filters" id="filters" hidden>
+        <select class="sk-sel" id="f-user" aria-label="User"><option value="">User: All</option><option value="guest">User: Guest</option></select>
+        <select class="sk-sel" id="f-lang" aria-label="Language"><option value="">Language: All</option><option value="ESL">Language: ESL</option><option value="FSL">Language: FSL</option></select>
+      </div>
+      <div class="sk-box sk-list" id="list"></div>
+    </div>
+  </div>
+
+  <div class="sk-screen" id="screen-thread">
+    <div class="thread" id="thread"></div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+    var A = window.SKAccount;
+    var user = A.me();
+    if (!user) return;
+    var admin = user.role === 'admin';
+    var PAGE = 20;
+    var offset = 0;
+    var loadToken = 0;
+    var listEl = document.getElementById('list');
+
+    var SIGN_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 11V5a1.5 1.5 0 0 1 3 0v5M10 10V3.5a1.5 1.5 0 0 1 3 0V10M13 10V4.5a1.5 1.5 0 0 1 3 0V11M16 11V7.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-2.7L3.5 14a1.5 1.5 0 0 1 2.5-1.7L7 14"/></svg>';
+    var TYPE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>';
+    var MIC_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>';
+
+    A.renderAccount(document.getElementById('acct'), { menu: false });
+    document.getElementById('bar-title').textContent = admin ? 'ALL CONVERSATIONS' : 'MY CONVERSATIONS';
+
+    function titleOf(c) {
+      var t = c.title || c.first_message || '';
+      return t ? t : '(no messages)';
+    }
+    function langOf(c) { return c.languages && c.languages.length ? c.languages.join(' / ') : ''; }
+
+    function row(c) {
+      var meta = [A.fmtDateTime(c.started_at), c.message_count + (c.message_count === 1 ? ' message' : ' messages')];
+      if (langOf(c)) meta.push(langOf(c));
+      var who = '';
+      if (admin) who = c.user_id === null ? '<span class="sk-pill g">Guest</span>' : '<span class="sk-pill">' + A.esc(c.username) + '</span>';
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sk-li';
+      b.dataset.id = c.id;
+      b.innerHTML = '<div class="m"><b>' + A.esc(titleOf(c)) + '</b><small>' + A.esc(meta.join(' · ')) + '</small></div>' + who + '<span class="sk-arrow">&#8250;</span>';
+      b.addEventListener('click', function () { openThread(c.id); });
+      return b;
+    }
+
+    function load(reset) {
+      var token = ++loadToken;
+      if (reset) {
+        offset = 0;
+        listEl.innerHTML = '<div class="sk-empty">Loading…</div>';
+      }
+      var q = 'limit=' + PAGE + '&offset=' + offset;
+      if (admin) {
+        q += '&user=' + encodeURIComponent(document.getElementById('f-user').value);
+        q += '&lang=' + encodeURIComponent(document.getElementById('f-lang').value);
+      }
+      A.api('php/api/conversations.php?' + q).then(function (data) {
+        if (token !== loadToken) return;
+        if (reset) listEl.innerHTML = '';
+        var more = listEl.querySelector('.sk-more');
+        if (more) more.remove();
+        if (!data || !data.success) {
+          listEl.insertAdjacentHTML('beforeend', '<div class="sk-empty">Could not load conversations.</div>');
+          return;
+        }
+        data.conversations.forEach(function (c) { listEl.appendChild(row(c)); });
+        offset += data.conversations.length;
+        if (offset === 0) {
+          listEl.innerHTML = '<div class="sk-empty">' + (admin ? 'No conversations match.' : 'No saved conversations yet. Talk with someone in Let’s Talk while you are logged in.') + '</div>';
+        }
+        if (data.has_more) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'sk-more';
+          btn.id = 'load-more';
+          btn.textContent = 'Load more';
+          btn.addEventListener('click', function () { btn.disabled = true; load(false); });
+          listEl.appendChild(btn);
+        }
+      }, function () {
+        if (token !== loadToken) return;
+        listEl.innerHTML = '<div class="sk-empty">Cannot reach the kiosk server.</div>';
+      });
+    }
+
+    // ── Thread view ──
+    var screen = 'list';
+    function show(name) {
+      screen = name;
+      document.getElementById('screen-list').classList.toggle('on', name === 'list');
+      document.getElementById('screen-thread').classList.toggle('on', name === 'thread');
+      document.getElementById('back-btn').innerHTML = name === 'list' ? '&#8592; Home' : '&#8592; Back';
+      document.getElementById('acct').hidden = name !== 'list';
+      document.getElementById('bar-meta').hidden = name === 'list';
+      if (name === 'list') document.getElementById('bar-title').textContent = admin ? 'ALL CONVERSATIONS' : 'MY CONVERSATIONS';
+    }
+
+    function openThread(id) {
+      var th = document.getElementById('thread');
+      th.innerHTML = '<div class="sk-empty">Loading…</div>';
+      show('thread');
+      A.api('php/api/conversations.php?id=' + id).then(function (data) {
+        if (screen !== 'thread') return;
+        if (!data || !data.success) { th.innerHTML = '<div class="sk-empty">Could not load this conversation.</div>'; return; }
+        var c = data.conversation;
+        var title = document.getElementById('bar-title');
+        title.textContent = titleOf(c);
+        title.style.textTransform = 'none';
+        var meta = [];
+        if (admin) meta.push(c.user_id === null ? 'Guest' : c.display_name);
+        if (langOf(c)) meta.push(langOf(c));
+        document.getElementById('bar-meta').textContent = meta.join(' · ');
+        var html = '<div class="day">' + A.esc(A.fmtDateTime(c.started_at)) + '</div>';
+        data.messages.forEach(function (m) {
+          var signer = m.speaker === 'signer';
+          var label = signer ? SIGN_ICON + 'Signer' + (m.sign_language ? ' · ' + m.sign_language : '')
+                             : (m.source === 'speech' ? MIC_ICON + 'Speaker · spoken' : TYPE_ICON + 'Speaker · typed');
+          html += '<div class="msg ' + (signer ? 'l' : 'r') + '"><small>' + label + '</small>' + A.esc(m.text) +
+            '<time>' + A.esc(A.fmtDateTime(m.created_at)) + '</time></div>';
+        });
+        if (!data.messages.length) html += '<div class="sk-empty">No messages.</div>';
+        th.innerHTML = html;
+      }, function () { th.innerHTML = '<div class="sk-empty">Cannot reach the kiosk server.</div>'; });
+    }
+
+    document.getElementById('back-btn').addEventListener('click', function () {
+      if (screen === 'thread') {
+        document.getElementById('bar-title').style.textTransform = '';
+        show('list');
+      } else {
+        location.href = 'index.html';
+      }
+    });
+
+    if (admin) {
+      document.getElementById('filters').hidden = false;
+      A.api('php/admin_api.php', { action: 'list_users' }).then(function (data) {
+        if (!data || !data.success) return;
+        var sel = document.getElementById('f-user');
+        data.users.forEach(function (u) {
+          var o = document.createElement('option');
+          o.value = String(u.id);
+          o.textContent = 'User: ' + u.display_name + ' (' + u.username + ')';
+          sel.appendChild(o);
+        });
+      });
+      document.getElementById('f-user').addEventListener('change', function () { load(true); });
+      document.getElementById('f-lang').addEventListener('change', function () { load(true); });
+    }
+    load(true);
+  })();
+  </script>
+</body>
+</html>

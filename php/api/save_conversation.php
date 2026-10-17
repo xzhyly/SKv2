@@ -6,9 +6,15 @@
 // Must never block/delay/break the live conversation: talk.html calls this fire-and-forget
 // (fetch(..., {keepalive:true})) and only console.warns on failure. This file itself stays
 // synchronous/simple — no retries, no background work — so a single request is always fast.
+//
+// Accounts-quiz phase (2026-10-18): the conversation row also gets user_id (the logged-in user from
+// the PHP session, php/session.php; NULL for a guest) and title (the first message, trimmed, at most
+// 120 characters). Both are set when the row is created; a later seq-1 message (one that arrived
+// after seq 2) replaces the title. The rest of the save flow is unchanged.
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../connect.php';
+require_once __DIR__ . '/../session.php';
 
 function fail($message, $code = 400) {
     http_response_code($code);
@@ -85,14 +91,25 @@ if ($action === 'message') {
         }
     }
 
+    // The title: the message trimmed and cut to 120 characters (not bytes, so UTF-8 stays whole).
+    preg_match('/^.{0,120}/us', trim($text), $titleMatch);
+    $title = rtrim($titleMatch[0] ?? '');
+    if ($title === '') {
+        $title = null;
+    }
+
     mysqli_begin_transaction($conn);
     try {
+        $user = sk_session_user($conn);
+        $userId = $user ? $user['id'] : null;
         $convStmt = mysqli_prepare(
             $conn,
-            'INSERT INTO conversations (client_key) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)'
+            'INSERT INTO conversations (client_key, user_id, title) VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id),
+                                     title = IF(? = 1 OR title IS NULL, VALUES(title), title)'
         );
         db_fail_check($conn, $convStmt !== false);
-        db_fail_check($conn, mysqli_stmt_bind_param($convStmt, 's', $clientKey), $convStmt);
+        db_fail_check($conn, mysqli_stmt_bind_param($convStmt, 'sisi', $clientKey, $userId, $title, $seq), $convStmt);
         db_fail_check($conn, mysqli_stmt_execute($convStmt), $convStmt);
         $conversationId = mysqli_insert_id($conn);
         mysqli_stmt_close($convStmt);

@@ -12,6 +12,10 @@
     <link rel="prefetch" href="js/lib/mediapipe/hands_solution_packed_assets.data" as="fetch" crossorigin="anonymous">
     <link rel="prefetch" href="js/lib/mediapipe/hand_landmark_full.tflite" as="fetch" crossorigin="anonymous">
     <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="css/sk-pages.css">
+    <!-- Accounts (accounts-quiz phase): who is logged in (window.SK_ME), then the chip/menu code. -->
+    <script src="php/api/me.php"></script>
+    <script src="js/sk-account.js"></script>
 </head>
 <body>
 
@@ -25,6 +29,10 @@
                 <h1 class="system-title">SINING KAMAY</h1>
             </div>
             <p class="system-subtitle">Filipino Sign Language System</p>
+            <!-- Account area (accounts-quiz phase): "Log in" for a guest, else the name chip whose
+                 menu holds the user's lists and, for an admin, every admin tool (Train Gestures and
+                 View Reports are no longer dashboard cards). Drawn by js/sk-account.js. -->
+            <div class="dash-acct" id="sk-acct"></div>
         </header>
 
         <div class="dashboard-content">
@@ -57,30 +65,18 @@
                     <span class="card-caption">Talk with someone</span>
                 </a>
 
-                <!-- Train Gestures -->
-                <button type="button" class="card-btn" onclick="window.location.href='gesture-training.html'">
-                    <div class="card-icon">
+                <!-- Quiz (accounts-quiz phase): for everyone; the score is saved only when logged in.
+                     Orange icon, plain border, as in docs/design/dashboard-login-wireframe.html. -->
+                <a href="quiz.html" class="card-btn">
+                    <div class="card-icon card-icon-highlight">
                         <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="8" y1="16" x2="16" y2="8" />
-                            <path d="M5 14l5 5M4 15l5 5M15 4l5 5M14 5l5 5" />
+                            <rect x="4" y="3" width="16" height="18" rx="2"></rect>
+                            <path d="M8 9l2 2 4-4M8 16h8"></path>
                         </svg>
                     </div>
-                    <span class="card-label">Train Gestures</span>
-                    <span class="card-caption">Add new signs</span>
-                </button>
-
-                <!-- View Reports -->
-                <button type="button" class="card-btn" onclick="window.location.href='reports.html'">
-                    <div class="card-icon">
-                        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="18" y1="20" x2="18" y2="10"></line>
-                            <line x1="12" y1="20" x2="12" y2="4"></line>
-                            <line x1="6" y1="20" x2="6" y2="14"></line>
-                        </svg>
-                    </div>
-                    <span class="card-label">View Reports</span>
-                    <span class="card-caption">Usage and accuracy</span>
-                </button>
+                    <span class="card-label">Quiz</span>
+                    <span class="card-caption">Test what you learned</span>
+                </a>
             </nav>
 
         </div>
@@ -89,5 +85,6 @@
             <p class="footer-text">Filipino Sign Language kiosk for learning, translation, and gesture training.</p>
         </footer>
     </main>
+    <script>SKAccount.renderAccount(document.getElementById('sk-acct'), { menu: true });</script>
 </body>
 </html>
