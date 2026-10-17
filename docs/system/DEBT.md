@@ -1891,7 +1891,9 @@ so a later session does not re-litigate them:
      `db-schema/database_setup.sql` matched no known password (verified with `password_verify`); the new setup
      file and the migration use a real hash of `admin123` (the migration only replaces that exact old hash). Change
      it in Manage users -> Reset password after the first login.
-166. **Low, open (talk-camera-layout, 2026-10-18): the camera picture is cropped top and bottom.** The signing
+166. **Resolved 2026-10-18 (talk-camera-side, `docs/reports/2026-10-18-talk-camera-side-final.md`): the camera
+     panel now has the camera's own ratio with `object-fit: contain`, so nothing is cropped.** Was: **the camera
+     picture is cropped top and bottom.** The signing
      camera is 320x240 (`js/talk-signing.js:302`) and now covers a 760 px wide panel (owner ask), so the panel shows
      the middle 56 % of the frame height on the first turn (760x322) and 40 % on later turns (760x226, under the
      thread strip). Recognition reads the whole frame and is not affected; the signer may not see a hand raised

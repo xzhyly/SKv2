@@ -1516,6 +1516,13 @@ failure reason); absent from the DOM on a plain load.
   bar under the camera (22 px bold, two-line clip, newest word highlighted, `TalkSigning.renderDraft`), the status is
   a 14 px chip in the video's top-left corner, the controls end at y 588. Checked by
   `tests/accounts-quiz/talk-layout-check.mjs`.
+  *Superseded the same day (`docs/reports/2026-10-18-talk-camera-side-final.md`, `docs/design/talk-camera-wireframe.html`):*
+  side by side. Left: the camera panel at the camera's own ratio (`--cam-ar` from `videoWidth`/`videoHeight`, 4:3
+  default), full height under the top bar (648×486 on the first turn, 520×390 under the thread strip),
+  `object-fit: contain` (nothing cropped), mirrored; the landmark canvas is placed by `js/gesture-data.js` as
+  before; the status chip on the video. Right column (`.signing-side`, 338 px on the first turn): SIGNED SENTENCE
+  label, the sentence box (24 px / 800, whole lines via `--draft-max`, newest word orange), EN|FIL 52 px, the main
+  action 60 px, Guide 52 px, stacked full width; ends at y 588. The `.signing-controls-row` is gone.
 
 **Camera lifecycle** (`onEnterSigning` `talk.html:1559` → `TalkSigning.enter()`
 `js/talk-signing.js:255`; `onLeaveSigning` `:1568` → `leave()` `:294`).

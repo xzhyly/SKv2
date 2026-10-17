@@ -2091,3 +2091,19 @@ for the signing screen (560×300, later 760×300).
   by the full-size video/canvas).
 - The column stays 760 px wide; the 4:3 crop this causes is reported, not changed (DEBT 166).
 
+## Decisions made for the side-by-side Let's Talk camera (2026-10-18)
+
+Report: `docs/reports/2026-10-18-talk-camera-side-final.md`; design `docs/design/talk-camera-wireframe.html`.
+Supersedes the previous section's full-width cover panel (it cropped the 4:3 webcam to the face; signing needs head
+to waist).
+- Camera panel = the camera's own ratio (`aspect-ratio: var(--cam-ar)`, set from `videoWidth`/`videoHeight`,
+  4:3 until known), full height, `object-fit: contain`. The landmark canvas needs no override: `js/gesture-data.js`
+  places it on the contain box, which is the whole panel.
+- `talk.html`'s top bar is 90 px (the wireframe draws 64), so the camera is 648×486 rather than ~688×512.
+- A camera wider than about 3:2 cannot take the full height and leave a usable column: `max-width` keeps the
+  right column >= 300 px and the picture letterboxes (still uncropped).
+- The sentence box shows whole lines only (`--draft-max` from a ResizeObserver), so no half line peeks at the top;
+  bottom-aligned clip keeps the newest words.
+- Newest word: `--orange-dark` text on `#fff1e6` (the wireframe's orange highlight; the darker orange is for contrast
+  on the light tint). The screen's one orange background stays the main action button.
+
