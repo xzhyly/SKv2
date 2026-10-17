@@ -13,9 +13,6 @@
 (function () {
   'use strict';
 
-  var PIN = '2026';                         // same PIN as Train Gestures (js/gesture-training-ui.js)
-  var UNLOCK_KEY = 'sk_train_unlocked';     // unlock time (ms), set by Train Gestures; this tab session only
-  var UNLOCK_MS = 10 * 60 * 1000;           // ... and honoured for 10 minutes
   var SIGNER_KEY = 'sk_avatar_signer';
   var MAX_JSON_BYTES = 8 * 1024 * 1024;     // Import JSON: 1500 untrimmed frames are about 1.3 MB
   var BULK_API = 'php/api/bulk_import.php'; // the bulk importer's cache: candidates and picks
@@ -37,36 +34,6 @@
     cands: [], candsToken: 0, picks: {}, candPlaying: null, playId: 0, candBusy: false,
     inUse: null, inUseId: '', clipVersion: 0
   };
-
-  // ── PIN ──
-  var pin = '';
-  function pinDots() {
-    document.querySelectorAll('.pin-dot').forEach(function (d, i) { d.classList.toggle('active', i < pin.length); });
-  }
-  function unlock() {
-    $('pin-screen').classList.remove('active');
-    $('ac-ui').classList.add('active');
-    start();
-  }
-  function onPinKey(v) {
-    if (v === 'clear') pin = '';
-    else if (v === 'back') pin = pin.slice(0, -1);
-    else if (pin.length < 4) pin += v;
-    pinDots();
-    if (pin.length === 4) {
-      setTimeout(function () {
-        if (pin === PIN) {
-          try { sessionStorage.setItem(UNLOCK_KEY, String(Date.now())); } catch (e) { /* storage blocked */ }
-          pin = ''; pinDots(); unlock();
-        } else {
-          var card = document.querySelector('.pin-card');
-          card.classList.add('shake');
-          toast('❌ Incorrect PIN. Try again.');
-          setTimeout(function () { card.classList.remove('shake'); pin = ''; pinDots(); }, 450);
-        }
-      }, 120);
-    }
-  }
 
   function toast(message) {
     var t = $('sk-toast');
@@ -848,15 +815,7 @@
     loadPicks();
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    document.querySelectorAll('[data-pin]').forEach(function (b) {
-      b.addEventListener('click', function () { onPinKey(b.dataset.pin); });
-    });
-    var unlocked = false;
-    try {
-      var at = Number(sessionStorage.getItem(UNLOCK_KEY));
-      unlocked = at > 0 && Date.now() - at >= 0 && Date.now() - at < UNLOCK_MS;
-    } catch (e) { /* storage blocked */ }
-    if (unlocked) unlock();
-  });
+  // Admin only: the page's <head> sends a non-admin to the dashboard (js/sk-account.js adminPage()),
+  // so the page opens straight away (accounts-quiz phase; the PIN pad is gone).
+  document.addEventListener('DOMContentLoaded', start);
 })();

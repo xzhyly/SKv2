@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Avatar Clips ✿ Sining Kamay</title>
   <!-- Admin only (accounts-quiz phase): a non-admin is sent to the dashboard before this page
-       shows (js/sk-account.js adminPage()). A logged-in admin then gets the PIN pad as before. -->
+       shows (js/sk-account.js adminPage()). The logged-in admin role is the only gate (no PIN). -->
   <script src="php/api/me.php"></script>
   <script src="js/sk-account.js"></script>
   <script>SKAccount.adminPage();</script>
   <!-- Avatar clips (avatar phase, docs/reports/2026-10-05-avatar-step1.md (f)): pick a sign, pick a
        video (or import a landmark JSON), extract pose + hands with MediaPipe Holistic (vendored,
        offline), trim, preview on the avatar, Save / Redo / Delete / Export JSON. Meant to be run on the laptop; the Pi only plays clips. The video
-       never leaves the browser. Opened from Train Gestures; gated by the same PIN. -->
+       never leaves the browser. Opened from Train Gestures; admin only (logged-in admin role). -->
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/gesture-training.css?v=1.0.10">
   <link rel="stylesheet" href="css/virtual-keyboard.css?v=1.0.5">
@@ -31,36 +31,7 @@
 </head>
 <body>
 
-<div id="pin-screen" class="pin-screen active">
-  <div class="pin-card">
-    <div class="pin-badge">🔐</div>
-    <h2>Avatar Clips</h2>
-    <p>Please enter the PIN code to manage the avatar clips.</p>
-    <div class="pin-dots">
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-    </div>
-    <div class="pin-pad">
-      <button type="button" class="pin-key" data-pin="1">1</button>
-      <button type="button" class="pin-key" data-pin="2">2</button>
-      <button type="button" class="pin-key" data-pin="3">3</button>
-      <button type="button" class="pin-key" data-pin="4">4</button>
-      <button type="button" class="pin-key" data-pin="5">5</button>
-      <button type="button" class="pin-key" data-pin="6">6</button>
-      <button type="button" class="pin-key" data-pin="7">7</button>
-      <button type="button" class="pin-key" data-pin="8">8</button>
-      <button type="button" class="pin-key" data-pin="9">9</button>
-      <button type="button" class="pin-key ctrl" data-pin="clear">Clear</button>
-      <button type="button" class="pin-key" data-pin="0">0</button>
-      <button type="button" class="pin-key ctrl" data-pin="back">⌫</button>
-    </div>
-    <a href="gesture-training.html" class="pin-back-btn">← Back to Train Gestures</a>
-  </div>
-</div>
-
-<div id="ac-ui">
+<div id="ac-ui" class="active">
   <nav class="tr-nav ac-nav">
     <a href="gesture-training.html" class="tr-back ac-back">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>

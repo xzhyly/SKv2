@@ -95,7 +95,7 @@ try {
   const click = (id) => ev(`document.getElementById('${id}').click(); 1`);
   const openPage = async () => {
     await c.navigate(BASE + 'bulk-import.html');
-    await ev(`sessionStorage.setItem('sk_train_unlocked', String(Date.now())); location.reload(); 1`);
+    await ev(`location.reload(); 1`);
     await sleep(1500);
     return waitFor(`!!window.BulkImport && document.getElementById('bi-ui').classList.contains('active') && ${S}.engines === 'ready'`, 90000);
   };
@@ -235,7 +235,6 @@ try {
   const gv = (e) => g.evaluate(e);
   const gWait = async (expr, ms = 20000, step = 250) => { const end = Date.now() + ms; while (Date.now() < end) { if (await gv(expr)) return true; await sleep(step); } return false; };
   await g.navigate(BASE + 'gesture-training.html');
-  await gv(`['2','0','2','6'].forEach(d=>trPressPin(d)); 1`);
   await sleep(2500);
   await gv(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.offsetParent&&/^Next/.test(b.textContent.trim()));b&&b.click();})(); 1`);
   await sleep(1500);

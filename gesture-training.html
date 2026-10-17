@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Train Gestures ✿ Sining Kamay</title>
   <!-- Admin only (accounts-quiz phase): a non-admin is sent to the dashboard before this page
-       shows (js/sk-account.js adminPage()). A logged-in admin then gets the PIN pad as before. -->
+       shows (js/sk-account.js adminPage()). The logged-in admin role is the only gate (no PIN). -->
   <script src="php/api/me.php"></script>
   <script src="js/sk-account.js"></script>
   <script>SKAccount.adminPage();</script>
@@ -53,37 +53,7 @@
 </head>
 <body>
 
-<!-- PIN Password Entry Screen -->
-<div id="pin-screen" class="pin-screen active">
-  <div class="pin-card">
-    <div class="pin-badge">🔐</div>
-    <h2>Admin Access Required</h2>
-    <p>Please enter the PIN code to access the gesture training system.</p>
-    <div class="pin-dots">
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-    </div>
-    <div class="pin-pad">
-      <button type="button" class="pin-key" onclick="trPressPin('1')">1</button>
-      <button type="button" class="pin-key" onclick="trPressPin('2')">2</button>
-      <button type="button" class="pin-key" onclick="trPressPin('3')">3</button>
-      <button type="button" class="pin-key" onclick="trPressPin('4')">4</button>
-      <button type="button" class="pin-key" onclick="trPressPin('5')">5</button>
-      <button type="button" class="pin-key" onclick="trPressPin('6')">6</button>
-      <button type="button" class="pin-key" onclick="trPressPin('7')">7</button>
-      <button type="button" class="pin-key" onclick="trPressPin('8')">8</button>
-      <button type="button" class="pin-key" onclick="trPressPin('9')">9</button>
-      <button type="button" class="pin-key ctrl" onclick="trClearPin()">Clear</button>
-      <button type="button" class="pin-key" onclick="trPressPin('0')">0</button>
-      <button type="button" class="pin-key ctrl" onclick="trDeletePin()">⌫</button>
-    </div>
-    <a href="index.html" class="pin-back-btn">← Back to Dashboard</a>
-  </div>
-</div>
-
-<div id="training-ui">
+<div id="training-ui" class="active">
   <!-- Nav -->
   <nav class="tr-nav">
     <a href="index.html" class="tr-back">
@@ -250,7 +220,7 @@
               <p style="font-size:11px; color:var(--muted); font-style:italic; text-align:center; padding:10px;">Loading dataset...</p>
             </div>
 
-            <!-- Dataset Trigger Button + Avatar clips (avatar phase: its own page, same PIN) -->
+            <!-- Dataset Trigger Button + Avatar clips (avatar phase: its own page, admin only) -->
             <div class="tr-dataset-row">
               <button type="button" id="viewDatasetBtn" onclick="trOpenDatasetModal()" class="tr-lm-card tr-dataset-btn">
                 <span class="tr-dataset-btn-lbl">📁 View Active Gesture Dataset</span>

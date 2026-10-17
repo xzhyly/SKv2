@@ -214,8 +214,8 @@ async function main() {
     const setLabel = (v) => ev(`(() => { const i = document.getElementById('signTextEn'); i.value = ${JSON.stringify(v)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
 
     await chrome.navigate(PAGE_URL);
-    await waitFor(`!!(window.GestureDataRecorder && window.GestureCaptureUI && window.GestureCaptureCore && window.VideoLandmarks && typeof trVerifyPin === 'function')`, 15000);
-    await ev(`pinInput = '2026'; trVerifyPin(); true`);
+    await waitFor(`!!(window.GestureDataRecorder && window.GestureCaptureUI && window.GestureCaptureCore && window.VideoLandmarks && typeof showStepContent === 'function')`, 15000);
+    await ev(`true`);   // no PIN since the accounts-quiz phase (logged in as admin, tests/video-capture/cdp.mjs)
     await sleep(400);
     await ev(`showStepContent(1); true`);
     await sleep(800);

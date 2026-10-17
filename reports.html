@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reports | Sining Kamay</title>
   <!-- Admin only (accounts-quiz phase): a non-admin is sent to the dashboard before this page
-       shows (js/sk-account.js adminPage()). A logged-in admin then gets the PIN pad as before. -->
+       shows (js/sk-account.js adminPage()). The logged-in admin role is the only gate (no PIN). -->
   <script src="php/api/me.php"></script>
   <script src="js/sk-account.js"></script>
   <script>SKAccount.adminPage();</script>
@@ -30,7 +30,7 @@
       --radius-panel:14px;
       --shadow:0 8px 32px rgba(0,0,0,.1);
       
-      /* PIN overlay colors */
+      /* More colours (the confirm card and the modals use them) */
       --navy:#1a2540;
       --navy2:#0f1a2e;
       --white:#ffffff;
@@ -164,129 +164,6 @@
       .pill{background:#fff;border:1px solid #aaa;color:#000}
     }
 
-    /* ── PIN Password Screen ── */
-    .pin-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: var(--navy2);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 12000;
-      padding: 20px;
-    }
-    .pin-screen.active {
-      display: flex;
-    }
-    .pin-card {
-      background: var(--white);
-      border-radius: 24px;
-      padding: 30px 24px;
-      width: 100%;
-      max-width: 380px;
-      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 16px;
-    }
-    .pin-card.shake {
-      animation: shake 0.4s ease-in-out;
-    }
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      20%, 60% { transform: translateX(-8px); }
-      40%, 80% { transform: translateX(8px); }
-    }
-    .pin-badge {
-      font-size: 32px;
-      width: 64px;
-      height: 64px;
-      border-radius: 50%;
-      background: rgba(249, 115, 22, 0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .pin-card h2 {
-      font-size: 20px;
-      font-weight: 800;
-      color: var(--navy);
-      margin: 0;
-    }
-    .pin-card p {
-      font-size: 13px;
-      color: var(--text-body);
-      line-height: 1.4;
-      margin: 0;
-    }
-    .pin-dots {
-      display: flex;
-      gap: 16px;
-      margin: 10px 0;
-    }
-    .pin-dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      border: 2px solid var(--border2);
-      transition: all 0.15s;
-    }
-    .pin-dot.active {
-      background: var(--orange);
-      border-color: var(--orange);
-      transform: scale(1.15);
-      box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
-    }
-    .pin-pad {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      width: 100%;
-      margin-top: 10px;
-    }
-    .pin-key {
-      height: 54px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #f8fafc;
-      font-size: 20px;
-      font-weight: 700;
-      color: var(--navy);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      user-select: none;
-      transition: background-color 0.1s, transform 0.05s;
-    }
-    .pin-key:active {
-      background: #e2e8f0;
-      transform: scale(0.95);
-    }
-    .pin-key.ctrl {
-      font-size: 13px;
-      font-weight: 800;
-      background: #f1f5f9;
-      color: var(--muted);
-      border: 1px solid var(--border);
-    }
-    .pin-back-btn {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--muted);
-      transition: color 0.15s;
-      margin-top: 10px;
-      text-decoration: none;
-    }
-    .pin-back-btn:hover {
-      color: var(--orange);
-    }
-
     #sk-toast{
       position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
       background:var(--navy);color:#fff;padding:8px 18px;border-radius:8px;
@@ -416,39 +293,9 @@
 </head>
 <body>
 
-<!-- PIN Password Entry Screen -->
-<div id="pin-screen" class="pin-screen active">
-  <div class="pin-card">
-    <div class="pin-badge">🔐</div>
-    <h2>Admin Access Required</h2>
-    <p>Please enter the PIN code to access the reports dashboard.</p>
-    <div class="pin-dots">
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-    </div>
-    <div class="pin-pad">
-      <button type="button" class="pin-key" onclick="trPressPin('1')">1</button>
-      <button type="button" class="pin-key" onclick="trPressPin('2')">2</button>
-      <button type="button" class="pin-key" onclick="trPressPin('3')">3</button>
-      <button type="button" class="pin-key" onclick="trPressPin('4')">4</button>
-      <button type="button" class="pin-key" onclick="trPressPin('5')">5</button>
-      <button type="button" class="pin-key" onclick="trPressPin('6')">6</button>
-      <button type="button" class="pin-key" onclick="trPressPin('7')">7</button>
-      <button type="button" class="pin-key" onclick="trPressPin('8')">8</button>
-      <button type="button" class="pin-key" onclick="trPressPin('9')">9</button>
-      <button type="button" class="pin-key ctrl" onclick="trClearPin()">Clear</button>
-      <button type="button" class="pin-key" onclick="trPressPin('0')">0</button>
-      <button type="button" class="pin-key ctrl" onclick="trDeletePin()">⌫</button>
-    </div>
-    <a href="index.html" class="pin-back-btn">← Back to Dashboard</a>
-  </div>
-</div>
-
 <div id="sk-toast" role="status" aria-live="polite"></div>
 
-  <main class="page">
+  <main class="page active">
     <header>
       <div>
         <h1>Reports</h1>
@@ -553,39 +400,6 @@
   </div>
 
   <script>
-    // ── PIN Password Logic ──
-    const CORRECT_PIN = '2026';
-    let pinInput = '';
-
-    function trPressPin(digit) {
-      if (pinInput.length >= 4) return;
-      pinInput += digit;
-      updatePinDots();
-      if (pinInput.length === 4) {
-        setTimeout(trVerifyPin, 120);
-      }
-    }
-
-    // Delete single digit
-    function trDeletePin() {
-      pinInput = pinInput.slice(0, -1);
-      updatePinDots();
-    }
-
-    // Clear entire pin input
-    function trClearPin() {
-      pinInput = '';
-      updatePinDots();
-    }
-
-    // Update dots representation
-    function updatePinDots() {
-      const dots = document.querySelectorAll('.pin-dot');
-      dots.forEach((dot, i) => {
-        dot.classList.toggle('active', i < pinInput.length);
-      });
-    }
-
     function showToast(msg, ms = 3000) {
       const t = document.getElementById('sk-toast');
       if (!t) return;
@@ -596,27 +410,6 @@
         t.style.opacity = '0';
         t.style.pointerEvents = 'none';
       }, ms);
-    }
-
-    function trVerifyPin() {
-      if (pinInput === CORRECT_PIN) {
-        const pinScreen = document.getElementById('pin-screen');
-        const reportsUI = document.querySelector('.page');
-        if (pinScreen) pinScreen.classList.remove('active');
-        if (reportsUI) reportsUI.classList.add('active');
-        pinInput = '';
-        updatePinDots();
-        loadConversations();
-      } else {
-        const card = document.querySelector('.pin-card');
-        if (card) card.classList.add('shake');
-        showToast('❌ Incorrect PIN. Try again.');
-        setTimeout(() => {
-          if (card) card.classList.remove('shake');
-          pinInput = '';
-          updatePinDots();
-        }, 450);
-      }
     }
 
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -737,9 +530,9 @@
       });
 
     // ── Conversations tab (Task 5) ──
-    // Never fetched at page load or before a correct PIN — only from trVerifyPin's success
-    // branch above, and re-fetched after each delete/clear. Past conversations must never be
-    // reachable from talk.html/index.html; this file only calls conversations.php after the PIN.
+    // Fetched once the page has loaded (only an admin gets this far: the <head> guard,
+    // js/sk-account.js adminPage(); php/api/conversations.php checks the session itself), and
+    // re-fetched after each delete/clear. Accounts-quiz phase: the PIN that used to gate it is gone.
     let currentConversations = [];
     let openThreadId = null;
     let pendingConfirmAction = null; // function to run when the confirm card's Delete is tapped
@@ -954,6 +747,8 @@
       if (e.target === document.getElementById('thread-modal')) closeThreadModal();
       if (e.target === document.getElementById('confirm-modal')) closeConfirm();
     });
+
+    loadConversations();
   </script>
 </body>
 </html>

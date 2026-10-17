@@ -163,7 +163,7 @@ const realMs = (labels, rows) => ev(`(async () => { const real = new Function('k
   times.sort((a, b) => a - b); return times[4]; })()`);
 const openPage = async () => {
   await c.navigate(PAGE);
-  await ev(`sessionStorage.setItem('sk_train_unlocked', String(Date.now())); location.reload(); 1`);
+  await ev(`location.reload(); 1`);
   await sleep(1500);
   return waitFor(`!!window.BulkImport && document.getElementById('bi-ui').classList.contains('active') && ${S}.engines === 'ready'`, 60000);
 };

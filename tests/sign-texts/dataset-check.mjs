@@ -1,7 +1,7 @@
 // Browser check for Task 5 of the sign-texts phase: the "View Active Gesture Dataset" modal on
 // gesture-training.html (English | Filipino | Set | Samples | Edit | Delete table, search over key
 // and both texts, edit panel that changes a sign's set and texts without re-recording), at exactly
-// 1024x600 (headless Chrome via CDP, tests/video-capture/cdp.mjs), PIN 2026.
+// 1024x600 (headless Chrome via CDP, tests/video-capture/cdp.mjs), logged in as admin (no PIN since 2026-10-18).
 //
 // It creates ONE zz-prefixed probe sign ("Zz Edit Probe" -> key zz_edit_probe) through
 // php/api/save_gesture.php, edits only that probe, and deletes it at the end (delete_gesture).
@@ -60,8 +60,7 @@ async function main() {
     const waitSaved = async () => { const ok = await waitFor(`window.__toasts.includes('Saved.') && window.__reloaded > ${reloadsSeen} && !document.getElementById('datasetEditPanel').offsetParent`, 150); reloadsSeen = await ev(`window.__reloaded`); await ev(`window.__toasts = []; true`); return ok; };
 
     await chrome.navigate(PAGE_URL);
-    check('page ready', await waitFor(`!!(window.GestureDataRecorder && typeof trPressPin === 'function')`, 150));
-    for (const d of '2026') { await ev(`trPressPin('${d}'); true`); await sleep(60); }
+    check('page ready', await waitFor(`!!(window.GestureDataRecorder && typeof showStepContent === 'function')`, 150));
     await sleep(500);
     await ev(`showStepContent(1); true`);
     check('startup dataset load sees the probe', await waitFor(`!!GestureDataRecorder.getSigns().${KEY} && document.getElementById('datasetCount').textContent !== '0 gestures'`, 600));
@@ -174,8 +173,7 @@ async function main() {
 
     console.log('--- reload page: still Both; full-sync GET ---');
     await chrome.navigate(PAGE_URL);
-    await waitFor(`!!(window.GestureDataRecorder && typeof trPressPin === 'function')`, 150);
-    for (const d of '2026') { await ev(`trPressPin('${d}'); true`); await sleep(60); }
+    await waitFor(`!!(window.GestureDataRecorder && typeof showStepContent === 'function')`, 150);
     await sleep(500);
     await ev(`showStepContent(1); true`);
     await waitFor(`!!GestureDataRecorder.getSigns().${KEY} && document.getElementById('datasetCount').textContent !== '0 gestures'`, 600);

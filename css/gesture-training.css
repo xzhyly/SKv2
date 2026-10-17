@@ -499,125 +499,6 @@ video#videoFeed{width:100%;height:100%;object-fit:contain;border-radius:12px;tra
   100% { transform: scale(1); box-shadow: 0 8px 24px rgba(34, 197, 94, 0.4); }
 }
 
-/* ── PIN Password Screen ── */
-.pin-screen {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: var(--navy2);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 12000;
-  padding: 20px;
-}
-.pin-screen.active {
-  display: flex;
-}
-.pin-card {
-  background: var(--white);
-  border-radius: 24px;
-  padding: 30px 24px;
-  width: 100%;
-  max-width: 380px;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 16px;
-}
-.pin-card.shake {
-  animation: shake 0.4s ease-in-out;
-}
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20%, 60% { transform: translateX(-8px); }
-  40%, 80% { transform: translateX(8px); }
-}
-.pin-badge {
-  font-size: 32px;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: rgba(249, 115, 22, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.pin-card h2 {
-  font-size: 20px;
-  font-weight: 800;
-  color: var(--navy);
-}
-.pin-card p {
-  font-size: 13px;
-  color: var(--text-mid);
-  line-height: 1.4;
-}
-.pin-dots {
-  display: flex;
-  gap: 16px;
-  margin: 10px 0;
-}
-.pin-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--border2);
-  transition: all 0.15s;
-}
-.pin-dot.active {
-  background: var(--orange);
-  border-color: var(--orange);
-  transform: scale(1.15);
-  box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
-}
-.pin-pad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  width: 100%;
-  margin-top: 10px;
-}
-.pin-key {
-  height: 54px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: #f8fafc;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--navy);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  user-select: none;
-  transition: background-color 0.1s, transform 0.05s;
-}
-.pin-key:active {
-  background: #e2e8f0;
-  transform: scale(0.95);
-}
-.pin-key.ctrl {
-  font-size: 13px;
-  font-weight: 800;
-  background: #f1f5f9;
-  color: var(--text-mid);
-}
-.pin-back-btn {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  transition: color 0.15s;
-  margin-top: 10px;
-}
-.pin-back-btn:hover {
-  color: var(--orange);
-}
-
 /* ── Dataset Modal Overlay ── */
 .tr-modal-overlay {
   position: fixed;
@@ -958,18 +839,6 @@ body.keyboard-active #datasetModal.show .tr-modal-card {
 
 /* Landscape kiosk scaling overrides */
 @media screen and (max-height: 620px) {
-  .pin-card {
-    padding: 16px 20px;
-    gap: 10px;
-  }
-  .pin-key {
-    height: 44px;
-    font-size: 18px;
-    border-radius: 8px;
-  }
-  .pin-dots {
-    margin: 4px 0;
-  }
   .tr-modal-card {
     padding: 16px;
     max-height: 90%;
@@ -999,8 +868,7 @@ body.keyboard-active #datasetModal.show .tr-modal-card {
    media (the live feed or the review loop, object-fit: contain so hands near the edges are never
    cropped), bottom bar (the state's buttons sharing the width, or a status line). No fixed pixel
    height for the video: the media row is 1fr, so it scales at 1024x600, 1280x720 and 1920x1080.
-   z-index sits above the dataset modal (11000) and the raised on-screen keyboard (11001), below
-   the PIN screen (12000). */
+   z-index sits above the dataset modal (11000) and the raised on-screen keyboard (11001). */
 .gc-mode{
   position:fixed;top:0;left:0;width:100vw;height:100vh;margin:0;border-radius:0;
   z-index:11500;background:var(--navy2);color:#fff;overflow:hidden;

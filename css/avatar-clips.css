@@ -1,7 +1,7 @@
 /* css/avatar-clips.css */
 /* avatar-clips.html at the kiosk's 1024x600: nav 52 px, then two 472-px columns at x=24 and x=528
    (the same columns as gesture-training.html Step 1). Every control is at least 44 px tall.
-   Base reset, colours, the PIN screen, the nav bar and the toast come from gesture-training.css. */
+   Base reset, colours, the nav bar and the toast come from gesture-training.css. */
 
 #ac-ui{
   position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;

@@ -157,7 +157,7 @@ try {
   await c.send('Network.enable', { maxPostDataSize: 16 * 1024 * 1024 });
   await c.send('Page.addScriptToEvaluateOnNewDocument', { source: ZZ_ONLY });
   await c.navigate(PAGE);
-  await ev(`sessionStorage.setItem('sk_train_unlocked', String(Date.now())); localStorage.removeItem('sk_bulk_avatar_signers'); location.reload(); 1`);
+  await ev(`localStorage.removeItem('sk_bulk_avatar_signers'); location.reload(); 1`);
   await sleep(1500);
   check('page unlocked; the extractors have settled', await waitFor(`!!window.BulkImport && document.getElementById('bi-ui').classList.contains('active') && ${S}.engines !== 'loading' && ${S}.engines !== 'idle'`, 60000), await ev(`${S}.engines`));
 

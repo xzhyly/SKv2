@@ -46,10 +46,9 @@ async function main() {
 
     await chrome.navigate(PAGE_URL);
     for (let i = 0; i < 100; i++) {
-      if (await ev(`!!(window.GestureDataRecorder && typeof trPressPin === 'function')`)) break;
+      if (await ev(`!!(window.GestureDataRecorder && typeof showStepContent === 'function')`)) break;
       await sleep(150);
     }
-    for (const d of '2026') { await ev(`trPressPin('${d}'); true`); await sleep(60); }
     await sleep(500);
     await ev(`showStepContent(1); true`);
     // wait for the startup dataset load (signs state)

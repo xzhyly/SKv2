@@ -4,7 +4,7 @@
 // 2-repetition video), one bad file name, one junk file; built in an os.tmpdir() folder and given
 // to the folder input with DOM.setFileInputFiles (the folder's own path: a webkitdirectory input
 // ignores a list of file paths; webkitRelativePath is then "videos/<name>", as for a person).
-//   1  PIN pad; parse results, counts, default signer lists, queue order, video ids; layout.
+//   1  opens without a PIN (admin login, accounts-quiz phase); parse results, counts, default signer lists, queue order, video ids; layout.
 //   2  Full run with the avatar list [P01]: every video cached (meta + hands shape, reps 3 / 2),
 //      candidates exactly for P01, a P02 video has candidate null; progress, ETA and preview shown.
 //   3  Reload, same folder: nothing is extracted, in a fraction of the first run's time.
@@ -115,8 +115,9 @@ const pickFolder = async (dir = folder.dir) => {
   await c.send('DOM.setFileInputFiles', { nodeId: node.result.nodeId, files: [dir] });
   return waitFor(`${S}.folder.files > 0 && !${S}.folder.loading && ${S}.cacheLoaded`, 15000);
 };
-// Opens the page unlocked (the unlock is only honoured for 10 minutes; this check runs longer).
-const UNLOCK = `sessionStorage.setItem('sk_train_unlocked', String(Date.now())); location.reload(); 1`;
+// Reloads the page (it used to set the PIN unlock flag; since the accounts-quiz phase the page opens for a
+// logged-in admin, which tests/video-capture/cdp.mjs logs in before the first admin page).
+const UNLOCK = `location.reload(); 1`;
 const openPage = async () => {
   await c.navigate(PAGE);
   await ev(UNLOCK);
@@ -165,22 +166,10 @@ const AB = `(() => { window.__ab = []; document.addEventListener('bulkimport:row
 try {
   await c.send('Network.enable', { maxPostDataSize: 16 * 1024 * 1024 });   // POST bodies inline in the log
 
-  // ── 1. PIN, folder, signer lists ──
+  // ── 1. Admin login (no PIN), folder, signer lists ──
   await c.navigate(PAGE);
-  check('locked: the PIN screen is shown, the page is not', await ev(`document.getElementById('pin-screen').classList.contains('active') && !document.getElementById('bi-ui').classList.contains('active')`));
-  for (const k of '1111') await ev(`document.querySelector('[data-pin="${k}"]').click(); 1`);
-  await sleep(800);
-  check('a wrong PIN does not unlock', await ev(`document.getElementById('pin-screen').classList.contains('active') && sessionStorage.getItem('sk_train_unlocked') === null`));
-  for (const k of '2026') await ev(`document.querySelector('[data-pin="${k}"]').click(); 1`);
-  await sleep(400);
-  check('PIN 2026 unlocks and records sk_train_unlocked', await ev(`!document.getElementById('pin-screen').classList.contains('active') && document.getElementById('bi-ui').classList.contains('active') && Number(sessionStorage.getItem('sk_train_unlocked')) > 0`));
-  check('"Back" goes to gesture-training.html', await ev(`document.querySelector('.pin-back-btn').getAttribute('href') === 'gesture-training.html' && document.querySelector('.bi-back').getAttribute('href') === 'gesture-training.html'`));
-  await ev(`location.reload(); 1`);
-  await sleep(1500);
-  check('reload within 10 minutes: still unlocked (sessionStorage)', await ev(`!document.getElementById('pin-screen').classList.contains('active') && document.getElementById('bi-ui').classList.contains('active')`));
-  await ev(`sessionStorage.setItem('sk_train_unlocked', String(Date.now() - 11 * 60 * 1000)); location.reload(); 1`);
-  await sleep(1500);
-  check('an unlock older than 10 minutes is not honoured', await ev(`document.getElementById('pin-screen').classList.contains('active') && !document.getElementById('bi-ui').classList.contains('active')`));
+  check('admin: the page opens at once, no PIN pad', await ev(`!document.getElementById('pin-screen') && !document.querySelector('[data-pin]') && document.getElementById('bi-ui').classList.contains('active')`));
+  check('"Back" goes to gesture-training.html', await ev(`document.querySelector('.bi-back').getAttribute('href') === 'gesture-training.html'`));
   await ev(UNLOCK);
   await sleep(1500);
   check('extractors ready (Holistic initialised before setupMediaPipe)', await waitFor(`${S}.engines === 'ready'`, 60000), await ev(`${S}.engines + ' / simd ' + ${S}.simd + ' / ' + ${S}.engineError`));
@@ -544,10 +533,12 @@ try {
 
   // ── 6e. Holistic init fails once: Retry ──
   await c.navigate(PAGE);
-  await ev(`sessionStorage.removeItem('sk_train_unlocked'); location.reload(); 1`);
+  // The extractors start on DOMContentLoaded (no PIN to wait for since the accounts-quiz phase), so the
+  // failing init is put in place before the page's scripts run.
+  const failInit = await c.send('Page.addScriptToEvaluateOnNewDocument', { source: `document.addEventListener('DOMContentLoaded', () => { const make = AvatarExtract.createExtractor; let n = 0; AvatarExtract.createExtractor = function () { const x = make(); if (n++ === 0) x.init = () => Promise.reject(new Error('zz holistic init failed')); return x; }; }, { capture: true });` });
+  await ev(`location.reload(); 1`);
   await sleep(1500);
-  await ev(`(() => { const make = AvatarExtract.createExtractor; let n = 0; AvatarExtract.createExtractor = function () { const x = make(); if (n++ === 0) x.init = () => Promise.reject(new Error('zz holistic init failed')); return x; }; return 1; })()`);
-  for (const k of '2026') await ev(`document.querySelector('[data-pin="${k}"]').click(); 1`);
+  await c.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: failInit.result.identifier });
   await waitFor(`${S}.engines === 'failed'`, 20000, 50);
   const r0 = { engines: await ev(`${S}.engines`), msg: await statusText(), retry: await ev(`!document.getElementById('bi-retry').hidden && document.getElementById('bi-retry').offsetHeight > 0`), handsSetUp: await ev(`!!window._simdOverrideApplied`), b: await buttons() };
   await click('bi-retry');

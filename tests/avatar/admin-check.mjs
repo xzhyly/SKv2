@@ -1,7 +1,7 @@
 // avatar phase, Task 6: avatar-clips.html end to end, with every non-localhost hostname blocked
 // (Chrome --host-resolver-rules), at 1024x600, headless Chrome via tests/video-capture/cdp.mjs.
 //   1  Train Gestures: the "Avatar clips" button sits next to View Active Gesture Dataset and opens
-//      the page without a second PIN (same tab session); a direct visit shows the PIN pad.
+//      the page; a direct visit opens it too (logged in as admin; no PIN since the accounts-quiz phase).
 //   2  Extract the owner's sample my_name_is.mp4 into a zz probe sign (DOM.setFileInputFiles: the
 //      file is read by the page, never sent), auto-trim, Preview, Save.
 //   3  Network: every request goes to localhost; the only request body is the clip JSON; nothing
@@ -66,11 +66,10 @@ try {
   const signBefore = fs.readFileSync(path.join(dir(KEY), 'sign.json'), 'utf8');
   await c.enableNetwork();
 
-  // 1. direct visit -> PIN pad; Train Gestures -> button -> no PIN
+  // 1. direct visit -> the page (admin, no PIN); Train Gestures -> button -> the page
   await c.navigate(BASE + 'avatar-clips.html');
-  check('direct visit shows the PIN pad', await c.evaluate(`document.getElementById('pin-screen').classList.contains('active') && !document.getElementById('ac-ui').classList.contains('active')`));
+  check('direct visit opens the page, no PIN pad', await c.evaluate(`!document.getElementById('pin-screen') && document.getElementById('ac-ui').classList.contains('active')`));
   await c.navigate(BASE + 'gesture-training.html');
-  await c.evaluate(`['2','0','2','6'].forEach(d=>trPressPin(d))`);
   await sleep(2000);
   await c.evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.offsetParent&&/^Next/.test(b.textContent.trim()));b&&b.click();})()`);
   await sleep(1200);
@@ -80,7 +79,7 @@ try {
   await shot('avatar-train-gestures-button.png');
   await c.evaluate(`document.getElementById('avatarClipsBtn').click()`);
   await sleep(2500);
-  check('opened without a second PIN', await c.evaluate(`location.pathname.endsWith('avatar-clips.html') && document.getElementById('ac-ui').classList.contains('active')`));
+  check('opened from Train Gestures', await c.evaluate(`location.pathname.endsWith('avatar-clips.html') && document.getElementById('ac-ui').classList.contains('active')`));
   await waitFor(`document.querySelectorAll('.ac-item').length > 100`);
   await c.evaluate(`document.getElementById('ac-search').value='zz avatar'; document.getElementById('ac-search').dispatchEvent(new Event('input'))`);
   await c.evaluate(`document.querySelector('.ac-item[data-key="${KEY}"]').click()`);
@@ -155,7 +154,6 @@ try {
 
   // dataset table column
   await c.navigate(BASE + 'gesture-training.html');
-  await c.evaluate(`['2','0','2','6'].forEach(d=>trPressPin(d))`);
   await sleep(2500);
   await c.evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.offsetParent&&/^Next/.test(b.textContent.trim()));b&&b.click();})()`);
   await sleep(1500);

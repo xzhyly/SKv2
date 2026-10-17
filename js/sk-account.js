@@ -9,8 +9,6 @@
 (function () {
   'use strict';
 
-  var UNLOCK_KEY = 'sk_train_unlocked';   // the Train Gestures "recently unlocked" flag (js/gesture-training-ui.js), cleared on Log out
-
   // Inline SVG icons, 24x24 stroke icons like the dashboard cards.
   var ICONS = {
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -111,7 +109,6 @@
   function logout() {
     return api('php/auth.php', { action: 'logout' }).catch(function () { /* the page load below shows the truth */ })
       .then(function () {
-        try { sessionStorage.removeItem(UNLOCK_KEY); } catch (e) { /* storage blocked */ }
         location.href = 'index.html';
       });
   }
@@ -124,8 +121,9 @@
   }
 
   // Admin-only pages call this from <head>: a non-admin goes to the dashboard at once (the page's
-  // own scripts never run). An admin stays; the page's PIN pad still asks as before ("keep how
-  // admin login works today"). The admin APIs check the session themselves (HTTP 403).
+  // own scripts never run). An admin stays and the page opens directly: the logged-in admin role is
+  // the only gate (owner decision, 2026-10-18: no PIN). The admin APIs check the session themselves
+  // (HTTP 403).
   function adminPage() {
     if (!isAdmin()) {
       leave('index.html');

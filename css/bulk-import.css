@@ -2,7 +2,7 @@
 /* bulk-import.html, a laptop page (designed for 1366x768, no horizontal scroll down to 1280): nav
    52 px, the step bar, a status line, then one panel per step. The page itself never scrolls
    (gesture-training.css); the tables scroll inside their cards.
-   Base reset, colours, the PIN screen, the nav bar and the toast come from gesture-training.css. */
+   Base reset, colours, the nav bar and the toast come from gesture-training.css. */
 
 #bi-ui{
   position:fixed;inset:0;display:none;flex-direction:column;background:var(--bg);overflow:hidden;

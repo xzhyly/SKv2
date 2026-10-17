@@ -85,7 +85,7 @@ const pickJson = async (file) => {
 };
 const openClips = async () => {
   await c.navigate(BASE + 'avatar-clips.html');
-  await ev(`sessionStorage.setItem('sk_train_unlocked', String(Date.now())); localStorage.removeItem('sk_avatar_signer'); location.reload(); 1`);
+  await ev(`localStorage.removeItem('sk_avatar_signer'); location.reload(); 1`);
   await sleep(2000);
   await waitFor(`document.querySelectorAll('.ac-item').length > 3 && !document.getElementById('ac-view-avatar').disabled`);
   await ev(`document.getElementById('ac-search').value = 'zz cand'; document.getElementById('ac-search').dispatchEvent(new Event('input')); 1`);

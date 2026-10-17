@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bulk Video Import ✿ Sining Kamay</title>
   <!-- Admin only (accounts-quiz phase): a non-admin is sent to the dashboard before this page
-       shows (js/sk-account.js adminPage()). A logged-in admin then gets the PIN pad as before. -->
+       shows (js/sk-account.js adminPage()). The logged-in admin role is the only gate (no PIN). -->
   <script src="php/api/me.php"></script>
   <script src="js/sk-account.js"></script>
   <script>SKAccount.adminPage();</script>
@@ -16,7 +16,7 @@
        on the best repetition only), cached per video in bulk_import_cache/. Laptop only (1366x768):
        nothing on the kiosk links here. The videos never leave the browser: the only requests are
        the landmark JSON to php/api/bulk_import.php and, once Import is pressed in step 3, one
-       sample per repetition to php/api/save_gesture.php. Gated by the Train Gestures PIN.
+       sample per repetition to php/api/save_gesture.php. Admin only (logged-in admin role).
        Script order matters: js/bulk-import-ui.js initialises Holistic BEFORE it calls
        GestureDataRecorder.setupMediaPipe() (which forces non-SIMD WebAssembly for Hands). -->
   <link rel="stylesheet" href="css/fonts.css">
@@ -36,36 +36,7 @@
 </head>
 <body>
 
-<div id="pin-screen" class="pin-screen active">
-  <div class="pin-card">
-    <div class="pin-badge">🔐</div>
-    <h2>Bulk Video Import</h2>
-    <p>Please enter the PIN code to import a folder of videos.</p>
-    <div class="pin-dots">
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-      <span class="pin-dot"></span>
-    </div>
-    <div class="pin-pad">
-      <button type="button" class="pin-key" data-pin="1">1</button>
-      <button type="button" class="pin-key" data-pin="2">2</button>
-      <button type="button" class="pin-key" data-pin="3">3</button>
-      <button type="button" class="pin-key" data-pin="4">4</button>
-      <button type="button" class="pin-key" data-pin="5">5</button>
-      <button type="button" class="pin-key" data-pin="6">6</button>
-      <button type="button" class="pin-key" data-pin="7">7</button>
-      <button type="button" class="pin-key" data-pin="8">8</button>
-      <button type="button" class="pin-key" data-pin="9">9</button>
-      <button type="button" class="pin-key ctrl" data-pin="clear">Clear</button>
-      <button type="button" class="pin-key" data-pin="0">0</button>
-      <button type="button" class="pin-key ctrl" data-pin="back">⌫</button>
-    </div>
-    <a href="gesture-training.html" class="pin-back-btn">← Back to Train Gestures</a>
-  </div>
-</div>
-
-<div id="bi-ui">
+<div id="bi-ui" class="active">
   <nav class="tr-nav bi-nav">
     <a href="gesture-training.html" class="tr-back bi-back">
       <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 2L4 7l5 5"/></svg>

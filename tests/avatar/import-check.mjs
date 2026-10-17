@@ -76,7 +76,7 @@ try {
   await c.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
 
   await c.navigate(BASE + 'avatar-clips.html');
-  await ev(`sessionStorage.setItem('sk_train_unlocked',String(Date.now())); localStorage.removeItem('sk_avatar_signer'); location.reload(); 1`);
+  await ev(`localStorage.removeItem('sk_avatar_signer'); location.reload(); 1`);
   await sleep(2500);
   await waitFor(`document.querySelectorAll('.ac-item').length > 100`);
   check('before a sign is picked: Import JSON and Export JSON disabled', await ev(`document.getElementById('ac-json').disabled && document.getElementById('ac-import').getAttribute('aria-disabled')==='true' && document.getElementById('ac-export').disabled`));

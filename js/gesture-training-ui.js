@@ -29,58 +29,6 @@ const PI_WARNING = 'Build the model on the laptop, then copy models/knn_ESL.bin 
 let currentSentence = [];       // Dito iipunin ang mga nade-detect na salita
 let isSentenceActive = false;    // Tracker kung nasa loob ng start/stop block
 
-// ── PIN Password Logic ──
-const CORRECT_PIN = '2026';
-let pinInput = '';
-
-function trPressPin(digit) {
-  if (pinInput.length >= 4) return;
-  pinInput += digit;
-  updatePinDots();
-  if (pinInput.length === 4) {
-    setTimeout(trVerifyPin, 120);
-  }
-}
-
-function trDeletePin() {
-  pinInput = pinInput.slice(0, -1);
-  updatePinDots();
-}
-
-function trClearPin() {
-  pinInput = '';
-  updatePinDots();
-}
-
-function updatePinDots() {
-  const dots = document.querySelectorAll('.pin-dot');
-  dots.forEach((dot, i) => {
-    dot.classList.toggle('active', i < pinInput.length);
-  });
-}
-
-function trVerifyPin() {
-  if (pinInput === CORRECT_PIN) {
-    const pinScreen = document.getElementById('pin-screen');
-    const trainingUI = document.getElementById('training-ui');
-    pinScreen.classList.remove('active');
-    trainingUI.classList.add('active');
-    // avatar-clips.html (same PIN) skips its own PIN pad for 10 minutes, in this tab session only.
-    try { sessionStorage.setItem('sk_train_unlocked', String(Date.now())); } catch (e) { /* storage blocked */ }
-    pinInput = '';
-    updatePinDots();
-  } else {
-    const card = document.querySelector('.pin-card');
-    card.classList.add('shake');
-    showToast('❌ Incorrect PIN. Try again.');
-    setTimeout(() => {
-      card.classList.remove('shake');
-      pinInput = '';
-      updatePinDots();
-    }, 450);
-  }
-}
-
 // ── Step Content Layout Class Switcher ──
 function applyStepLayoutClass(step) {
   const wrap = document.getElementById('trContentWrap');

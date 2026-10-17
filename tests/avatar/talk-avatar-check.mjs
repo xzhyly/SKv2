@@ -76,7 +76,7 @@ try {
   const ev1 = (e) => c1.evaluate(e);
   const wait1 = async (e, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (await ev1(e)) return true; await sleep(250); } return false; };
   await c1.navigate(BASE + 'avatar-clips.html');
-  await ev1(`sessionStorage.setItem('sk_train_unlocked',String(Date.now())); location.reload(); 1`);
+  await ev1(`location.reload(); 1`);
   await sleep(2500);
   await wait1(`document.querySelectorAll('.ac-item').length > 100`, 20000);
   const docNode = async () => (await c1.send('DOM.getDocument', {})).result.root.nodeId;

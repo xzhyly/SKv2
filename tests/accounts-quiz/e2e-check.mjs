@@ -355,12 +355,18 @@ try {
   const aMenuBottom = await Ad.page.$eval('#sk-menu', (e) => Math.round(e.getBoundingClientRect().bottom));
   check('admin menu fits the 600 px screen', aMenuBottom <= 600, aMenuBottom);
   await shot(Ad.page, '05-dashboard-admin-menu');
+  // Owner decision 2026-10-18: no PIN anywhere; the logged-in admin role is the only gate.
+  const ADMIN_UI = { 'gesture-training.html': '#training-ui', 'reports.html': '.page', 'bulk-import.html': '#bi-ui', 'avatar-clips.html': '#ac-ui', 'diagnostic.html': 'body', 'users.html': '#screen-list' };
   for (const p of ADMIN_PAGES) {
     await go(Ad.page, p);
-    check(`admin opening ${p} stays there`, Ad.page.url().endsWith('/' + p), Ad.page.url());
+    const st = await Ad.page.evaluate((sel) => ({
+      pin: !!document.querySelector('#pin-screen, .pin-screen, .pin-key, .pin-pad, [data-pin]') || /enter the PIN/i.test(document.body.innerText),
+      ui: !!document.querySelector(sel) && document.querySelector(sel).offsetHeight > 0,
+    }), ADMIN_UI[p]);
+    check(`admin opening ${p} gets the page at once, no PIN`, Ad.page.url().endsWith('/' + p) && !st.pin && st.ui, J({ url: Ad.page.url(), ...st }));
   }
   await go(Ad.page, 'gesture-training.html');
-  check('admin: Train Gestures still shows its PIN pad (admin login unchanged)', await Ad.page.isVisible('#pin-screen'));
+  await shot(Ad.page, '22-train-gestures-admin-no-pin');
 
   // Manage users
   await go(Ad.page, 'users.html');

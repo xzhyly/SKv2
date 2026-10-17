@@ -3,7 +3,7 @@
 // second open, plus a check that the page-load MediaPipe warm-up does not slow Steps 2-4.
 //
 // Scenario (fake camera fed from a signing clip, fake-camera.mjs, 1024x600):
-//   1. load the page, pass the PIN, open Step 1, wait for the dataset count, then 2 s idle
+//   1. load the page (logged in as admin, no PIN), open Step 1, wait for the dataset count, then 2 s idle
 //      (an operator typing the gesture name);
 //   2. open the recording mode -> ms until START is enabled (first open); Cancel;
 //   3. open again -> ms until START is enabled (second open); Cancel;
@@ -44,8 +44,8 @@ try {
 
   const tNav = Date.now();
   await chrome.navigate('http://localhost/SKR/gesture-training.html');
-  await waitFor(`typeof trVerifyPin === 'function' && !!window.GestureCaptureUI`, 20000, 50);
-  await ev(`pinInput = '2026'; trVerifyPin(); showStepContent(1); true`);
+  await waitFor(`typeof showStepContent === 'function' && !!window.GestureCaptureUI`, 20000, 50);
+  await ev(`showStepContent(1); true`);
   const dsMs = await waitFor(`!/^0 gestures/.test(document.getElementById('datasetCount').textContent)`, 60000, 50);
   out.datasetLoadedMsAfterNavigate = dsMs < 0 ? -1 : Date.now() - tNav;
   await ev(`(() => { const i = document.getElementById('signTextEn'); i.value = 'zz_startup_check'; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);

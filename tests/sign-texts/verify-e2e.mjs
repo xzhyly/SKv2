@@ -103,8 +103,7 @@ async function pageHelpers(chrome) {
 
 async function openTraining(chrome, h) {
   await chrome.navigate(PAGE);
-  await h.waitFor(`!!(window.GestureDataRecorder && window.GestureCaptureUI && typeof trPressPin === 'function')`, 20000);
-  for (const d of '2026') { await h.ev(`trPressPin('${d}'); true`); await sleep(60); }
+  await h.waitFor(`!!(window.GestureDataRecorder && window.GestureCaptureUI && typeof showStepContent === 'function')`, 20000);
   await sleep(500);
   await h.ev(`showStepContent(1); true`);
   await h.waitFor(`Object.keys(GestureDataRecorder.getSigns()).length > 0 && document.getElementById('datasetCount').textContent !== '0 gestures'`, 90000, 150);

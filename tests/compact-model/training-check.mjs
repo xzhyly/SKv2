@@ -138,8 +138,8 @@ async function main() {
     async function openPage() {
       const i0 = chrome.getNetworkRequests().length;
       await chrome.navigate(PAGE);
-      await waitFor(`!!(window.GestureDataRecorder && window.KnnModelStore && typeof trPressPin === 'function')`, 20000);
-      await ev(`pinInput = '2026'; trVerifyPin(); true`);
+      await waitFor(`!!(window.GestureDataRecorder && window.KnnModelStore && typeof showStepContent === 'function')`, 20000);
+      await ev(`true`);   // no PIN since the accounts-quiz phase (logged in as admin, tests/video-capture/cdp.mjs)
       await waitFor(`!!listingGestures && !!modelStatus && !!loadedModel && document.getElementById('datasetCount').textContent !== '0 gestures'`, 120000, 150);
       await ev(`window.__toasts = []; (() => { const o = window.showToast; window.showToast = function (m) { window.__toasts.push(String(m)); return o.apply(this, arguments); }; })(); true`);
       return i0;

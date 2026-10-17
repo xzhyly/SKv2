@@ -170,8 +170,8 @@ async function main() {
     const waitFor = async (expr, ms = 30000, step = 200) => { const t = Date.now(); while (Date.now() - t < ms) { if (await ev(expr).catch(() => false)) return Date.now() - t; await sleep(step); } return -1; };
     const tLoad = Date.now();
     await chrome.navigate(BASE + 'gesture-training.html');
-    await waitFor(`!!(window.GestureDataRecorder && window.KnnModelStore && typeof trPressPin === 'function')`, 30000);
-    await ev(`pinInput = '2026'; trVerifyPin(); true`);
+    await waitFor(`!!(window.GestureDataRecorder && window.KnnModelStore && typeof showStepContent === 'function')`, 30000);
+    await ev(`true`);   // no PIN since the accounts-quiz phase (logged in as admin, tests/video-capture/cdp.mjs)
     const loaded = await waitFor(`!!listingGestures && !!modelStatus && document.getElementById('datasetCount').textContent !== '0 gestures'`, 300000, 300);
     nums.pageLoadMs = Date.now() - tLoad;
     check('page loads the summary listing at this size', loaded >= 0, `${nums.pageLoadMs} ms; ${await ev(`document.getElementById('datasetCount').textContent`)}`);

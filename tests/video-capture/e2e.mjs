@@ -179,10 +179,10 @@ async function main() {
 
     await chrome.navigate(PAGE_URL);
     await waitFor(
-      `!!(window.GestureDataRecorder && window.GestureCaptureUI && window.GestureCaptureCore && window.VideoLandmarks && typeof trVerifyPin === 'function')`,
+      `!!(window.GestureDataRecorder && window.GestureCaptureUI && window.GestureCaptureCore && window.VideoLandmarks && typeof showStepContent === 'function')`,
       15000
     );
-    await ev(`pinInput = '2026'; trVerifyPin(); true`);
+    await ev(`true`);   // no PIN since the accounts-quiz phase (logged in as admin, tests/video-capture/cdp.mjs)
     await sleep(400);
     await ev(`showStepContent(1); true`);
     await sleep(800);
