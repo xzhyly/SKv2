@@ -3,8 +3,12 @@
 ## 1. Owns these files
 
 - `php/connect.php` (13 lines)
-- `php/auth.php` (95 lines)
-- `php/admin_api.php` (196 lines)
+- `php/auth.php` (154 lines as of the 2026-10-18 accounts-quiz phase, which rewrote it on a PHP session; 95 lines
+  before) — see "Accounts, conversation history and quiz" below
+- `php/admin_api.php` (176 lines as of the accounts-quiz phase; 196 lines before)
+- `php/session.php` (102 lines, new 2026-10-18) — the PHP session helpers
+- `php/api/me.php` (28 lines, new 2026-10-18) — who is logged in, as a script for page `<head>`s
+- `php/api/quiz.php` (309 lines, new 2026-10-18) — quiz sign pool, save, scores
 - `php/api/core_api.php` (177 lines) (**deleted 2026-09-24**, DB
   normalization — see "DB normalization" below)
 - `php/api/save_gesture.php` (806 lines as of the 2026-10-16 compact-model phase, which added the GET options
@@ -473,8 +477,10 @@ not `sining_kamay_db.sql`, or expect to convert the latter's encoding first.
 ## 6. Touches
 
 - **connect.php**: required by every other file in this set (`require_once __DIR__ . '/connect.php'` or `'/../connect.php'`). Breaking it (e.g. changing `$db` name) breaks all 10 endpoints at once.
-- **auth.php**: touches `users` table only. No caller found in tracked frontend JS/HTML (verified via repo-wide grep for `auth.php`/"auth" endpoint patterns — only `docs/system/INVENTORY.md`, `.planning/...progress.md`, and `admin_api.php` itself reference it). Currently dead code; removing it breaks nothing observable in the frontend as shipped.
-- **admin_api.php**: touches `users`, `gestures` (its `translation_history` actions were removed 2026-09-24). Its admin check trusts a client-supplied `requester_id` — see `DEBT.md` item 72. No caller found in tracked frontend (same grep). Dead code as far as the shipped frontend is concerned; presumably meant for an admin dashboard that either was never built against it or was replaced by direct calls elsewhere.
+- **auth.php** (*updated 2026-10-18: now called by `login.html` and `js/sk-account.js` Log out; the rest of this
+  bullet describes the file before the accounts-quiz phase*): touches `users` table only. No caller found in tracked frontend JS/HTML (verified via repo-wide grep for `auth.php`/"auth" endpoint patterns — only `docs/system/INVENTORY.md`, `.planning/...progress.md`, and `admin_api.php` itself reference it). Currently dead code; removing it breaks nothing observable in the frontend as shipped.
+- **admin_api.php** (*updated 2026-10-18: session-checked, called by `users.html`, `conversations.html` and
+  `quiz-scores.html`; the rest of this bullet describes the file before the accounts-quiz phase*): touches `users`, `gestures` (its `translation_history` actions were removed 2026-09-24). Its admin check trusts a client-supplied `requester_id` — see `DEBT.md` item 72. No caller found in tracked frontend (same grep). Dead code as far as the shipped frontend is concerned; presumably meant for an admin dashboard that either was never built against it or was replaced by direct calls elsewhere.
 - **core_api.php**: touches `gesture_recordings`, `translations` (its `gesture_words` action and map entries were removed 2026-09-24; `js/db-local.js`'s uncalled `saveGestureWord()` still posts the removed `save_gesture_word` action and would now get "Unknown action"). No auth check at all — see `DEBT.md` item 72. Only confirmed caller is `js/db-local.js:9` ("points to unified api router"). If its `translations` INSERT/SELECT column names (`detected_word`/`full_sentence`) are changed to match the real schema, any code path that actually exercises `db-local.js`'s translation save/get would start working for the first time (currently it fails against schema — see Problems #1); if `core_api.php` is deleted, whatever front-end flow uses `db-local.js` for camera-translator recording/translation storage breaks.
 - **save_gesture.php**: touches `gestures`, `gesture_recordings`, disk folders `saved_gestures/` (read and write) and the legacy `saved_gestures_fsl/` (read and delete only), `assets/signs/en|fil/`, and shells out to **ffmpeg.exe**. Confirmed callers: `js/gesture-data.js:5-7` (its `saveGestureSample()` at `:640`, called by `js/gesture-capture-ui.js:648` for every v3 rep), `js/gesture-training-ui.js:545` (delete), `diagnostic.html:111-112` (legacy label-only POST). (`js/script.js:849`, a former caller, is archived.) Changing its request/response JSON shape breaks the gesture-recording UI; removing ffmpeg breaks only the MP4 transcode (falls back to `.webm` automatically, `:661-673`) — moot for v3-only saves, which never send a video at all (`docs/system/DEBT.md` item 86).
 - **save_translation.php / get_translations.php**: touched `translations` (real schema columns). Confirmed callers: `js/db-api.js:35` and `:75`. Both files, `js/db-api.js`, and the `translations` table itself were **deleted 2026-09-25** together (saved-conversations phase, Tasks 5-6) — see "translations dropped" below.
@@ -1075,3 +1081,72 @@ and `saved_gestures-copy/`, 249 files). The file format, the rule and the browse
   rename wins and a reader never sees a half-written file (DEBT 131). The listing does not return a sample's
   `signer` (DEBT 132). On Linux `glob()` treats `\` as an escape, so a label folder whose name has a backslash
   could list differently; `clean_label()` keys never contain one.
+
+## Accounts, conversation history and quiz (accounts-quiz phase, 2026-10-18)
+
+Report: `docs/reports/2026-10-18-accounts-quiz.md`. Demo-level security by owner decision: `password_hash()` /
+`password_verify()` plus a PHP session, nothing more (no CSRF token, no rate limit, no HTTPS).
+
+**Schema.** `users` gained `display_name`, `is_active`, `last_login_at` and `email` became NULL-able;
+`conversations` gained `user_id` (FK `fk_conversations_user` -> `users.id`, `ON DELETE SET NULL`, index
+`idx_conversations_user (user_id, started_at)`) and `title`; new tables `quiz_attempts` (FK to `users`,
+`ON DELETE CASCADE`) and `quiz_answers` (FK to `quiz_attempts`, `ON DELETE CASCADE`, `choices` JSON-checked
+`longtext`). Definitions are the owner's laptop `SHOW CREATE TABLE`, verbatim, in `db-schema/database_setup.sql`
+(150 lines). `db-schema/2026-10-accounts-quiz.sql` (173 lines) brings an older database to the same shape: every
+step checks `information_schema` first and runs through `PREPARE`/`EXECUTE` (no `DELIMITER`, no stored procedure,
+so phpMyAdmin and MySQL 8 run it too). It never drops anything, keeps every `users` row, backfills nothing, and
+changes one value only: the seeded admin's password hash, and only when it is still the old seed hash
+(`$2y$10$WFl4...V2v/u`, which `password_verify()` rejects for `admin123` — measured), replaced by a real hash of
+`admin123`. `tests/accounts-quiz/migration.test.mjs` runs it on throw-away databases: old shape, fresh setup, empty,
+twice, laptop-shaped (unchanged).
+
+**Session (`php/session.php`).** Cookie `SKSESSID` (path `/`, HttpOnly, SameSite=Lax, lifetime 0 = until the
+browser closes). The session stores only `sk_user_id`; `sk_session_user()` (`:42`) re-reads the `users` row on
+every request and returns null for a missing or `is_active = 0` row, so deactivating a user ends their open
+session at once. No cookie -> guest without starting a session (`:24`). Every read closes the session at once
+(`session_write_close()`), so parallel requests of one page do not queue on PHP's session lock.
+`sk_require_user()` / `sk_require_admin()` (`:88`, `:96`) answer HTTP 403 `{success:false, error, message}`.
+
+**`php/auth.php`** — `POST {action}`: `login` (username or email + password; `:76`), `register` (display name,
+username `^[A-Za-z0-9]{2,30}$`, password >= 4; role always `user`; logged in at once; `:107`), `logout`, `me`
+(also any GET). A login sets `last_login_at` (`:96`); a deactivated account is refused (`:92`). Refusals the person
+caused (wrong password, deactivated, taken username, empty field) are HTTP 200 `{success:false, code, message}`
+with `code` `missing | wrong_password | inactive | invalid | taken`: the browser logs every non-2xx answer as a
+console error and these are normal use. The default admin seed (admin / admin123 when no admin row exists) is kept;
+the `CREATE TABLE IF NOT EXISTS users` it used to run on every request is gone (the schema lives in the setup file
+and the migration).
+
+**`php/api/me.php`** — `<script src="php/api/me.php">` sets `window.SK_ME` to `{id, username, display_name, role}`
+or `null`, before the page's own scripts (no-store). Used by every page that shows the account chip and by the
+admin-page guard (`js/sk-account.js`, see `docs/system/UI.md` Part 4). If the DB is down it still prints
+`window.SK_ME = null;`.
+
+**`php/admin_api.php`** — admin only (`sk_require_admin`, `:31`; 403 otherwise, `requester_id` ignored).
+Actions: `list_users`, `create_user` (role `user` or `admin`), `reset_password`, `set_active` (an admin cannot
+deactivate itself, `:139`), and the old read-only `get_gestures` / `get_stats`. No delete: `delete_user`,
+`update_user`, `delete_gesture`, `clear_gestures` were removed. Input refusals are HTTP 200
+`{success:false, code}` (`invalid | taken | not_found | self | unknown_action`).
+
+**`php/api/save_conversation.php`** — unchanged flow; the conversation row now also gets `user_id` (the session's
+user, NULL for a guest, `:103`) and `title` (the message trimmed, cut to 120 characters, not bytes) when it is
+created; a later seq-1 message replaces the title (`:107-109`). `user_id` never changes after the first message.
+
+**`php/api/conversations.php`** — needs a logged-in account (`:24`, 403 for a guest). A user gets only rows with
+their `user_id` (list and `?id=`; someone else's id is 404). An admin gets everything and may filter
+`user=<id>|guest` and `lang=ESL|FSL` (= has a signed message in that language). `limit` (1-100) + `offset` page the
+list and add `has_more`; without `limit` every row comes back, as `reports.html` expects. Each row also has
+`user_id`, `username`, `display_name`, `title`, `languages`. `delete` / `clear_all` are admin-only (403).
+
+**`php/api/quiz.php`** — `GET ?action=pool&lang=ESL|FSL` (open to guests, `:76`): active signs of that language
+(`sign_language IN (lang, 'BOTH') AND is_active = 1`) with a playable clip, found the way Let's Talk's sign player
+finds one: `saved_gestures/<key>/avatar.json` first, else a video in that language's own folder named after the
+sign's text, else `asset_path`, else `<key>.webm` (`quiz_video_for()`, `:42`). Categories map
+`word/letter/number/phrase` -> `words/letters/numbers/phrases`. `POST {action:"save"}` (`:226`, logged in only,
+403 for a guest): validates 1-50 answers with 4 distinct choices containing `sign_key`, works out `is_correct`,
+`correct_items` and `total_items` itself, and writes one `quiz_attempts` row + one `quiz_answers` row per question
+in one transaction; client times are used only within the last 6 hours (`:252`). `GET ?action=scores` (`:125`):
+`summary {count, average_pct, best}` and 20 attempts per page (`limit`/`offset`, `has_more`); a user always gets
+their own, an admin everyone's or `user=<id>`. `mode` per attempt is read back from `quiz_answers.question_type`.
+
+**Not session-checked (DEBT 157):** `save_gesture.php`, `signs.php` POST, `gesture_category.php`,
+`compile_model.php`, `bulk_import.php`, `avatar_clip.php` — unchanged, still open to any caller.

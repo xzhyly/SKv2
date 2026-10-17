@@ -1061,6 +1061,16 @@ so a later session does not re-litigate them:
     side"), consistent with every other admin endpoint this item already
     covers.
 
+    **Update (2026-10-18, accounts-quiz phase) — partly resolved.** There is now a real server-side PHP
+    session (`php/session.php`, set by `php/auth.php` login). `php/admin_api.php` no longer reads
+    `requester_id`: every action needs a logged-in admin, else HTTP 403 (`sk_require_admin()`); its
+    `delete_user`, `update_user`, `delete_gesture` and `clear_gestures` actions were removed, and its
+    `Access-Control-Allow-Origin: *` header with them. `php/api/conversations.php` needs a logged-in
+    account (403 for a guest), shows a user only their own conversations and keeps list-all, delete and
+    clear_all for admins (403 for a user). Still open: the training/import write endpoints
+    (`save_gesture.php`, `signs.php` POST, `gesture_category.php`, `compile_model.php`,
+    `bulk_import.php`, `avatar_clip.php`) have no session check — see item 157.
+
 73. **Medium, open: fresh-machine/Pi setup — the tracked `.sql` dumps are
     pre-normalization and not importable with the current code.** Both
     `sining_kamay_db.sql` and `db-schema/sining_kamay_db_backup.sql` predate
@@ -1830,6 +1840,52 @@ so a later session does not re-litigate them:
      (both); the `candidates` listing (`php/api/bulk_import.php`) returns its fixed fields only, so avatar-clips.html's
      candidate picker does not show it. The clip itself names its build in `extractor.lib` ("python mediapipe 0.10.21
      holistic" or "@mediapipe/holistic 0.5.1675471629"), which "Use this" / Step 5 Apply keep in `avatar.json`.
+157. **Medium, open (accounts-quiz, 2026-10-18, owner decision needed): the training/import write endpoints have
+     no session check.** The admin pages now send a non-admin to the dashboard (`js/sk-account.js` `adminPage()`)
+     and the admin APIs of this phase answer 403 (`php/admin_api.php`, `conversations.php`, quiz results), but
+     `save_gesture.php`, `signs.php` POST, `gesture_category.php`, `compile_model.php`, `bulk_import.php` and
+     `avatar_clip.php` still answer anyone who reaches them, as before. They were left unchanged because the bulk
+     importer and the py tools' tests call them without a session (owner: "Must NOT change ... bulk import
+     logic, py tools") and so do ~20 php-cgi tests. Adding `sk_require_admin($conn)` at the top of each write
+     path is one line per file plus a login in each test helper (`tests/conversations/helper.mjs`
+     `adminCookie()` shows how).
+158. **Low, open (accounts-quiz): the admin pages keep their client-side PIN pad.** Owner rule "keep how admin
+     login works today": a logged-in admin still types PIN 2026 on Train Gestures / View Reports / Bulk import /
+     Avatar clips (`CORRECT_PIN`, `js/gesture-training-ui.js:33`). Dropping it for a logged-in admin is a small
+     change in `SKAccount.adminPage()` (set the `sk_train_unlocked` flag, which bulk-import and avatar-clips
+     already honour, and unlock gesture-training / reports the way `trVerifyPin()` does).
+159. **Low, open (accounts-quiz): no idle log-out.** The wireframe lists "auto log out after ~5 min idle" as
+     optional; not built. A session lasts until Log out, until the browser closes (session cookie), or until
+     PHP's session garbage collection removes it (`session.gc_maxlifetime`, PHP default 1440 s of no request;
+     XAMPP's php.ini value not checked here). On a shared kiosk the next person sees the previous user's name
+     chip and lists if nobody logs out.
+160. **Low, open (accounts-quiz): the quiz's clip source is Let's Talk's, not Learn Signs'.** The brief said "use
+     the same clip/avatar source Learn Signs uses", but `learn-signs.html` is an external website in an iframe
+     (item 29) with no local source. `php/api/quiz.php ?action=pool` uses the source Let's Talk's sign player
+     uses: the avatar clip (`saved_gestures/<key>/avatar.json`) first, else a video in the language's own folder
+     named after the sign's text, else its `asset_path`, else `<key>.webm`. A Both sign's English video is never
+     used for an FSL question.
+161. **Low, open (accounts-quiz, measured 2026-10-17 on the repo's data): ESL has no Numbers quiz.** The 10 ESL
+     number signs (`one` ... `ten`) have videos named `1.webm` ... `10.webm` (`assets/signs/en/`), not after their
+     key or text, and no `asset_path` in a fresh DB, so the ESL Numbers pool is 0 signs and the quiz shows "No
+     signs with a video in Numbers (ESL)". FSL Numbers has 10. Setting `gestures.asset_path` to
+     `assets/signs/en/1.webm` etc. (or giving the signs avatar clips) makes them playable; Let's Talk has the same
+     gap (it fingerspells "one").
+162. **Low, open (accounts-quiz): conversations saved before this phase have no title or user.** The migration
+     fills nothing (`title` and `user_id` stay NULL); the Conversations page shows their first message as the
+     title and an admin sees them as Guest.
+163. **Low, open (accounts-quiz): Let's Talk's sign preview logs a 404 for every word without its own video.**
+     Pre-existing (`js/sign-player.js` `displaySignWithFallback()` probes `assets/signs/<lang>/<word>.webm`
+     before the asset map and fingerspelling); each miss is a "Failed to load resource" console error. Seen
+     while testing this phase (typed "Guest hello" -> `guest.webm` 404); the e2e check now types words that have
+     videos. Not changed (Let's Talk's preview is outside this phase).
+164. **Low, open (accounts-quiz): a guest's conversation can be read by any admin, as decided.** Guest
+     conversations (`user_id` NULL) are listed for admins only; nothing tells the guest that Let's Talk is saved.
+     The pre-existing behaviour (every conversation saved) is unchanged.
+165. **Low, open (accounts-quiz): the seeded admin password is admin123 everywhere.** The old seed hash in
+     `db-schema/database_setup.sql` matched no known password (verified with `password_verify`); the new setup
+     file and the migration use a real hash of `admin123` (the migration only replaces that exact old hash). Change
+     it in Manage users -> Reset password after the first login.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

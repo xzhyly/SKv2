@@ -343,6 +343,38 @@ Changed tests (old cache assertions replaced by the model file): `tests/sign-tex
 `tests/video-capture/capture-ui-check.mjs`, `e2e.mjs`, `startup-check.mjs`; `tests/bulk-import/verify-e2e.mjs`,
 `import-flow-check.mjs`.
 
+### Accounts, conversation history and quiz files (new 2026-10-18)
+
+Report: `docs/reports/2026-10-18-accounts-quiz.md`. Details: `docs/system/UI.md` Part 4, `docs/system/BACKEND.md`
+"Accounts, conversation history and quiz".
+
+| File | Lines | Owns |
+|---|---|---|
+| `login.html` | 123 | Log in / Create account, one full-screen page, fields above the on-screen keyboard |
+| `conversations.html` | 197 | Saved conversations: user = own, admin = all + User/Language filters; read-only thread |
+| `quiz.html` | 185 | Quiz page (setup, question, result, Watch overlay); loads the avatar scripts |
+| `quiz-scores.html` | 124 | Quiz scores: user = own, admin = all + User filter |
+| `users.html` | 232 | Manage users (admin): list, Add user, Reset password, Activate/Deactivate |
+| `js/sk-account.js` | 205 | `window.SKAccount`: chip/menu, Log out, `adminPage()` / `loginPage()` guards, `api()`, date formats |
+| `js/quiz-core.js` | 130 | `window.QuizCore` / node module: pool, 10 questions, choices, answer rows, score |
+| `js/quiz-ui.js` | 412 | Quiz screens, clip playback (video or avatar), save |
+| `css/sk-pages.css` | 305 | Shared look of the new pages and of the account chip/menu |
+| `php/session.php` | 102 | PHP session helpers: `sk_session_user()`, `sk_require_user()`, `sk_require_admin()` |
+| `php/api/me.php` | 28 | `window.SK_ME` for page `<head>`s |
+| `php/api/quiz.php` | 309 | Quiz pool / save / scores |
+| `db-schema/2026-10-accounts-quiz.sql` | 173 | Idempotent migration to the accounts/quiz schema |
+| `tests/accounts-quiz/helper.mjs` | 38 | `zzqa...` test accounts, cleanup |
+| `tests/accounts-quiz/auth.test.mjs`, `admin-api.test.mjs`, `conversations-scope.test.mjs`, `quiz-api.test.mjs` | 87, 87, 96, 124 | php-cgi tests of the endpoints (live DB) |
+| `tests/accounts-quiz/quiz-core.test.mjs` | 83 | node tests of `js/quiz-core.js` |
+| `tests/accounts-quiz/migration.test.mjs` | 134 | The migration on throw-away databases |
+| `tests/accounts-quiz/e2e-check.mjs` | 521 | Playwright check, guest/user/admin through every new screen, writes the report screenshots |
+
+Changed: `index.html`, `css/style.css`, `talk.html`, `js/virtual-keyboard.js`, `php/auth.php`, `php/admin_api.php`,
+`php/api/save_conversation.php`, `php/api/conversations.php`, `db-schema/database_setup.sql`, the `<head>` of the five
+admin pages; tests `tests/conversations/helper.mjs` + `conversations-admin.test.mjs` (log in as admin),
+`tests/normalization/schema-guard.test.mjs` (7 tables), `tests/video-capture/cdp.mjs` (admin log-in before an
+admin page; `SK_CHROME`, `SK_CHROME_ARGS`).
+
 ### `.superpowers/` (4 files)
 
 Session artifacts from a prior agent-assisted work session (`sdd/progress.md`,
@@ -406,11 +438,13 @@ All under `php/`, all requiring `php/connect.php` for the MySQL connection.
 | `php/api/core_api.php` | deleted 2026-09-24; was called only by `js/db-local.js` (also deleted), described as "unified api router" in `js/db-local.js:10` |
 | `php/api/reports.php` | `reports.html` |
 | `php/api/save_conversation.php` | `js/talk-history.js` (loaded by `talk.html`) — new 2026-09-25 |
-| `php/api/conversations.php` | `reports.html`, after its PIN — new 2026-09-25 |
+| `php/api/conversations.php` | `reports.html`, after its PIN — new 2026-09-25; `conversations.html` since 2026-10-18 |
 | `php/api/save_history.php` | none found (file deleted 2026-09-24) |
 | `php/api/get_history.php` | none found (file deleted 2026-09-24) |
-| `php/admin_api.php` | none found |
-| `php/auth.php` | none found |
+| `php/admin_api.php` | `users.html`, `conversations.html` and `quiz-scores.html` (admin user list) — none before 2026-10-18 |
+| `php/auth.php` | `login.html`, `js/sk-account.js` (Log out) — none before 2026-10-18 |
+| `php/api/me.php` | every page that shows the account chip or is guarded (`<script src>` in `<head>`) — new 2026-10-18 |
+| `php/api/quiz.php` | `js/quiz-ui.js` (pool, save), `quiz-scores.html` (scores) — new 2026-10-18 |
 | `scratch/trigger_sync.php` | deleted 2026-09-24; had no caller found (not under `php/`, required `php/connect.php` directly) |
 
 ## 5. MySQL tables
@@ -441,6 +475,10 @@ Column-level detail was not extracted this pass (reserved for the Pass 2
 backend/database document, using the `mysql` skill) — see
 `docs/system/BACKEND.md` for the current, exact `CREATE TABLE` for
 `gestures`/`gesture_recordings`.
+
+**Updated 2026-10-18 (accounts-quiz phase): 7 tables** — `quiz_attempts` and `quiz_answers` are new; `users`
+gained `display_name`, `is_active`, `last_login_at` (`email` NULL-able); `conversations` gained `user_id`, `title`
+(`db-schema/2026-10-accounts-quiz.sql`, `docs/system/BACKEND.md`).
 
 **Updated 2026-10-04 (sign-texts phase):** the table list is unchanged, but `gestures` changed shape:
 `sign_language` is now the sign's set `ENUM('ESL','FSL','BOTH')`, new nullable `text_en`/`text_fil` (`VARCHAR(255)`),

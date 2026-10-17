@@ -69,9 +69,11 @@ locally via XAMPP:
 - **Serving:** a directory junction at `C:\xampp\htdocs\SKR` points at this
   repo, so there is one copy of the files on disk — editing the repo edits
   what Apache serves, and vice versa. No file copying/syncing step.
-- **Database:** the 5-table normalized schema (`gestures`, `gesture_recordings`,
-  `conversations`, `messages`, `users`) is what the current code expects
-  (`translations` was dropped 2026-09-25, saved-conversations phase — see
+- **Database:** the 7-table schema (`gestures`, `gesture_recordings`,
+  `conversations`, `messages`, `users`, `quiz_attempts`, `quiz_answers`) is what the current code expects
+  (`translations` was dropped 2026-09-25, saved-conversations phase; the quiz tables and the new `users` /
+  `conversations` columns came with the 2026-10-18 accounts-quiz phase — run
+  `db-schema/2026-10-accounts-quiz.sql` on an older database, it is idempotent — see
   `docs/system/BACKEND.md`). Do **not** import
   either tracked `.sql` dump on a fresh machine — both are pre-normalization
   snapshots (2026-09-24 schema-normalization phase) and no longer match the
@@ -157,10 +159,21 @@ conversation end (End Conversation, the idle timeout, reload/tab-close) is
 also fire-and-forget POSTed to `php/api/save_conversation.php`
 (`js/talk-history.js`) into the `conversations`/`messages` tables — this never
 blocks, delays or breaks the live conversation, and any failure is only a
-`console.warn`. Past conversations are never read back from `talk.html` or
-`index.html`; only `reports.html`'s Conversations tab, after its PIN, reads
-them (`php/api/conversations.php`). See `docs/system/BACKEND.md` and
-`docs/system/UI.md` Part 3.
+`console.warn`. Past conversations are never read back from `talk.html`; since the
+accounts-quiz phase they are read by `conversations.html` (a user sees their own, an admin all of
+them) and still by `reports.html`'s Conversations tab (`php/api/conversations.php`, session-checked).
+See `docs/system/BACKEND.md` and `docs/system/UI.md` Part 3.
+**Accounts, history, quiz (accounts-quiz phase, 2026-10-18).** Everyone logs in on `login.html` (Log in /
+Create account; Create account always makes a `user`), the PHP session is in `php/session.php`, and
+`<script src="php/api/me.php">` tells a page who is logged in. The dashboard has 3 cards (Learn Signs, Let's
+Talk, Quiz) and a name chip whose menu holds the user's lists and, for an admin, every admin tool (Train
+Gestures, View Reports, Bulk import, Manage users = `users.html`, All conversations, Quiz results). Admin pages
+send non-admins to the dashboard (`js/sk-account.js` `adminPage()`); admins still get the PIN pad. Let's Talk
+saves the logged-in user's id and a title and has "+ New conversation". `quiz.html` (Sign -> Text / Text -> Sign,
+10 questions from signs with a clip, `php/api/quiz.php`) saves scores only for logged-in accounts
+(`quiz-scores.html`). The training/import write endpoints are still not session-checked (`docs/system/DEBT.md`
+item 157). See `docs/system/UI.md` Part 4 and `docs/reports/2026-10-18-accounts-quiz.md`.
+
 Open it at `/SKR/talk.html`. `index.html` is now a **pure dashboard**: the old
 `#translator-pane` (`?screen=voice`) and `js/script.js` were retired into this screen
 and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).
@@ -170,6 +183,7 @@ and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).
 | Working on... | Read |
 |---|---|
 | Any screen's UI, camera/translation flow, gesture training, admin/reports pages, or the new "Let's Talk" conversation screen (`talk.html`) | [docs/system/UI.md](docs/system/UI.md) |
+| Accounts, login, conversation history, quiz, Manage users | [docs/system/UI.md](docs/system/UI.md) Part 4, [docs/system/BACKEND.md](docs/system/BACKEND.md) "Accounts, conversation history and quiz" |
 | Settled design/build decisions for `talk.html` specifically (why a value was chosen, what an earlier task rejected) | [docs/system/DECISIONS.md](docs/system/DECISIONS.md) |
 | PHP endpoints, MySQL schema, ffmpeg invocations | [docs/system/BACKEND.md](docs/system/BACKEND.md) |
 | Kiosk boot, Chromium flags, Vosk speech model, Pi-specific constraints | [docs/system/HARDWARE_BOOT.md](docs/system/HARDWARE_BOOT.md) |

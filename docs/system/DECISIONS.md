@@ -2040,3 +2040,35 @@ Report: `docs/reports/2026-10-17-py-avatar.md`.
   parity run copies the page's split so only Holistic differs); the Python frame times (clip time, not the wall
   clock); the page's `buildMeta()` moved into `BulkImportCore` (36 of 36 outputs identical to the old function).
 
+
+## Decisions made during the accounts-quiz phase (2026-10-18)
+
+Report: `docs/reports/2026-10-18-accounts-quiz.md`. Owner decisions 1-9 are in the phase brief (quoted in the report);
+the choices below were made while building and are recorded so a later session does not re-litigate them.
+
+- **"Keep how admin login works today; make it the same login."** Read as: the admin is still a `users` row with
+  role `admin` (admin / admin123 seeded when none exists), it logs in on the same `login.html` as everyone, and the
+  admin pages keep their PIN pad for a logged-in admin. A non-admin never reaches the PIN pad: `SKAccount.adminPage()`
+  sends them to the dashboard from the page's `<head>` (DEBT 158 says how to drop the PIN if the owner wants).
+- **Who is logged in is known before the page draws.** `<script src="php/api/me.php">` (a classic, blocking script)
+  instead of a `fetch`: the chip never flashes "Log in", and an admin page can leave before any of its scripts run
+  (`window.stop()` then `location.replace()`). No synchronous XHR.
+- **Refusals are HTTP 200.** `auth.php` and `admin_api.php` answer a wrong password, a taken username or a
+  self-deactivation with 200 `{success:false, code}` (as `auth.php` did before): Chromium logs every non-2xx response
+  as a console error, and these are normal use. "Not an admin" stays 403.
+- **"+ New conversation" reloads `talk.html`** after ending the conversation exactly like End Conversation, for the
+  same reason End Conversation is a real page load (this file, "End Conversation is a real page load back to
+  index.html"): no in-page state to reset by hand. With an empty thread it only returns to "Who speaks first?".
+- **Let's Talk's header row.** The status pill moved into the new right-side row; "+ New conversation" hides while
+  the on-screen keyboard is up (the only time the pill shows), so the row never reaches the centred title. Guest chip,
+  no log-in button and no menu in Let's Talk (leaving mid-conversation is what Back / End are for).
+- **Quiz clip source** = Let's Talk's (avatar clip first, else video in the language's own folder), because Learn
+  Signs has no local source (DEBT 160). A Both sign's English video is never used for an FSL question.
+- **Quiz with 4-9 signs** still has 10 questions: every sign once before any repeats, never the same sign twice in a
+  row; the setup line says "some will come up twice". Fewer than 4: red message, Start disabled.
+- **Text -> Sign answering:** tapping the clip plays it (stopping any other), "Choose A..D" answers — so "only the
+  tapped one plays" and "one tap answers" both hold without a double-tap rule.
+- **The score is saved once, at the end** (one transaction: attempt + 10 answers). Quit saves nothing; the server
+  scores the answers itself.
+- **Usernames**: 2-30 letters and numbers (the wireframe's "letters and numbers"), unique regardless of case
+  (the column's `utf8mb4_general_ci` collation).

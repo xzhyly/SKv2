@@ -401,6 +401,11 @@ below. None of that ran.
 
 ## Part 2: Dashboard, Training & Admin Screens
 
+> **Update 2026-10-18 (accounts-quiz phase):** the dashboard has three cards for everyone (Learn Signs, Let's Talk,
+> Quiz) and an account area top-right; Train Gestures and View Reports moved into the admin account menu. Every
+> admin page (gesture-training, reports, bulk-import, avatar-clips, diagnostic, users) sends a non-admin to the
+> dashboard before it shows; a logged-in admin still gets the PIN pad. See Part 4.
+
 > **Update 2026-09-21:** `index.html` is now a pure dashboard. `#translator-pane` (the text/voice-to-sign screen,
 > `?screen=voice`) and `js/script.js` were retired into `talk.html`'s Speak or Type screen (Part 3b; archived at
 > `archive/script.js`, see `archive/TEXT-TO-SIGN-PANE.md`). Anything below that describes that pane, its `?screen=voice`
@@ -1438,6 +1443,9 @@ model" or `sining_kamay_knn_*` / `sining_kamay_labels_*`, it describes the page 
 
 ## Part 3: "Let's Talk" conversation screen (talk.html)
 
+> **Update 2026-10-18 (accounts-quiz phase):** the header's right side now holds "+ New conversation" and the
+> account chip (Part 4); conversations save with the logged-in user's id and a title. Nothing else changed.
+
 New file, built as one phase (see `docs/superpowers/plans/2026-09-16-talk-html.md`
 for the six-task build order and `docs/system/DECISIONS.md` for every
 non-obvious call made while building it). UI-only, fake/canned data — no
@@ -2011,3 +2019,88 @@ bubble) across the resize, confirmed by directly measuring `scrollTop`/
   viewport), not a physical touchscreen. See
   `docs/system/MANUAL-CHECKS.md`'s new "Let's Talk" section for what still
   needs a person and a real Pi.
+
+---
+
+## Part 4: Accounts, conversation history, quiz (accounts-quiz phase, 2026-10-18)
+
+Report: `docs/reports/2026-10-18-accounts-quiz.md` (screenshots of every screen at 1024x600). Design source:
+`docs/design/dashboard-login-wireframe.html`, `docs/design/new-features-wireframe.html`. Server side:
+`docs/system/BACKEND.md`, "Accounts, conversation history and quiz".
+
+### 1. Owns these files
+
+- New pages: `login.html` (123 lines), `conversations.html` (197), `quiz.html` (185), `quiz-scores.html` (124),
+  `users.html` (232).
+- New scripts: `js/sk-account.js` (205) — account chip/menu, Log out, page guards, small helpers;
+  `js/quiz-core.js` (130) — pure quiz logic (node-testable); `js/quiz-ui.js` (412) — quiz screens and clip playback.
+- New stylesheet: `css/sk-pages.css` (305) — the shared look of the new pages and of the chip/menu.
+- Changed: `index.html`, `css/style.css` (3-card grid, account area), `talk.html` (header right side),
+  `js/virtual-keyboard.js` (also opens for `type=password`), and one guard line block in the `<head>` of
+  `gesture-training.html`, `reports.html`, `bulk-import.html`, `avatar-clips.html`, `diagnostic.html`.
+
+### 2. What it does
+
+- **Who is logged in.** Each page loads `<script src="php/api/me.php">` (sets `window.SK_ME`) and then
+  `js/sk-account.js`. The value only decides what to draw; every endpoint checks the PHP session itself.
+- **Dashboard (`index.html`).** Learn Signs, Let's Talk (orange border), Quiz (orange icon) — same 200x270 cards,
+  `grid-template-columns: repeat(3, 200px)` (`css/style.css`). Top-right (`.dash-acct`, absolute in the banner):
+  a guest gets "Log in" (`login.html`); a logged-in account gets a name chip (initial, display name, ADMIN tag for an
+  admin, caret) that opens a menu (`renderAccount()`, `js/sk-account.js:74`; items `menuItems()`, `:46`): user =
+  My conversations, My quiz scores, Log out; admin = Train Gestures, View Reports, Bulk import, Manage users,
+  All conversations, Quiz results, Log out. Items are 48 px tall; the admin menu ends at y = 479 (measured with Playwright at 1024x600).
+- **Login (`login.html`).** Full-screen page, tabs "Log in" / "Create account" on the same page (no load), fields
+  at the top: every field and button ends at or above y = 320, where the 280 px on-screen keyboard starts
+  (measured by `tests/accounts-quiz/e2e-check.mjs`). Inputs 52 px, buttons 52 px. `?next=<page>.html` returns there
+  after a login (quiz result "Log in", guarded lists); `?tab=create` opens Create account. Admins log in here too.
+- **Admin pages.** `SKAccount.adminPage()` (`:129`) runs in each admin page's `<head>`: not an admin ->
+  `window.stop()` and `location.replace('index.html')` (`leave()`, `:120`), so none of the page's own scripts run.
+  An admin stays and sees the page exactly as before, PIN pad included (owner: "keep how admin login works today";
+  DEBT 158). Log out also clears the `sk_train_unlocked` PIN flag.
+- **Let's Talk (`talk.html`).** Header right side (`.talk-header-right`): the status pill (now in the row, shown
+  only while the keyboard is up, when "+ New conversation" hides so the row never reaches the title), "+ New
+  conversation" and a plain chip (Guest for a guest; no menu, no log-in button here). "+ New conversation"
+  (`talk.html:2110`): with no message in the thread it just returns to "Who speaks first?"; otherwise it ends the
+  conversation exactly as End Conversation does (`onEndConversation('ended')`) and loads `talk.html` again, so the
+  next message starts a new saved conversation (new `client_key` per page load, `js/talk-history.js`). A reload,
+  not an in-page reset, for the same reason End Conversation is a real page load (`docs/system/DECISIONS.md`).
+- **Conversations (`conversations.html`).** One page: a list (title = the conversation's title, else its first
+  message; date, message count, language; 20 per load + "Load more") and a read-only thread (signer left in white,
+  speaker right in navy, with "Signer · FSL" / "Speaker · spoken|typed" labels and inline SVG icons). A user sees
+  their own ("MY CONVERSATIONS", no filters); an admin sees all ("ALL CONVERSATIONS", Guest / username pill) with
+  User (All, Guest, each user) and Language (All, ESL, FSL) selects. A guest is sent to `login.html`.
+- **Quiz (`quiz.html`, `js/quiz-ui.js`).** Setup: Mode (Sign -> Text | Text -> Sign), Language (ESL | FSL),
+  Category (Letters, Numbers, Words, Phrases, All), a line with the number of signs available, "Start quiz".
+  The pool comes from `php/api/quiz.php ?action=pool` (signs with a clip: avatar first, else video — the source
+  Let's Talk plays; Learn Signs has no local source, DEBT 160). `QuizCore.poolFor()` keeps one sign per text and per
+  clip; fewer than 4 -> a red line "No signs / Only N signs with a video in <category> (<lang>). A quiz needs at
+  least 4." and Start stays disabled. 10 questions (`COUNT`, `js/quiz-ui.js:13`); with 4-9 signs every sign comes
+  once before any repeats, never twice in a row. Each question: the answer + 3 wrong choices from the answer's
+  category (for All, from the rest of the pool only when that category has fewer than 3 others).
+  - Sign -> Text: the clip loops on the left (440 px wide, Replay button), 4 text choices (64 px) right.
+  - Text -> Sign: "Which sign is “text”?" on top, 4 cards with the clip as a still poster (video: first frame; avatar:
+    rest pose) and a play button; tapping one plays it and stops any other (`stopOthers()`); "Choose A..D"
+    (48 px) answers.
+  - One tap answers: green + check on the right one, red + cross on a wrong pick, at once; Next.
+  - Bar: "✕ Quit" (back to setup, nothing saved), title, "Score N".
+  - Result: big score, "mode · language · category", Try again (same settings, new questions), New quiz; Missed
+    (n) list with "▶ Watch" (overlay that loops the right sign). Guest: "Log in to save your score. This score is
+    not saved." + Log in. Logged in: saved at once (`action: save`) -> "Score saved." + a link to the scores page.
+  - Clips (`clipView()`, `:52`): `<video muted playsinline>` (posters `preload=metadata`, seeked to 0.05 s), or a
+    420x302 canvas with `AvatarPlayer` in the avatar's `admin` view (looped with a 700 ms pause). At most one clip
+    plays at a time.
+- **Quiz scores (`quiz-scores.html`).** Quizzes taken, Average (mean of correct/total, %), Best (highest ratio),
+  and the attempts (mode · language · category, date, score pill: green >= 70 %, red <= 50 %), 20 per load + Load
+  more. A user sees their own ("MY QUIZ SCORES"); an admin sees everyone's ("QUIZ RESULTS") with a User select.
+- **Manage users (`users.html`, admin only).** Table: Name (+ "You"), Username, Role pill, Status pill, Last login
+  (Today / Yesterday / date / —), actions: Reset password, Deactivate (red; not on the admin's own row) or Activate
+  (green). "Show" select: All / Active / Inactive. "+ Add user" and "Reset password" open a full-screen form in the
+  same page, fields at the top (Display name, Username, Role User|Admin, Password / New password), above the
+  keyboard. No delete.
+
+### 3. Constraints kept
+
+Plain HTML/CSS/JS, no library, no build step; inline SVG icons, no images; no shadows, blur, gradients,
+transitions or animations in the new CSS (the shared on-screen keyboard keeps its own existing slide); touch
+targets >= 44 px; built and measured at 1024x600. Colours from `css/tokens.css`, font Inter (`css/fonts.css`).
+`:where()` keeps the new pages' font reset at zero specificity so each component's own weight/size wins.
