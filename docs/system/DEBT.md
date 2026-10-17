@@ -1891,6 +1891,12 @@ so a later session does not re-litigate them:
      `db-schema/database_setup.sql` matched no known password (verified with `password_verify`); the new setup
      file and the migration use a real hash of `admin123` (the migration only replaces that exact old hash). Change
      it in Manage users -> Reset password after the first login.
+166. **Low, open (talk-camera-layout, 2026-10-18): the camera picture is cropped top and bottom.** The signing
+     camera is 320x240 (`js/talk-signing.js:302`) and now covers a 760 px wide panel (owner ask), so the panel shows
+     the middle 56 % of the frame height on the first turn (760x322) and 40 % on later turns (760x226, under the
+     thread strip). Recognition reads the whole frame and is not affected; the signer may not see a hand raised
+     high or held low. A narrower column (`.signing-live` width in `talk.html`) crops less (640 px: 67 % on the first
+     turn). Not changed without the owner.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

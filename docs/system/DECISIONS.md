@@ -2076,3 +2076,18 @@ the choices below were made while building and are recorded so a later session d
   scores the answers itself.
 - **Usernames**: 2-30 letters and numbers (the wireframe's "letters and numbers"), unique regardless of case
   (the column's `utf8mb4_general_ci` collation).
+
+## Decisions made for the Let's Talk camera layout (owner feedback, 2026-10-18)
+
+Report: `docs/reports/2026-10-18-talk-camera-layout-final.md`. Supersedes the fixed camera box sizes recorded above
+for the signing screen (560×300, later 760×300).
+- The camera panel takes all free height (`flex: 1`); the video uses `object-fit: cover` (owner ask), mirror kept.
+- The landmark canvas follows the video with CSS only (`object-fit: cover` on the canvas, its drawing buffer keeps
+  the video's aspect ratio), so `js/gesture-data.js` (shared with Train Gestures) is not changed.
+- The sentence bar is always present (76 px, muted hint while empty) so the camera never jumps when the first word
+  arrives; it is a two-line clip box, bottom-aligned, so a long sentence keeps its newest words.
+- The newest word is highlighted navy, not orange: the screen's one orange element stays the Translate / Stop button.
+- The green recording frame is drawn above the video by `.camera-box.recording::after` (the old outline is covered
+  by the full-size video/canvas).
+- The column stays 760 px wide; the 4:3 crop this causes is reported, not changed (DEBT 166).
+

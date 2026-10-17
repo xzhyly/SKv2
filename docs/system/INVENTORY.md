@@ -367,6 +367,7 @@ Report: `docs/reports/2026-10-18-accounts-quiz.md`. Details: `docs/system/UI.md`
 | `tests/accounts-quiz/auth.test.mjs`, `admin-api.test.mjs`, `conversations-scope.test.mjs`, `quiz-api.test.mjs` | 87, 87, 96, 124 | php-cgi tests of the endpoints (live DB) |
 | `tests/accounts-quiz/quiz-core.test.mjs` | 83 | node tests of `js/quiz-core.js` |
 | `tests/accounts-quiz/migration.test.mjs` | 134 | The migration on throw-away databases |
+| `tests/accounts-quiz/talk-layout-check.mjs` | 136 | Playwright check of the Let's Talk signing screen layout at 1024x600 (camera cover, sentence bar, chip, no scroll); writes `talk-layout-after-*.png` with `--shots` (new 2026-10-18, talk-camera-layout) |
 | `tests/accounts-quiz/e2e-check.mjs` | 527 | Playwright check, guest/user/admin through every new screen, writes the report screenshots |
 
 Changed: `index.html`, `css/style.css`, `talk.html`, `js/virtual-keyboard.js`, `php/auth.php`, `php/admin_api.php`,

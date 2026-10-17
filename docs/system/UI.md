@@ -1510,6 +1510,12 @@ failure reason); absent from the DOM on a plain load.
   Guide toggle in 200 px side columns (200×60 each), live caption pill
   (`#signing-caption`), draft of accumulated words (`#signing-draft`), one
   orange 560×68 button. Later turns skip the guide and go straight here.
+  *Update 2026-10-18 (owner feedback, layout only, `docs/reports/2026-10-18-talk-camera-layout-final.md`):* a 760 px
+  column fills the screen's height: the camera panel flexes (760×322 on the first turn, 760×226 under the thread
+  strip), the video and the landmark canvas cover it (`object-fit: cover`, mirrored), the sentence is a 760×76 white
+  bar under the camera (22 px bold, two-line clip, newest word highlighted, `TalkSigning.renderDraft`), the status is
+  a 14 px chip in the video's top-left corner, the controls end at y 588. Checked by
+  `tests/accounts-quiz/talk-layout-check.mjs`.
 
 **Camera lifecycle** (`onEnterSigning` `talk.html:1559` → `TalkSigning.enter()`
 `js/talk-signing.js:255`; `onLeaveSigning` `:1568` → `leave()` `:294`).
