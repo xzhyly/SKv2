@@ -39,9 +39,27 @@
 
   function setCaption(text) { $('signing-caption').textContent = text; }
 
+  // The sentence bar under the camera (layout change 2026-10-18): one span per word, the newest one
+  // highlighted, inside a two-line clip box (talk.html CSS); textContent stays exactly words.join(' ').
+  function renderDraft(el, list) {
+    el.textContent = '';
+    var clip = document.createElement('div');
+    clip.className = 'signing-draft-clip';
+    var line = document.createElement('div');
+    list.forEach(function (w, i) {
+      if (i > 0) line.appendChild(document.createTextNode(' '));
+      var span = document.createElement('span');
+      span.className = i === list.length - 1 ? 'draft-word newest' : 'draft-word';
+      span.textContent = w;
+      line.appendChild(span);
+    });
+    clip.appendChild(line);
+    el.appendChild(clip);
+  }
+
   function showDraft() {
     var el = $('signing-draft');
-    el.textContent = words.join(' ');
+    renderDraft(el, words);
     el.classList.toggle('show', uiState === 'recording' && words.length > 0);
   }
 
@@ -348,5 +366,5 @@
     $('chip-guide').addEventListener('click', toggleSkeleton);
   }
 
-  window.TalkSigning = { init: init, enter: enter, leave: leave };
+  window.TalkSigning = { init: init, enter: enter, leave: leave, renderDraft: renderDraft };
 })();

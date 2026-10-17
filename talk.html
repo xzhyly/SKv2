@@ -584,9 +584,11 @@
   }
 
   /* ── Screen 03 — Signing (docs/ui-target/README.md "03") ── */
+  /* Owner feedback 2026-10-18 (accounts-quiz branch, layout only): the camera panel takes all the
+     height left between the top of the screen and the controls (flex:1 in .signing-live below), so
+     the screen fills 600 px; the video covers the whole panel. Was a fixed 760x300 box. */
   .camera-box{
-    width:760px;height:300px;
-    margin-top:16px;
+    width:100%;flex:1 1 auto;min-height:0;
     border-radius:12px;
     /* #16192a is README's own literal spec for the camera view's dark
        backdrop ("03 — Signing": "dark #16192a background") — an explicit,
@@ -598,9 +600,11 @@
     display:flex;align-items:center;justify-content:center;
     overflow:hidden;
   }
+  /* Owner feedback 2026-10-18: the live status ("Searching…" / "Stabilizing…" / the recognised
+     word) is a small chip in the video's top-left corner; the sentence has its own bar below. */
   .signing-caption-pill{
-    position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
-    padding:8px 22px;
+    position:absolute;left:12px;top:12px;
+    padding:4px 12px;
     border-radius:99px;
     /* Solid black at partial opacity, matching this file's existing
        rgba(0,0,0,…)/rgba(255,255,255,…) convention for translucent overlays
@@ -608,11 +612,11 @@
     background:rgba(0,0,0,0.7);
   }
   .signing-caption-pill span{
-    color:var(--surface);font-size:20px;font-weight:700;
+    color:var(--surface);font-size:14px;font-weight:700;
   }
   .signing-controls-row{
     display:flex;align-items:center;gap:16px;
-    width:760px;margin-top:14px;
+    width:100%;flex:none;
   }
   .stop-signing-btn{
     flex:1;height:68px;
@@ -678,7 +682,11 @@
   .guide-start-btn:active{background:#ea6a0a}
   .guide-start-btn:disabled{opacity:0.5;cursor:not-allowed}
 
-  .signing-live{display:flex;flex-direction:column;align-items:center}
+  /* 760 px column: camera panel (flexes), sentence bar, controls; 12 px top/bottom, 10 px gaps. */
+  .signing-live{
+    display:flex;flex-direction:column;align-items:stretch;gap:10px;
+    width:760px;flex:1 1 auto;min-height:0;padding:12px 0;
+  }
   /* Screen 03 controls redesign (docs/superpowers/specs/2026-09-21-
      signing-screen-controls-redesign-design.md): the camera's old two
      200px .signing-side flanking columns are gone — .signing-row now
@@ -687,7 +695,7 @@
      rule's block further down). .mode-chip below is left untouched:
      #screen-speaking's EN/Filipino chips (chip-lang-en/fil) still use it
      and are out of this redesign's scope. */
-  .signing-row{display:flex;justify-content:center}
+  .signing-row{display:flex;flex:1 1 auto;min-height:0}
   .lang-toggle{
     width:140px;height:60px;
     display:flex;
@@ -725,20 +733,48 @@
   .mode-chip.active{background:var(--navy);border-color:var(--navy);color:var(--surface)}
   .mode-chip:active{transform:scale(0.97)}
   .mode-chip:disabled{opacity:0.5;cursor:not-allowed}
-  .camera-video{width:100%;height:100%;object-fit:contain;transform:scaleX(-1);display:none}
+  .camera-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:none}
+  /* The landmark canvas: js/gesture-data.js sizes it to the video's "contain" box with inline styles.
+     Its drawing buffer keeps the video's aspect ratio, so stretching the element over the whole panel
+     with the same object-fit:cover crops it exactly like the video and the skeleton stays on the
+     hands. CSS only: the shared drawing code is not changed. */
+  #camera-box #tlCanvas1{left:0 !important;top:0 !important;width:100% !important;height:100% !important;object-fit:cover}
   .camera-video.active{display:block}
   /* Recording frame: an outline paints above the video (a box-shadow would hide under it).
      Green = live, per README's colour rules. */
   .camera-box.recording{outline:4px solid var(--green);outline-offset:-4px}
-  .signing-caption-pill{z-index:3}
-  .signing-draft{
-    position:absolute;top:12px;left:50%;transform:translateX(-50%);
-    max-width:520px;padding:6px 16px;border-radius:99px;
-    background:rgba(0,0,0,0.7);color:var(--surface);
-    font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-    display:none;z-index:3;
+  /* Since the video and the landmark canvas cover the whole panel (2026-10-18) they would paint over
+     that outline, so the same green frame is also drawn above them (below the chips and overlay). */
+  .camera-box.recording::after{
+    content:'';position:absolute;inset:0;z-index:4;pointer-events:none;
+    border:4px solid var(--green);border-radius:12px;
   }
-  .signing-draft.show{display:block}
+  .signing-caption-pill{z-index:3}
+  /* Owner feedback 2026-10-18: the sentence being built has its own bar under the camera, full width,
+     white, 22 px bold, at most two lines, the newest word highlighted. The clip box is exactly two lines
+     tall and bottom-aligned, so a longer sentence keeps its newest words and drops the oldest at the
+     top. The bar is always 76 px tall so the camera never jumps; a muted hint while empty. */
+  .signing-draft{
+    flex:none;height:76px;padding:0 16px;
+    display:flex;align-items:center;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    color:var(--navy);font-size:22px;font-weight:700;line-height:1.3;
+    overflow:hidden;overflow-wrap:anywhere;
+  }
+  .signing-draft-clip{
+    width:100%;max-height:2.6em;overflow:hidden;
+    display:flex;flex-direction:column;justify-content:flex-end;
+  }
+  .signing-draft .draft-word.newest{
+    background:var(--navy);color:var(--surface);
+    border-radius:6px;padding:0 6px;
+    -webkit-box-decoration-break:clone;box-decoration-break:clone;
+  }
+  .signing-draft:not(.show) .signing-draft-clip{display:none}
+  .signing-draft:not(.show)::before{
+    content:'The signed sentence appears here';
+    color:var(--muted-light);font-weight:600;
+  }
   /* rgba(22,25,42,…) is README's #16192a camera backdrop, translucent. */
   .signing-cam-overlay{
     position:absolute;inset:0;z-index:5;
@@ -1149,11 +1185,12 @@
         <div class="camera-box" id="camera-box">
           <video id="signing-video" class="camera-video" autoplay playsinline muted></video>
           <canvas id="tlCanvas1" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; transform:scaleX(-1);"></canvas>
-          <div class="signing-draft" id="signing-draft"></div>
           <div class="signing-caption-pill"><span id="signing-caption">Show your sign</span></div>
           <div class="signing-cam-overlay" id="signing-cam-overlay"><span id="signing-cam-overlay-text">Starting camera…</span></div>
         </div>
       </div>
+      <!-- The sentence being built (js/talk-signing.js showDraft()), in its own bar under the camera. -->
+      <div class="signing-draft" id="signing-draft" aria-live="polite"></div>
       <div class="signing-controls-row">
         <div class="lang-toggle" role="group" aria-label="Language">
           <button type="button" class="lang-seg active" id="chip-esl">EN</button>
