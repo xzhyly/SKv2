@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Let's Talk Camera Wireframe</title>
+<style>
+:root{--navy:#1c3560;--orange:#f47b20;--bg:#eef1f5;--line:#dfe3ea;--text:#1c2b44;--muted:#6b7a90;--ok:#22b35e}
+*{box-sizing:border-box;margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif}
+body{background:#2b2b2b;color:var(--text);padding:24px}
+h2{color:#fff;font-size:15px;margin:28px 0 8px}h2 small{color:#bbb;font-weight:400}
+.frame{width:1024px;height:600px;background:var(--bg);display:flex;flex-direction:column;border-radius:4px;overflow:hidden}
+.bar{height:64px;flex:none;background:var(--navy);display:flex;align-items:center;justify-content:space-between;padding:0 16px;color:#fff}
+.pill{height:44px;border:2px solid #fff;border-radius:22px;display:grid;place-items:center;font-weight:700;padding:0 16px;font-size:14px}
+.chip{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);border-radius:22px;padding:6px 14px 6px 6px;display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600}
+.av{width:30px;height:30px;border-radius:50%;background:var(--orange);display:grid;place-items:center;font-weight:800}
+.main{flex:1;display:flex;gap:14px;padding:12px}
+.cam{width:688px;height:512px;flex:none;border:3px solid var(--ok);border-radius:12px;background:#4a5568;position:relative;overflow:hidden}
+.cam svg{position:absolute;inset:0;width:100%;height:100%}
+.tag{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.65);color:#fff;font-size:12px;font-weight:700;border-radius:12px;padding:4px 10px}
+.dim{position:absolute;bottom:10px;right:12px;color:#e2e8f0;font-size:12px}
+.side{flex:1;display:flex;flex-direction:column;gap:10px}
+.sent{flex:1;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:24px;font-weight:800;line-height:1.3;color:var(--text)}
+.sent .ph{color:#a3aec0;font-weight:700;font-size:20px}
+.sent .new{background:#fff1e6;color:var(--orange);border-radius:6px;padding:0 4px}
+.lbl{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:6px;display:block}
+.seg{display:flex;border:2px solid var(--navy);border-radius:10px;overflow:hidden}
+.seg div{flex:1;height:52px;display:grid;place-items:center;font-weight:800;color:var(--navy)}.seg .on{background:var(--navy);color:#fff}
+.btn{height:60px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:17px}
+.pri{background:var(--orange);color:#fff}.sec{background:var(--navy);color:#fff;height:52px;font-size:15px}
+.notes{width:1024px;background:#fff;border-radius:4px;padding:16px 20px;font-size:13px;line-height:1.6;margin-top:28px}.notes li{margin-left:18px}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute"><symbol id="person" viewBox="0 0 688 512">
+<rect width="688" height="512" fill="#5b6475"/>
+<circle cx="344" cy="150" r="62" fill="#c9a78a"/>
+<path d="M200 512 L220 300 Q344 230 468 300 L488 512Z" fill="#2f6b45"/>
+<path d="M300 330 L250 250 L235 200" stroke="#c9a78a" stroke-width="28" fill="none" stroke-linecap="round"/>
+<circle cx="232" cy="190" r="22" fill="#c9a78a"/>
+<g fill="#f47b20"><circle cx="220" cy="175" r="5"/><circle cx="232" cy="168" r="5"/><circle cx="244" cy="172" r="5"/><circle cx="226" cy="200" r="5"/><circle cx="240" cy="198" r="5"/></g>
+<line x1="0" y1="440" x2="688" y2="440" stroke="#ffffff55" stroke-dasharray="6 6"/>
+<text x="10" y="432" fill="#ffffffaa" font-size="11">waist line — must stay in frame</text>
+</symbol></svg>
+
+<h2>A. Ready <small>(camera 4:3, full height, no crop · controls on the right)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="pill">‹ Back</div><b style="letter-spacing:1px">NEW CONVERSATION</b><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="main">
+  <div class="cam"><svg><use href="#person"/></svg><span class="tag">Show your sign</span><span class="dim">4:3 · ~688×512 · object-fit: contain</span></div>
+  <div class="side">
+   <span class="lbl">SIGNED SENTENCE</span>
+   <div class="sent" style="margin-top:-6px"><span class="ph">The signed sentence appears here</span></div>
+   <div class="seg"><div class="on">EN</div><div>FIL</div></div>
+   <div class="btn pri">Start signing</div>
+   <div class="btn sec">● Guide</div>
+  </div>
+ </div>
+</div>
+
+<h2>B. Signing <small>(sentence grows on the right; newest word highlighted; status chip on video)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="pill">‹ Back</div><b style="letter-spacing:1px">NEW CONVERSATION</b><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="main">
+  <div class="cam"><svg><use href="#person"/></svg><span class="tag">Stabilizing…</span></div>
+  <div class="side">
+   <span class="lbl">SIGNED SENTENCE</span>
+   <div class="sent" style="margin-top:-6px">Hello, where is the <span class="new">clinic</span></div>
+   <div class="seg"><div class="on">EN</div><div>FIL</div></div>
+   <div class="btn pri">Stop &amp; Add to Conversation</div>
+   <div class="btn sec">● Guide</div>
+  </div>
+ </div>
+</div>
+
+<div class="notes"><b>Rules</b><ul>
+<li>Camera: left, own aspect ratio (4:3 default, from videoWidth/videoHeight), full height under the top bar (~512 px), object-fit: contain → walang putol, kita ulo hanggang baywang. Mirror + landmarks aligned.</li>
+<li>Right column (~310 px): sentence box (24 px bold, wraps 4–5 lines, newest word orange), EN|FIL, main action (60 px), Guide (52 px).</li>
+<li>Fits 1024×600, no scroll. Recognition, button actions, avatar side at conversation save: unchanged.</li>
+</ul></div>
+</body></html>
