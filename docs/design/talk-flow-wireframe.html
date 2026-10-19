@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Let's Talk Flow Wireframe</title>
+<style>
+:root{--navy:#1c3560;--orange:#f47b20;--bg:#eef1f5;--line:#dfe3ea;--text:#1c2b44;--muted:#6b7a90;--ok:#1e9e5a;--bad:#d64541}
+*{box-sizing:border-box;margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif}
+body{background:#2b2b2b;color:var(--text);padding:24px}
+h2{color:#fff;font-size:15px;margin:28px 0 8px}h2 small{color:#bbb;font-weight:400}
+.frame{width:1024px;height:600px;background:var(--bg);display:flex;flex-direction:column;border-radius:4px;overflow:hidden;position:relative}
+.bar{height:64px;flex:none;background:var(--navy);display:flex;align-items:center;justify-content:space-between;padding:0 16px;color:#fff;gap:12px}
+.pill{height:44px;border:2px solid #fff;border-radius:22px;display:grid;place-items:center;font-weight:700;padding:0 16px;font-size:14px;white-space:nowrap}
+.ttl{font-size:19px;font-weight:800;letter-spacing:1px}
+.chip{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);border-radius:22px;padding:6px 14px 6px 6px;display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600}
+.av{width:30px;height:30px;border-radius:50%;background:var(--orange);display:grid;place-items:center;font-weight:800}
+.strip{flex:none;background:#fff;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px;padding:10px 16px;overflow:hidden}
+.b{border:1px solid var(--line);border-radius:14px;padding:6px 12px;font-size:15px;display:flex;align-items:center;gap:8px;background:#fff;align-self:flex-start}
+.b.r{background:var(--navy);color:#fff;border-color:var(--navy);align-self:flex-end}
+.b small{font-size:10px;color:var(--muted);display:block}.b.r small{color:#c7d2e6}
+.spk{width:30px;height:30px;border-radius:50%;border:2px solid var(--orange);color:var(--orange);display:grid;place-items:center;font-size:13px;flex:none}
+.spk.on{background:var(--orange);color:#fff}
+.body{flex:1;padding:12px;display:flex;gap:12px;min-height:0}
+.cam{background:#5b6475;border:3px solid #22b35e;border-radius:12px;display:grid;place-items:center;color:#e2e8f0;font-size:13px;position:relative}
+.tag{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.65);color:#fff;font-size:12px;font-weight:700;border-radius:12px;padding:4px 10px}
+.side{width:320px;flex:none;display:flex;flex-direction:column;gap:10px}
+.lbl{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.5px}
+.sent{flex:1;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:22px;font-weight:800;line-height:1.35}
+.seg{display:flex;border:2px solid var(--navy);border-radius:10px;overflow:hidden}
+.seg div{flex:1;height:48px;display:grid;place-items:center;font-weight:800;color:var(--navy)}.seg .on{background:var(--navy);color:#fff}
+.btn{height:52px;border-radius:10px;display:grid;place-items:center;font-weight:800;font-size:16px;padding:0 16px;white-space:nowrap}
+.pri{background:var(--orange);color:#fff}.sec{border:2px solid var(--navy);color:var(--navy);background:#fff}.nav{background:var(--navy);color:#fff}
+.sw{border:2px dashed var(--orange);color:var(--orange);background:#fff}
+.red{border:2px solid var(--bad);color:var(--bad);background:#fff}
+.row{display:flex;gap:10px}
+.in{flex:1;height:56px;border:1px solid var(--line);border-radius:10px;background:#fff;display:flex;align-items:center;padding:0 14px;font-size:17px;color:#9aa6b6}
+.mic{width:120px;height:120px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-size:40px;margin:0 auto}
+.avatar{flex:1;background:#e6ebf3;border-radius:12px;position:relative;display:grid;place-items:center;overflow:hidden}
+.cap{position:absolute;left:0;right:0;bottom:0;padding:14px 16px;background:linear-gradient(transparent,rgba(28,53,96,.92));display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.cap .t{color:#fff;font-size:28px;font-weight:800}
+.cap .t small{display:block;font-size:13px;font-weight:600;opacity:.85}
+.ltr{display:inline-block;background:#fff;color:var(--navy);border-radius:6px;padding:0 8px;margin:0 2px;font-size:24px}
+.ltr.on{background:var(--orange);color:#fff}
+.toast{position:absolute;left:50%;top:76px;transform:translateX(-50%);background:var(--ok);color:#fff;border-radius:22px;padding:10px 18px;font-weight:700;font-size:14px}
+.notes{width:1024px;background:#fff;border-radius:4px;padding:16px 20px;font-size:13px;line-height:1.6;margin-top:28px}.notes li{margin-left:18px}
+</style></head><body>
+
+<svg width="0" height="0" style="position:absolute"><symbol id="kid" viewBox="0 0 300 300">
+<circle cx="150" cy="90" r="52" fill="#e0a77a"/><path d="M98 80 Q150 20 202 80 L202 60 Q150 10 98 60Z" fill="#3a2a20"/>
+<path d="M70 300 L82 175 Q150 140 218 175 L230 300Z" fill="#1f3a78"/>
+<path d="M100 185 L70 130 L95 90" stroke="#e0a77a" stroke-width="20" fill="none" stroke-linecap="round"/>
+<path d="M205 185 L215 260" stroke="#e0a77a" stroke-width="20" fill="none" stroke-linecap="round"/></symbol></svg>
+
+<!-- 0 -->
+<h2>0. “Whose turn is it?” <small>(existing — shown after every Send; unchanged)</small></h2>
+<div class="frame">
+ <div class="bar"><div></div><div class="ttl">CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="strip" style="flex:1"><div class="b"><div><small>Signed · 6:44 PM</small>Goodbye!</div><span class="spk">🔊</span></div><div class="b r"><div><small>Typed · 6:52 PM</small>hello</div></div></div>
+ <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;background:#fff">
+  <div style="text-align:center;color:var(--muted)">Whose turn is it?</div>
+  <div class="row"><div class="btn nav" style="flex:1;height:60px">🤟 Sign</div><div class="btn pri" style="flex:1;height:60px">🗣 Speak or Type</div></div>
+  <div class="btn red">End Conversation</div>
+ </div>
+</div>
+
+<!-- 1 -->
+<h2>1. PWD — Sign <small>(sign only · NEW: one button to hand the turn to Speak or Type)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="pill">‹ Back</div><div class="ttl">CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="body">
+  <div class="cam" style="flex:1"><span class="tag">Show your sign</span>camera — head to waist, no crop</div>
+  <div class="side">
+   <span class="lbl">SIGNED SENTENCE</span>
+   <div class="sent" style="margin-top:-6px">Where is the <span style="color:var(--orange)">bathroom</span></div>
+   <div class="seg"><div class="on">EN</div><div>FIL</div></div>
+   <div class="btn pri" style="height:60px">Send 🔊</div>
+   <div class="row"><div class="btn sw" style="flex:1">🗣 Speak or Type</div><div class="btn nav" style="width:110px">● Guide</div></div>
+  </div>
+ </div>
+</div>
+
+<!-- 2 -->
+<h2>2. PWD taps Send → added + spoken automatically → back to “Whose turn is it?” <small>(🔊 replays)</small></h2>
+<div class="frame">
+ <div class="bar"><div></div><div class="ttl">CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="toast">🔊 Speaking: “Where is the bathroom”</div>
+ <div class="strip" style="flex:1"><div class="b r"><div><small>Typed · 6:52 PM</small>hello</div></div><div class="b"><div><small>Signed · 6:53 PM · playing…</small>Where is the bathroom</div><span class="spk on">🔊</span></div></div>
+ <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;background:#fff">
+  <div style="text-align:center;color:var(--muted)">Whose turn is it?</div>
+  <div class="row"><div class="btn nav" style="flex:1;height:60px">🤟 Sign</div><div class="btn pri" style="flex:1;height:60px">🗣 Speak or Type</div></div>
+  <div class="btn red">End Conversation</div>
+ </div>
+</div>
+
+<!-- 3 -->
+<h2>3. Non-PWD — Speak or Type <small>(existing screen · NEW: one button to hand the turn to Sign)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="pill">‹ Back</div><div class="ttl">CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="body" style="flex-direction:column;align-items:center;justify-content:center;gap:16px">
+  <div class="seg" style="width:420px"><div class="on">English</div><div>Filipino</div></div>
+  <div class="mic">🎤</div><div style="color:var(--muted)">Tap to Speak</div>
+  <div class="row" style="width:100%"><div class="in">Type your message</div><div class="btn pri" style="width:200px;height:56px">Translate</div></div>
+  <div class="btn sw" style="width:320px">🤟 Sign instead</div>
+ </div>
+</div>
+
+<!-- 4 -->
+<h2>4. Avatar signs it FULL SCREEN <small>(word with avatar data → sign · no data → avatar fingerspells A–Z / 1–10 · no more mp4/webm)</small></h2>
+<div class="frame">
+ <div class="bar"><div class="pill">‹ Back</div><div class="ttl">CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="body">
+  <div class="avatar">
+   <svg viewBox="0 0 300 300" style="height:100%;max-height:520px"><use href="#kid"/></svg>
+   <div class="cap"><div class="t"><small>Spelling “Jose” (no sign yet) · letter 2 of 4</small>Hello <span class="ltr">J</span><span class="ltr on">O</span><span class="ltr">S</span><span class="ltr">E</span></div>
+    <div class="row"><div class="btn sec" style="width:130px">↻ Replay</div><div class="btn sec" style="width:110px">Edit</div><div class="btn pri" style="width:150px">Send</div></div></div>
+  </div>
+ </div>
+</div>
+
+<!-- 5 -->
+<h2>5. Send → added directly → back to “Whose turn is it?” <small>(“You said … / Add to Conversation” popup removed)</small></h2>
+<div class="frame">
+ <div class="bar"><div></div><div class="ttl">CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="chip"><span class="av">G</span>Guest</div></div></div>
+ <div class="toast">✓ Sent</div>
+ <div class="strip" style="flex:1"><div class="b"><div><small>Signed · 6:53 PM</small>Where is the bathroom</div><span class="spk">🔊</span></div><div class="b r"><div><small>Typed · 6:54 PM</small>Hello Jose</div></div></div>
+ <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;background:#fff">
+  <div style="text-align:center;color:var(--muted)">Whose turn is it?</div>
+  <div class="row"><div class="btn nav" style="flex:1;height:60px">🤟 Sign</div><div class="btn pri" style="flex:1;height:60px">🗣 Speak or Type</div></div>
+  <div class="btn red">End Conversation</div>
+ </div>
+</div>
+
+<div class="notes"><b>Rules (para sa Claude Code)</b><ul>
+<li>Two users only: PWD signs (no typing on the sign screen); non-PWD speaks or types (existing screen).</li>
+<li>After every Send → “Whose turn is it?” (existing, unchanged).</li>
+<li>Shortcut inside a turn: Sign screen has “🗣 Speak or Type”; Speak/Type screen has “🤟 Sign instead”. One tap goes straight to the other turn. An unsent signed sentence is kept until the PWD comes back, Sends, or taps + New conversation.</li>
+<li>PWD Send: message added at once and played automatically (per-sign recorded audio → browser voice for signs without audio). 🔊 on each signed message replays; tap again stops.</li>
+<li>Non-PWD Translate → avatar fills the whole area under the top bar, caption with the current word/letter highlighted, Replay / Edit / Send. Send adds the message directly; the “You said … → Add to Conversation / Try again” popup is removed.</li>
+<li>Avatar only: a word with avatar data plays its sign; a word without it is fingerspelled by the avatar using the letter signs (a–z) and number signs (1–10, other digits spelled one by one; a character with no sign shows as text in the caption). The old video playback (assets/signs/**/*.webm, fallback.png) is removed from Let's Talk, Learn Signs and Quiz.</li>
+<li>Audio per sign is part of the sign data (see sign-audio-wireframe.html screen 1: Train Gestures → Audio section).</li>
+</ul></div>
+</body></html>
