@@ -181,6 +181,65 @@ scheduled through Web Audio, not played by an `<audio>` element); `tests/account
 Pi 4: no new library; only the current message's clips are decoded, and the cache is reused on replay. Decoding time and
 memory on the Pi were not measured.
 
+## 2c. Cross-language text lookup and full-height Sign camera (2026-10-20, owner ask)
+
+Run on the laptop: XAMPP (`http://localhost/SKR/`, MariaDB 10.4), the real `php/api/signs.php` data. Playwright is not
+installed here, so the browser checks used headless Chrome 1024x600 (fake camera, 320x240) driven over the DevTools
+protocol by a scratch script (not committed). Unchanged: recognition, audio, avatar rendering, turn logic, conversation
+save, Vosk.
+
+**1. Text -> sign lookup** (`js/sign-player.js` `plan()`, `:171`). Before, a word was looked up only in the selected
+language's map, so "mabuti" typed in EN mode was fingerspelled although `good` has textFil "Mabuti". Now, at each word:
+the longest known phrase of **both** maps first (at equal length the selected language's phrase wins), then the single
+word in the selected language, then in the other language (`:198`), then a number 1-10, else fingerspelling.
+
+Real data (`SignPlayer.plan()` in talk.html, before -> after):
+
+| Language | Text | Before | After |
+|---|---|---|---|
+| EN | mabuti | spell m-a-b-u-t-i | `good` |
+| FIL | hello | `hello` | `hello` |
+| EN | hello mabuti ako | `hello`, spell MABUTI, spell AKO | `hello`, `im_fine` |
+| FIL | hello mabuti ako | `hello`, `im_fine` | `hello`, `im_fine` |
+| EN | qwx (unknown) | spell q-w-x | spell q-w-x |
+
+New unit test in `tests/sign-texts/talk-texts.test.mjs` ("cross-language lookup…"): both directions, longest phrase
+across maps, same text in both maps -> the selected language, unknown word spelled. It fails on HEAD's `sign-player.js`
+(14 pass, 1 fail) and passes after (15/15).
+
+**2. Sign turn at 1024x600** (`talk.html` CSS only). The conversation strip is no longer shown in the Sign turn
+(`body[data-screen="speaking"] #thread`, `:170`; the signing rules removed) and `#screen-signing` always clears only the
+top bar (`padding-top:90px`, `:457`). The strip is unchanged on "Whose turn is it?" (1024x320 at y 90) and on Speak or
+Type (1024x96 at y 90).
+
+| Sign turn | Strip | Camera box |
+|---|---|---|
+| 0 messages, before / after | 0 px / hidden | 648x486 at (12, 102) / 648x486 at (12, 102) |
+| 3 messages, before | 1024x96 at y 90 | **520x390** at (12, 198) |
+| 3 messages, after | hidden (`display:none`) | **648x486** at (12, 102) |
+
+No page scroll on any of these screens; **0 console errors** (whole run: Sign turn, three typed messages sent, Speak or
+Type, back to Sign).
+
+**Tests.** Node suites, each file run alone (`node --test <file>`; started together they share the live DB and get in
+each other's way: 40 failures that way): 440 tests, 425 pass, 15 fail. The 15 fail identically with HEAD's `talk.html`,
+`sign-player.js` and `talk-texts.test.mjs` (same files, same counts): `avatar/avatar-clip-endpoint` 1,
+`categorization/list-categories` 5, `categorization/save-category` 2, `multi-sample/save-endpoint` 1,
+`normalization/schema-guard` 1, `sign-texts/save-sign` 2, `sign-texts/signs-endpoint` 1,
+`talk-turns-audio/sign-audio-endpoint` 1, `video-capture/feature-rows` 1. These are PHP / live-DB tests on this laptop's
+data; none of them loads the changed files. The Playwright checks (`tests/talk-turns-audio/talk-check.mjs` and the
+others in section 5) were **not run**: Playwright is not installed on this laptop.
+
+Screenshots (1024x600):
+
+| | |
+|---|---|
+| Before: Sign turn, 3 messages (strip on top, camera 520x390) | ![](img/talk-strip-before-2-sign-3-messages.png) |
+| After: Sign turn, 0 messages | ![](img/talk-strip-after-1-sign-0-messages.png) |
+| After: Sign turn, 3 messages (no strip, camera 648x486) | ![](img/talk-strip-after-2-sign-3-messages.png) |
+| After: Whose turn is it?, 3 messages | ![](img/talk-strip-after-0-whose-turn-3-messages.png) |
+| After: Speak or Type, 3 messages (strip kept) | ![](img/talk-strip-after-3-speak-type-3-messages.png) |
+
 ## 3. Measured (1024x600)
 
 | Screen | Measured |
@@ -310,3 +369,7 @@ letter), so the hand shapes are not the real letters; with your own `avatar.json
 8. Gapless audio (section 2b): with your real clips, `node tests/talk-turns-audio/audio-gap-check.mjs` measures the
    generated test clips; to hear the real ones, sign hello, thank you, where, bathroom (or tap 🔊 on such a message) and
    listen: the words should follow each other with the same short 30 ms pause, without clicks.
+9. Section 2c: in EN mode type **mabuti**, Translate: the avatar signs Good (no spelling); in FIL mode **hello** plays
+   Hello; **hello mabuti ako** plays Hello + I'm fine. Send three messages, then Sign: no conversation strip, the camera
+   fills the height under the top bar. Please also run `node tests/talk-turns-audio/talk-check.mjs` where Playwright is
+   installed (not run for 2c).
