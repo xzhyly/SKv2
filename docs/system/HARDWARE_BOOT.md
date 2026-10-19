@@ -158,3 +158,12 @@ Nothing here was run on the Pi (owner decision 10). Model, rule and laptop measu
 - **Git history.** Every recompiled model is a new binary blob in git (5,596,344 bytes for ESL at the
   3,000-sample scale check). Either accept the growth, or copy the two files to the Pi by hand and commit them
   less often (`docs/system/DEBT.md` item 139).
+
+## One-command Pi setup (pi-setup phase, 2026-10-20)
+
+`tools/pi/pi-setup.sh` sets up a fresh Bookworm Pi. It writes its own launcher, `~/.local/bin/sk-kiosk.sh`
+(user-independent paths, `http://localhost/SKR/`), and starts it from labwc / wayfire / X11 autostart. The launcher
+replaces `start_kiosk.sh` + `SKR_Kiosk.desktop`, which are left as they were (they hardcode `/home/crystelle`).
+
+Data comes from the laptop through `tools/pi/export-from-laptop.cmd` / `tools/pi/import-on-pi.sh`. Step by step:
+`docs/system/PI-SETUP.md`. Not run on a Pi yet: `docs/reports/2026-10-20-pi-setup.md`.

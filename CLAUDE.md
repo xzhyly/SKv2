@@ -197,6 +197,7 @@ and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).
 | Accounts, login, conversation history, quiz, Manage users | [docs/system/UI.md](docs/system/UI.md) Part 4, [docs/system/BACKEND.md](docs/system/BACKEND.md) "Accounts, conversation history and quiz" |
 | Settled design/build decisions for `talk.html` specifically (why a value was chosen, what an earlier task rejected) | [docs/system/DECISIONS.md](docs/system/DECISIONS.md) |
 | PHP endpoints, MySQL schema, ffmpeg invocations | [docs/system/BACKEND.md](docs/system/BACKEND.md) |
+| Setting up a Pi from scratch (`tools/pi/pi-setup.sh`, data transfer, VNC / DevTools debugging) | [docs/system/PI-SETUP.md](docs/system/PI-SETUP.md) |
 | Kiosk boot, Chromium flags, Vosk speech model, Pi-specific constraints | [docs/system/HARDWARE_BOOT.md](docs/system/HARDWARE_BOOT.md) |
 | MediaPipe/TF.js vendored libraries themselves | [docs/system/VENDORED.md](docs/system/VENDORED.md) |
 | Where inference is actually called from (pointer only) | [docs/system/ML.md](docs/system/ML.md) |
