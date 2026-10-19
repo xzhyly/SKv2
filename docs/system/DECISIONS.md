@@ -2112,9 +2112,13 @@ to waist).
 Spec `docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md`; report `docs/reports/2026-10-19-talk-turns-audio.md`.
 - **Recording starts by itself.** Send replaces Translate, so nothing else would start a recording: the 3 s countdown
   starts as soon as the camera runs (the "start" sign still works when idle). Send is enabled as soon as the sentence
-  has a word, also during the countdown (a kept sentence can be sent at once).
-- **The kept sentence stores sign keys, not only words**, so it can be shown in the other language after a switch and
-  its audio found on Send. It survives any leave (shortcut or Back); only Send and "+ New conversation" drop it.
+  has a word, also during the countdown (after a language switch the sentence can be sent at once).
+- **The sentence stores sign keys, not only words**, so it can be shown in the other language after a switch and
+  its audio found on Send.
+- **Owner change (2026-10-19): leaving a turn discards what was not sent** (replaces the spec's "kept while away and
+  restored"). Sign: `leave()` clears the sentence, keys and recognizer buffer. Speak/Type: the mic is stopped through
+  the unchanged `TalkSpeaking.leave()` and the field emptied right after it, which also drops the transcript that the
+  stop writes into the field. Only Send keeps a message; a language switch is not leaving the turn.
 - **Browser voice per group, not per sign:** consecutive signs without a recording are one utterance (reads as a
   phrase); a recording that fails to play is read by the voice instead.
 - **Number signs:** key `"N"` if such a sign exists, else the English word key (`one` ... `ten`), because the spec writes

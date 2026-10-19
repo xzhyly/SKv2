@@ -1840,10 +1840,13 @@ Supersedes the video parts of 3e and the confirm card of the earlier sections.
 - **Sign screen.** The main button is "Send 🔊" (`js/talk-signing.js` `renderButton()` `:78`), enabled once the sentence
   has a word. Recording starts by itself when the camera runs (`:352`, the same 3 s countdown). Send or the "stop" sign
   -> `finish()` (`:144`) -> `onText(text, {signLanguage, lang, words, keys})`. Under it: "🗣 Speak or Type"
-  (`#sign-to-speak-btn`, `talk.html:2161`) and Guide (110 px). The unsent sentence and its sign keys survive
-  `leave()` and a language switch (re-translated from the keys); `clearDraft()` (`:167`) drops it on "+ New
-  conversation" (`talk.html:2185`).
-- **Speak or Type.** "🤟 Sign instead" (`#speak-to-sign-btn`, `talk.html:2164`) under the input row. Translate shows
+  (`#sign-to-speak-btn`, `talk.html:2170`) and Guide (110 px). **Leaving the turn discards what was not sent**
+  (owner change 2026-10-19): `leave()` empties the sentence, its sign keys and the recognizer buffer, so Sign starts
+  empty; a language switch inside the turn keeps it (re-translated from the keys); `clearDraft()` (`:168`) is also
+  called by "+ New conversation" (`talk.html:2194`).
+- **Speak or Type.** "🤟 Sign instead" (`#speak-to-sign-btn`, `talk.html:2173`) under the input row. Leaving the
+  turn (this button, Back, "+ New conversation") stops the mic and empties the field, dropping the typed text and any
+  unsent transcript, and cancels the avatar preview (`onLeaveSpeaking()`, `talk.html:1398`). Translate shows
   the avatar filling the area under the top bar (frame and canvas 1000x486 at 12,102; `#thread` hidden while
   `data-speaking="preview"`, `talk.html:881`), with a caption bar: the sentence (`#speaking-caption`; current word
   orange, fingerspelled words as letter boxes, "Spelling “Jose” (no sign yet) · letter 2 of 4") and Replay / Edit /
@@ -1861,7 +1864,7 @@ Supersedes the video parts of 3e and the confirm card of the earlier sections.
   with ▶ / Save / Discard) / ⇪ Upload / ✕, each saved at once through `php/api/sign_audio.php`. The list's new Audio
   column shows "🔊 EN · FIL" / "🔊 EN" / "—".
 - **Quiz** (`js/quiz-ui.js`): avatar clips only (no video branch); the pool comes from `quiz.php` (avatar only).
-- **Measured** (`tests/talk-turns-audio/talk-check.mjs` 38/38, `train-audio-check.mjs` 20/20, Playwright 1024x600): no
+- **Measured** (`tests/talk-turns-audio/talk-check.mjs` 43/43, `train-audio-check.mjs` 20/20, Playwright 1024x600): no
   scroll on any screen, 0 console errors, 0 video requests across Let's Talk, Learn Signs and Quiz.
 
 ### 1. Owns these files

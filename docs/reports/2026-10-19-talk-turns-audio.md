@@ -7,7 +7,7 @@ Decision needed from owner: none required; four points to confirm in section 6.
 
 Spec `docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md`; wireframes `docs/design/talk-flow-wireframe.html`
 and `docs/design/sign-audio-wireframe.html` (screens and Rules). Branch `accounts-quiz`, two commits (code `b548745`, then
-these docs), pushed, not merged. Unchanged, as the spec requires: recognition (the k-NN tick, filter and debounce in
+docs `a1f6193`), then the owner change of section 2a (code `873f970`, then these docs), pushed, not merged. Unchanged, as the spec requires: recognition (the k-NN tick, filter and debounce in
 `js/talk-signing.js`), compile and the model files, the avatar renderer/retarget/timeline, Vosk, the conversation save
 format (`js/talk-history.js` gets exactly the same fields; only who calls it changed) and accounts/quiz behaviour (scores,
 saving, screens). No `saved_gestures/` data was changed and no video file was deleted (section 4).
@@ -64,9 +64,9 @@ only signs with an avatar clip (the video fallback `quiz_video_for()` is removed
 | Spec | Done |
 |---|---|
 | 1 Turns: Sign screen "🗣 Speak or Type", Speak/Type "🤟 Sign instead" | `talk.html`: `#sign-to-speak-btn` in a row with Guide (110 px) under Send; `#speak-to-sign-btn` under the input row. Both call `showScreen()` directly (camera / mic released and taken as before). Dashed orange outline, so each screen keeps its one orange fill. |
-| 1 Unsent signed sentence kept | `js/talk-signing.js` keeps `words` and their sign `keys` through `leave()` (shortcut, Back) and a language switch (shown again in the new language from the keys). Cleared only by Send and by `+ New conversation` (`TalkSigning.clearDraft()`, or the page reload when the conversation has messages). |
+| 1 Leaving a turn discards what was not sent (owner change, section 2a; first built as "kept and restored") | Sign: `TalkSigning.leave()` empties the sentence, its sign keys and the recognizer buffer, so Sign starts empty. Speak/Type: `onLeaveSpeaking()` stops the mic and empties the field (typed text and transcript); the avatar preview is cancelled. Only Send keeps a message. A language switch inside the Sign turn keeps the sentence (re-translated from the keys). |
 | 1 After every Send -> "Whose turn is it?" | Both Sends end with `showScreen('thread')`; that screen is unchanged. |
-| 2 PWD: "Send 🔊" replaces Translate / Stop & Add | Recording starts by itself (the same 3 s countdown) once the camera runs; the "start" sign still works; Send is enabled as soon as the sentence has a word (also during the countdown, for a kept sentence). Send or the "stop" sign adds the message at once (no popup). |
+| 2 PWD: "Send 🔊" replaces Translate / Stop & Add | Recording starts by itself (the same 3 s countdown) once the camera runs; the "start" sign still works; Send is enabled as soon as the sentence has a word (also during the countdown after a language switch). Send or the "stop" sign adds the message at once (no popup). |
 | 2 Auto-speak, recorded audio per sign, browser voice fallback, skip without voice | `js/sign-audio.js`: per sign in order, its recording for EN/FIL (`signs.php` `audio`), else the browser voice — consecutive signs without a recording as **one** utterance so they sound like a phrase; no voice at all -> skipped silently; a recording that fails to play is read by the voice. |
 | 2 🔊 on each signed message: replay / stop; one at a time | Each signed bubble's icon is a 44 px button; tap = replay, tap while playing = stop; "· playing…" on its label, a "🔊 Speaking: …" toast; a new message stops the previous one. |
 | 3 Avatar fills the area under the top bar, caption highlights word/letter, Replay / Edit / Send | 1000x486 canvas at (12, 102), the conversation strip hidden while it shows; caption bar over the bottom edge: the sentence (words; fingerspelled words as letter boxes, current one orange) with "Spelling “Jose” (no sign yet) · letter 2 of 4" / "Word 2 of 3", and Replay / Edit / Send. |
@@ -75,6 +75,28 @@ only signs with an avatar clip (the video fallback `quiz_video_for()` is removed
 | 5 Audio files | `saved_gestures/<key>/audio_en.<ext>` / `audio_fil.<ext>`, one per language (an upload replaces any other extension). webm, mp3, m4a, wav, ogg, at most 2 MB; the format is read from the file's first bytes, not from its name. Letters: English only (enforced by the API and the page). `signs.php` GET adds `audio: {en, fil}` (URL with `?v=<mtime>` so a re-recording is never served from cache, or null). |
 | 5 Admin UI | Train Gestures -> View Active Gesture Dataset -> Edit (the existing sign details): an **Audio** section with one row per language the sign uses — ▶, ● Record (MediaRecorder, "● REC 0:02" + ■ Stop, max 10 s), then the new take with ▶ / Save / Discard (nothing is uploaded until Save), ⇪ Upload, ✕ Delete. The list gets an **Audio** column: "🔊 EN · FIL", "🔊 EN" or "—". No new page; avatar-clips untouched. |
 | 5 API admin only, reading public | `php/api/sign_audio.php` (POST upload / delete) calls `sk_require_admin()` (403 for a guest or user). Files are read as static files. |
+
+## 2a. Owner change (2026-10-19): leaving a turn discards what was not sent
+
+Overrides spec section 1 ("unsent signed sentence is kept"); the spec's section 1 and "Done when" are updated to match.
+Code commit `873f970`:
+
+| Leaving | What happens now |
+|---|---|
+| Sign -> "🗣 Speak or Type", Back, "+ New conversation" | `TalkSigning.leave()` calls `endSession(true)` (`js/talk-signing.js:388`): the signed sentence, its sign keys and the recognizer buffer (rolling filter, debounce, hold timer) are cleared; `enter()` also starts with `endSession(true)` (`:332`), so Sign always starts empty. |
+| Speak/Type -> "🤟 Sign instead", Back, "+ New conversation" | `onLeaveSpeaking()` (`talk.html:1398`): the avatar preview is cancelled, `TalkSpeaking.leave()` stops the mic (unchanged: a running capture's final transcript is written into the field and later results are ignored), then the field is emptied — typed text and transcript both gone — and the screen returns to compose. |
+| Send | The only way a message is kept (unchanged). |
+
+A language switch is not leaving the turn: the sentence stays, shown in the new language. "+ New conversation" with
+messages reloads the page (unchanged); without messages it goes to "Who speaks first?" through the same leave hooks.
+
+Tested (`tests/talk-turns-audio/talk-check.mjs`, now 43/43): + New conversation with typed text -> empty field; Sign
+with two words and a sign half-way through the filter -> "Speak or Type" -> sentence and keys empty, camera released,
+field empty; typed text, mic started (`TalkSpeaking.isCapturing()` true) and a transcript in the field -> "Sign instead"
+-> mic stopped (`isBusy()` false), field empty, Sign starts empty with Send disabled; Back from Sign -> empty, Sign again
+empty; FIL switch inside the turn keeps the sentence; Translate (preview playing) -> Back -> Speak/Type again: compose,
+empty field, empty caption. Also run again after the change: `talk-layout-check` ALL PASS, `sign-texts/talk-check` ALL
+PASSED, `accounts-quiz/e2e-check` 87/87, `talk-texts` + `talk-turns-audio` node tests 23/23.
 
 ## 3. Measured (1024x600)
 
@@ -123,7 +145,7 @@ language; samples / sign.json / avatar.json byte-identical).
 
 | Check | Result |
 |---|---|
-| `tests/talk-turns-audio/talk-check.mjs` (new) | 38/38: everything in sections 1-3 for Let's Talk, plus Learn Signs and Quiz without video |
+| `tests/talk-turns-audio/talk-check.mjs` (new) | 43/43 after the owner change (38/38 before it): everything in sections 1-3 and 2a for Let's Talk, plus Learn Signs and Quiz without video |
 | `tests/talk-turns-audio/train-audio-check.mjs` (new) | 20/20: guest sent away + 403; Audio column; letter English only; record -> take -> ▶ (blob) -> Save -> `audio_fil.webm`; upload WAV -> `audio_en.wav` (shows 0.5 s); ▶ saved; 🔊 EN · FIL in the list; ✕ one language; files removed, the sign's other files unchanged |
 | `tests/accounts-quiz/e2e-check.mjs` | 87/87 (same count as the accounts-quiz report). Updated: Send no longer has a card to confirm; the quiz pages answer the pool as if every sign except the number signs had an avatar clip (this data has none), Watch / Text -> Sign posters checked on the avatar canvas |
 | `tests/accounts-quiz/talk-layout-check.mjs` | ALL PASS. Updated: the last row is Speak or Type + Guide; waits for the automatic recording start |
@@ -168,7 +190,8 @@ After:
 | | |
 |---|---|
 | Sign: Send 🔊, 🗣 Speak or Type, Guide | ![](img/talk-audio-after-1-sign.png) |
-| Back from Speak or Type: unsent sentence restored | ![](img/talk-audio-after-1b-sign-restored.png) |
+| Speak or Type with typed/spoken text and the mic on (not sent) | ![](img/talk-audio-after-3c-speak-type-unsent.png) |
+| … "🤟 Sign instead": Sign starts empty (owner change 2a) | ![](img/talk-audio-after-1b-sign-empty-after-switch.png) |
 | PWD Send: added at once, spoken, 🔊 playing | ![](img/talk-audio-after-2-sent-speaking.png) |
 | Speak or Type: 🤟 Sign instead | ![](img/talk-audio-after-3-speak-type.png) |
 | Speak or Type, later turn | ![](img/talk-audio-after-3b-speak-type-later-turn.png) |
@@ -191,8 +214,9 @@ letter), so the hand shapes are not the real letters; with your own `avatar.json
    letter orange in the caption). Open DevTools -> Network, filter `webm`: nothing. Replay plays it again; Edit returns
    to the text; Send adds it and goes back to "Whose turn is it?" with no popup.
 3. Type a word that has an avatar clip, a name and a number ("Hello Jose 25"): the sign, then J-O-S-E, then 2-5.
-4. Sign: recording starts after 3 s; sign two words, tap **🗣 Speak or Type**, then **🤟 Sign instead**: the two words
-   are still there. Tap **Send 🔊**: the message is added and spoken. Tap its 🔊 to replay, tap again to stop.
+4. Sign: recording starts after 3 s; sign two words, tap **🗣 Speak or Type**: the field is empty; type something and
+   tap the mic, then **🤟 Sign instead**: the mic stops and Sign starts empty. Sign again and tap **Send 🔊**: the
+   message is added and spoken. Tap its 🔊 to replay, tap again to stop.
 5. Train Gestures -> View Active Gesture Dataset -> Edit a word: Audio -> ● Record, say the word, ■ Stop, ▶, Save. Check
    `saved_gestures/<key>/audio_en.webm` exists and the list shows 🔊 EN. Then Let's Talk: sign that word and Send — you
    hear your recording.

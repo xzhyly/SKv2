@@ -550,9 +550,9 @@ Report `docs/reports/2026-10-19-talk-turns-audio.md`.
 | `js/sign-audio-admin.js` | 277 | **New.** `window.SignAudioAdmin`: Train Gestures sign details -> Audio section (record / preview / upload / play / delete); loaded by `gesture-training.html` |
 | `php/api/sign_audio.php` | 121 | **New.** POST upload / delete of `saved_gestures/<key>/audio_<lang>.<ext>`, admin only |
 | `php/api/sign_audio_lib.php` | 50 | **New.** Audio file helpers (list, URLs with `?v=<mtime>`, format sniffing), used by `sign_audio.php` and `signs.php` |
-| `js/sign-player.js` (337), `js/talk-signing.js` (406), `talk.html` (2,281) | | Changed: avatar-only playback; Send 🔊, turn shortcuts, kept sentence; confirm card removed, full-area avatar, 🔊 bubbles |
+| `js/sign-player.js` (337), `js/talk-signing.js` (406), `talk.html` (2,281) | | Changed: avatar-only playback; Send 🔊, turn shortcuts, unsent input discarded when leaving a turn; confirm card removed, full-area avatar, 🔊 bubbles |
 | `php/api/signs.php` (160), `php/api/quiz.php` (261), `js/quiz-ui.js` (391), `quiz.html` | | Changed: GET `audio`; quiz avatar only |
 | `gesture-training.html`, `js/gesture-training-ui.js` (1,629), `css/gesture-training.css` | | Changed: Audio section in the edit panel, Audio column in the list |
 | `tests/talk-turns-audio/sign-audio.test.mjs`, `sign-audio-endpoint.test.mjs` | | node tests (5 + 4) |
-| `tests/talk-turns-audio/talk-check.mjs`, `train-audio-check.mjs` | | Playwright checks at 1024x600 (38 + 20) |
+| `tests/talk-turns-audio/talk-check.mjs`, `train-audio-check.mjs` | | Playwright checks at 1024x600 (43 + 20) |
 

@@ -11,7 +11,9 @@ Two-person conversation on the 1024×600 kiosk: the PWD signs, the non-PWD speak
 - Shortcut inside a turn, one button each way:
   - Sign screen: "🗣 Speak or Type" → straight to the Speak/Type screen.
   - Speak/Type screen: "🤟 Sign instead" → straight to the Sign screen.
-- An unsent signed sentence is kept while away and restored on return; it is cleared only by Send or "+ New conversation".
+- Leaving a turn discards what was not sent (owner change 2026-10-19; replaces "an unsent signed sentence is kept while away and restored on return"). Only Send keeps a message.
+  - Sign screen -> "Speak or Type" (or Back / "+ New conversation"): the unsent signed sentence and the recognizer buffer are cleared; coming back to Sign starts empty.
+  - Speak/Type screen -> "Sign instead" (or Back / "+ New conversation"): the typed text is cleared, the mic is stopped, and any unsent speech transcript and avatar preview are dropped.
 
 ## 2. PWD Send (sign → text → voice)
 - The Sign screen's main button is "Send 🔊" (replaces Translate / Stop & Add). It adds the message to the conversation immediately (no popup) and plays it automatically in the current language (EN/FIL).
@@ -36,7 +38,7 @@ Two-person conversation on the 1024×600 kiosk: the PWD signs, the non-PWD speak
 Recognition, compile and model files, avatar rendering/retargeting, Vosk speech input, conversation save format (only who/when it is called), accounts/quiz behaviour.
 
 ## Done when
-- Turn switch both ways works mid-turn; unsent signed sentence survives a round trip.
+- Turn switch both ways works mid-turn; leaving a turn (shortcut, Back, "+ New conversation") discards its unsent sentence / text / transcript / preview, the mic is stopped, and the next turn starts empty (tested both directions).
 - PWD Send adds + speaks; 🔊 replays/stops; mixed recorded/browser voice works.
 - Avatar full screen, no popup on Send.
 - A word with no sign is fingerspelled by the avatar; no .webm is requested by any page (network log).

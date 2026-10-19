@@ -160,7 +160,8 @@ gone (both Sends add the message directly and return to "Whose turn is it?"), th
 Sign screen's main button is "Send 🔊" (recording starts by itself) and speaks the
 message (each sign's recorded audio `saved_gestures/<key>/audio_en|audio_fil.<ext>`,
 else the browser voice; 🔊 on each signed bubble replays/stops), "🗣 Speak or Type" /
-"🤟 Sign instead" switch turns and the unsent signed sentence is kept. Sign audio is
+"🤟 Sign instead" switch turns, and leaving a turn discards whatever was not sent
+(owner change: only Send keeps a message). Sign audio is
 recorded/uploaded in Train Gestures' sign details (`php/api/sign_audio.php`, admin
 only). As of the 2026-09-25 saved-conversations
 phase, every message added to the thread (signed, spoken or typed) and every
