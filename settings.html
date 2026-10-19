@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings — Sining Kamay</title>
+<!-- Admin -> Settings (glove-serial phase, docs/design/glove-settings-wireframe.html screens 1-4,
+     docs/system/GLOVE.md). Admin only. Sections General · Voice · Glove; General and Voice are
+     placeholders this phase. Glove: status, device info from the hello line, Connect / Disconnect,
+     live finger bars (0-1 + raw), IMU, Calibrate (full screen, 2 steps x 3 s), Use simulator, and a
+     collapsible Debug panel (raw console, counters, commands, log download, min/max, hints).
+     Everything goes through window.SKGlove (js/glove.js); nothing here talks to the server. -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/virtual-keyboard.css">
+<link rel="stylesheet" href="css/sk-pages.css">
+<style>
+  .st-body { flex: 1; min-height: 0; display: flex; gap: 14px; padding: 14px; }
+  .st-nav { width: 190px; flex: none; align-self: flex-start; background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .st-nav button { width: 100%; height: 52px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; border-bottom: 1px solid var(--border); background: #fff; color: var(--muted); font-size: 15px; font-weight: 700; cursor: pointer; text-align: left; }
+  .st-nav button:last-child { border-bottom: 0; }
+  .st-nav button.on { background: #fff1e6; color: var(--orange); box-shadow: inset 4px 0 0 var(--orange); }
+  .st-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; }
+  .st-sec { display: none; flex-direction: column; gap: 12px; min-height: 100%; }
+  .st-sec.on { display: flex; }
+  .card { flex: none; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .between { justify-content: space-between; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; background: var(--muted-light); }
+  .dot.ok { background: var(--green); } .dot.warn { background: var(--orange); } .dot.bad { background: var(--red); }
+  .st-title { font-size: 18px; font-weight: 800; }
+  .cnt { font-size: 13px; color: var(--muted); }
+  .lbl { font-size: 12px; font-weight: 800; color: var(--muted); letter-spacing: 0.5px; }
+  .btn { height: 48px; min-width: 120px; padding: 0 18px; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; border: 2px solid transparent; }
+  .btn.pri { background: var(--orange); color: #fff; } .btn.pri:active { background: var(--orange-dark); }
+  .btn.sec { background: #fff; color: var(--navy); border-color: var(--navy); }
+  .btn.red { background: #fff; color: var(--red); border-color: var(--red); }
+  .btn.small { height: 44px; min-width: 0; font-size: 14px; padding: 0 14px; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .sw { flex: none; width: 56px; height: 44px; border: 0; background: transparent; padding: 7px 0; cursor: pointer; }
+  .sw span { display: block; width: 56px; height: 30px; border-radius: 15px; background: #c3cad6; position: relative; }
+  .sw span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; }
+  .sw[aria-checked="true"] span { background: var(--green); }
+  .sw[aria-checked="true"] span::after { left: auto; right: 3px; }
+  .warn-box { flex: none; background: #fdecec; border: 1px solid #f3b9b9; color: #8a1f1f; border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+  .placeholder { flex: 1; display: grid; place-items: center; color: var(--muted); font-size: 15px; min-height: 220px; text-align: center; }
+  .live { display: flex; gap: 18px; min-height: 250px; }
+  .fingers { flex: 1; display: flex; gap: 14px; align-items: stretch; height: 190px; padding-top: 8px; }
+  .fg { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .trk { flex: 1; width: 46px; background: #e6ebf3; border-radius: 8px; position: relative; overflow: hidden; }
+  .trk i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--orange); border-radius: 8px; }
+  .fg b { font-size: 14px; font-variant-numeric: tabular-nums; }
+  .fg span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .imu { width: 220px; flex: none; border-left: 1px solid var(--border); padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .imu .cnt b { color: var(--navy); font-variant-numeric: tabular-nums; }
+  /* Debug */
+  .dbg-head { width: 100%; height: 48px; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; padding: 0; font-size: 16px; font-weight: 800; color: var(--navy); cursor: pointer; }
+  .dbg-body { display: none; flex-direction: column; gap: 10px; margin-top: 6px; }
+  .dbg.open .dbg-body { display: flex; }
+  .ctrs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .ctr { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .ctr div:first-child { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .ctr div:last-child { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .hints { display: flex; flex-direction: column; gap: 6px; }
+  .hint { background: #fff1e6; border: 1px solid #f7c9a3; color: #7a3a07; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+  .hint.ok { background: #e8f7ef; border-color: #b7e4c9; color: #15603a; }
+  .dbg-input { flex: 1; min-width: 0; height: 44px; border: 2px solid var(--border); border-radius: 10px; padding: 0 12px; font-size: 15px; color: var(--navy); background: #fff; }
+  .dbg-input:focus { border-color: var(--orange); outline: none; }
+  .console { height: 220px; overflow-y: auto; background: #101727; color: #d5dceb; border-radius: 10px; padding: 8px 10px; font: 12px/1.45 Consolas, 'Courier New', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .console .out { color: #8fc6ff; }
+  .console .badl { color: #ff8a80; }
+  .console .ts { color: #6f7b93; }
+  table.mm { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  table.mm th, table.mm td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: right; }
+  table.mm th:first-child, table.mm td:first-child { text-align: left; }
+  /* Calibrate screen */
+  .cal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+  .steps { flex: 1; display: flex; gap: 14px; min-height: 0; }
+  .step { flex: 1; background: #fff; border: 2px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; text-align: center; }
+  .step.on { border-color: var(--orange); background: #fff7f0; }
+  .step .hand { font-size: 64px; line-height: 1; }
+  .step b { font-size: 20px; }
+  .prog { height: 10px; width: 100%; max-width: 360px; background: #e6ebf3; border-radius: 5px; overflow: hidden; }
+  .prog i { display: block; height: 100%; width: 0; background: var(--orange); }
+  .prog i.done { background: var(--green); }
+  .cal-vals { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 16px; }
+</style>
+<script src="php/api/me.php"></script>
+<script src="js/sk-account.js"></script>
+<script>SKAccount.adminPage();</script>
+</head>
+<body class="sk-page">
+  <div class="sk-bar">
+    <div class="sk-bar-side"><button type="button" class="sk-back" id="back-btn">&#8592; Home</button></div>
+    <h1 class="sk-title" id="bar-title">SETTINGS</h1>
+    <div class="sk-bar-side right"><div id="acct"></div></div>
+  </div>
+
+  <div class="sk-screen on" id="screen-settings">
+    <div class="st-body">
+      <nav class="st-nav" aria-label="Settings sections">
+        <button type="button" data-sec="general">General</button>
+        <button type="button" data-sec="voice">Voice</button>
+        <button type="button" data-sec="glove" class="on">&#129508; Glove</button>
+      </nav>
+      <div class="st-main" id="st-main">
+        <section class="st-sec" id="sec-general"><div class="card placeholder">General settings will be here.</div></section>
+        <section class="st-sec" id="sec-voice"><div class="card placeholder">Voice settings will be here.</div></section>
+
+        <section class="st-sec on" id="sec-glove">
+          <div class="card row between">
+            <div style="min-width:0">
+              <div class="row" style="gap:8px"><span class="dot" id="g-dot"></span><span class="st-title" id="g-title">Glove not connected</span></div>
+              <div class="cnt" id="g-sub" style="margin-top:4px">Plug the glove into a USB port, then tap Connect. The kiosk remembers it next time.</div>
+            </div>
+            <div class="row">
+              <button type="button" class="btn pri" id="g-connect" style="width:180px">Connect glove</button>
+              <button type="button" class="btn sec" id="g-calibrate" hidden>Calibrate</button>
+              <button type="button" class="btn red" id="g-disconnect" hidden>Disconnect</button>
+            </div>
+          </div>
+          <div class="warn-box" id="g-unsupported" hidden><b>This browser can't use the glove.</b> Web Serial works in Chromium/Chrome on <b>http://localhost</b> (the kiosk). It does not work over a network address or in Firefox. The simulator still works.</div>
+          <div class="card row between" id="g-simcard">
+            <div><b>Use simulator</b><div class="cnt">Fake glove data for testing without hardware</div></div>
+            <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Use simulator" data-sim><span></span></button>
+          </div>
+          <div class="card placeholder" id="g-placeholder">Live finger view appears here when the glove is connected.</div>
+          <div class="card live" id="g-live" hidden>
+            <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+              <div class="lbl">FINGERS</div>
+              <div class="fingers" id="g-fingers"></div>
+            </div>
+            <div class="imu">
+              <div class="lbl">HAND MOTION (IMU)</div>
+              <div id="g-imu-none" class="cnt">No IMU on this glove.</div>
+              <div id="g-imu" hidden>
+                <div class="cnt">Tilt X <b id="imu-tx">–</b></div>
+                <div class="cnt">Tilt Y <b id="imu-ty">–</b></div>
+                <div class="cnt">Turn <b id="imu-turn">–</b></div>
+              </div>
+              <div class="row" style="margin-top:auto"><b style="font-size:14px">Use simulator</b><button type="button" class="sw" role="switch" aria-checked="false" aria-label="Use simulator" data-sim style="margin-left:auto"><span></span></button></div>
+            </div>
+          </div>
+
+          <div class="card dbg" id="dbg">
+            <button type="button" class="dbg-head" id="dbg-toggle" aria-expanded="false"><span>Debug</span><span id="dbg-caret">&#9656;</span></button>
+            <div class="dbg-body">
+              <div class="ctrs">
+                <div class="ctr"><div>LINES/S</div><div id="c-lps">0</div></div>
+                <div class="ctr"><div>TOTAL LINES</div><div id="c-lines">0</div></div>
+                <div class="ctr"><div>BAD LINES</div><div id="c-bad">0</div></div>
+                <div class="ctr"><div>LAST DATA</div><div id="c-age">–</div></div>
+                <div class="ctr"><div>SINCE HELLO</div><div id="c-hello">–</div></div>
+                <div class="ctr"><div>RECONNECTS</div><div id="c-rec">0</div></div>
+              </div>
+              <div class="hints" id="hints"></div>
+              <div class="row" style="flex-wrap:wrap">
+                <button type="button" class="btn sec small" id="d-hello">Send "hello"</button>
+                <button type="button" class="btn sec small" id="d-ping">Send "ping"</button>
+                <span class="cnt" id="d-rtt">round trip –</span>
+                <button type="button" class="btn sec small" id="d-download" style="margin-left:auto">Download log</button>
+              </div>
+              <div class="row">
+                <input class="dbg-input" id="d-line" type="text" maxlength="200" autocomplete="off" spellcheck="false" placeholder="Line to send, e.g. hello">
+                <button type="button" class="btn sec small" id="d-send">Send line</button>
+              </div>
+              <div class="row between">
+                <span class="lbl">RAW SERIAL (LAST 200 LINES)</span>
+                <div class="row">
+                  <button type="button" class="btn sec small" id="d-pause">Pause</button>
+                  <button type="button" class="btn sec small" id="d-clear">Clear</button>
+                </div>
+              </div>
+              <div class="console" id="console" aria-live="off"></div>
+              <div class="row between">
+                <span class="lbl">MIN / MAX SEEN (RAW) — CHECK WIRING AND RESISTORS</span>
+                <button type="button" class="btn sec small" id="d-mmreset">Reset</button>
+              </div>
+              <table class="mm"><thead><tr><th>Finger</th><th>Min</th><th>Max</th><th>Range</th><th>Now</th></tr></thead><tbody id="mm"></tbody></table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calibrate (wireframe screen 3): full screen, 2 steps x 3 s, Save / Redo / Reset. -->
+  <div class="sk-screen" id="screen-cal">
+    <div class="cal-body">
+      <div class="steps">
+        <div class="step" id="step-open"><div class="lbl" id="s1-lbl">STEP 1</div><div class="hand">&#128400;</div><b>Open your hand</b><div class="cnt">Fingers straight, relaxed</div><div class="prog"><i id="s1-prog"></i></div><div class="cal-vals" id="s1-vals"></div></div>
+        <div class="step" id="step-fist"><div class="lbl" id="s2-lbl">STEP 2</div><div class="hand">&#9994;</div><b>Make a fist</b><div class="cnt">Hold it for 3 seconds</div><div class="prog"><i id="s2-prog"></i></div><div class="cal-vals" id="s2-vals"></div></div>
+      </div>
+      <div class="row">
+        <div class="sk-msg" id="cal-msg" role="status" style="flex:1"></div>
+        <button type="button" class="btn sec" id="cal-reset">Reset calibration</button>
+        <button type="button" class="btn sec" id="cal-redo">Redo</button>
+        <button type="button" class="btn pri" id="cal-save" style="width:200px" disabled>Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/glove.js"></script>
+  <script src="js/virtual-keyboard.js" defer></script>
+  <script>
+  (function () {
+    'use strict';
+    var A = window.SKAccount;
+    if (!A.isAdmin()) return;
+    var G = window.SKGlove;
+    var NAMES = ['Thumb', 'Index', 'Middle', 'Ring', 'Pinky'];
+    var $ = function (id) { return document.getElementById(id); };
+    var screen = 'settings';
+
+    A.renderAccount($('acct'), { menu: false });
+
+    // ── sections ──
+    document.querySelectorAll('.st-nav button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('.st-nav button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        document.querySelectorAll('.st-sec').forEach(function (s) { s.classList.toggle('on', s.id === 'sec-' + b.dataset.sec); });
+      });
+    });
+
+    function show(name) {
+      screen = name;
+      $('screen-settings').classList.toggle('on', name === 'settings');
+      $('screen-cal').classList.toggle('on', name === 'cal');
+      $('back-btn').innerHTML = name === 'settings' ? '&#8592; Home' : '&#8592; Back';
+      $('bar-title').textContent = name === 'settings' ? 'SETTINGS' : 'CALIBRATE GLOVE';
+    }
+    $('back-btn').addEventListener('click', function () {
+      if (screen === 'cal') { stopCal(); show('settings'); return; }
+      location.href = 'index.html';
+    });
+
+    // ── finger bars ──
+    $('g-fingers').innerHTML = NAMES.map(function (n, i) {
+      return '<div class="fg"><div class="trk"><i id="bar' + i + '"></i></div><b id="val' + i + '">0.00</b><span id="raw' + i + '">' + n + ' · –</span></div>';
+    }).join('');
+
+    function fmtTime(iso) {
+      var d = new Date(iso);
+      if (isNaN(d)) return '';
+      var today = new Date().toDateString() === d.toDateString();
+      return (today ? 'today ' : d.toLocaleDateString() + ' ') + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function renderStatus() {
+      var s = G.status();
+      var sim = G.isSimulator();
+      var connected = s === 'connected';
+      var dot = $('g-dot');
+      dot.className = 'dot' + (connected ? ' ok' : s === 'reconnecting' || s === 'connecting' ? ' warn' : s === 'unsupported' ? ' bad' : '');
+      var title, sub;
+      if (s === 'unsupported') { title = 'Glove not available in this browser'; sub = 'Turn on the simulator below to test without hardware.'; }
+      else if (s === 'connecting') { title = 'Connecting…'; sub = 'Opening the glove\'s USB port.'; }
+      else if (s === 'reconnecting') { title = 'Glove disconnected — reconnecting…'; sub = 'The cable was unplugged. Plug it back in; it reconnects by itself.'; }
+      else if (connected) {
+        title = sim ? 'Simulator connected' : 'Glove connected';
+        var h = G.info();
+        var cal = G.calibration.get();
+        var parts = h ? [h.device, 'firmware ' + h.fw, h.fingers + ' fingers', 'IMU ' + (h.imu ? 'yes' : 'no')] : ['waiting for hello…'];
+        parts.push(G.stats().linesPerSec + ' readings/s');
+        parts.push(cal ? 'calibrated ' + fmtTime(cal.at) : 'not calibrated');
+        sub = parts.join(' · ');
+      } else { title = 'Glove not connected'; sub = 'Plug the glove into a USB port, then tap Connect. The kiosk remembers it next time.'; }
+      $('g-title').textContent = title;
+      $('g-sub').textContent = sub;
+      $('g-connect').hidden = connected;
+      $('g-connect').disabled = s === 'unsupported' || s === 'connecting';
+      $('g-calibrate').hidden = !connected;
+      $('g-disconnect').hidden = !connected;
+      $('g-unsupported').hidden = !(s === 'unsupported' || (!sim && !('serial' in navigator && window.isSecureContext)));
+      $('g-simcard').hidden = connected;
+      $('g-placeholder').hidden = connected;
+      $('g-live').hidden = !connected;
+      document.querySelectorAll('[data-sim]').forEach(function (b) { b.setAttribute('aria-checked', sim ? 'true' : 'false'); });
+    }
+
+    function renderData(d) {
+      if (!d) return;
+      d.norm.forEach(function (v, i) {
+        $('bar' + i).style.height = Math.round(v * 100) + '%';
+        $('val' + i).textContent = v.toFixed(2);
+        $('raw' + i).textContent = NAMES[i] + ' · ' + d.raw[i];
+      });
+      var imu = d.imu;
+      $('g-imu').hidden = !imu;
+      $('g-imu-none').hidden = !!imu;
+      if (imu) {
+        var deg = 180 / Math.PI;
+        $('imu-tx').textContent = Math.round(Math.atan2(imu.ay, imu.az) * deg) + '°';
+        $('imu-ty').textContent = Math.round(Math.atan2(-imu.ax, Math.hypot(imu.ay, imu.az)) * deg) + '°';
+        $('imu-turn').textContent = Math.round(imu.gz) + '°/s';
+      }
+      if (calRun) calRun.samples.push(d.raw.slice());
+    }
+    // bars at most every animation frame (30 lines/s, cheap on the Pi)
+    var pendingData = null;
+    G.on('data', function (d) {
+      if (pendingData === null) requestAnimationFrame(function () { renderData(pendingData); pendingData = null; });
+      pendingData = d;
+    });
+    G.on('status', renderStatus);
+    G.on('hello', renderStatus);
+
+    $('g-connect').addEventListener('click', function () { G.connect().then(renderStatus); });
+    $('g-disconnect').addEventListener('click', function () { G.disconnect().then(renderStatus); });
+    document.querySelectorAll('[data-sim]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var on = !G.isSimulator();
+        G.simulator(on).then(function () { renderStatus(); if (on) G.connect().then(renderStatus); });
+      });
+    });
+
+    // ── calibrate: 1 s get ready, 3 s open hand, 1 s get ready, 3 s fist; median per finger ──
+    var calRun = null, calTimer = null, calResult = null;
+    function median(list) { var s = list.slice().sort(function (a, b) { return a - b; }); return s.length ? s[Math.floor(s.length / 2)] : null; }
+    function stopCal() { clearInterval(calTimer); calTimer = null; calRun = null; }
+    function startCal() {
+      stopCal();
+      calResult = { open: null, fist: null };
+      $('cal-save').disabled = true;
+      $('cal-msg').textContent = '';
+      ['1', '2'].forEach(function (k) { $('s' + k + '-prog').style.width = '0'; $('s' + k + '-prog').className = ''; $('s' + k + '-vals').textContent = ''; });
+      runStep(1);
+    }
+    function runStep(n) {
+      var lbl = $('s' + n + '-lbl'), prog = $('s' + n + '-prog');
+      $('step-open').classList.toggle('on', n === 1);
+      $('step-fist').classList.toggle('on', n === 2);
+      lbl.textContent = 'STEP ' + n + ' · GET READY…';
+      var t0 = Date.now();
+      calRun = null;
+      calTimer = setInterval(function () {
+        var t = Date.now() - t0;
+        if (t < 1000) return;
+        if (!calRun) { calRun = { samples: [] }; lbl.textContent = 'STEP ' + n + ' · RECORDING…'; }
+        prog.style.width = Math.min(100, (t - 1000) / 30) + '%';
+        if (t < 4000) return;
+        clearInterval(calTimer);
+        var samples = calRun.samples;
+        calRun = null;
+        if (samples.length < 10) {
+          lbl.textContent = 'STEP ' + n;
+          $('cal-msg').textContent = 'No glove data (' + samples.length + ' readings). Check the glove is connected, then tap Redo.';
+          return;
+        }
+        var med = [0, 1, 2, 3, 4].map(function (i) { return median(samples.map(function (s) { return s[i]; })); });
+        calResult[n === 1 ? 'open' : 'fist'] = med;
+        prog.className = 'done';
+        lbl.textContent = 'STEP ' + n + ' · DONE ✓';
+        $('s' + n + '-vals').textContent = med.join(' · ') + ' (' + samples.length + ' readings)';
+        if (n === 1) runStep(2);
+        else {
+          $('step-fist').classList.remove('on');
+          var flat = med.map(function (v, i) { return Math.abs(v - calResult.open[i]) < 50 ? NAMES[i] : null; }).filter(Boolean);
+          $('cal-msg').className = 'sk-msg' + (flat.length ? '' : ' ok');
+          $('cal-msg').textContent = flat.length ? 'Open and fist are almost the same for ' + flat.join(', ') + ': that finger will read 0. Redo, or check its sensor.' : 'Both steps recorded. Tap Save.';
+          $('cal-save').disabled = false;
+        }
+      }, 50);
+    }
+    $('g-calibrate').addEventListener('click', function () { show('cal'); startCal(); });
+    $('cal-redo').addEventListener('click', startCal);
+    $('cal-reset').addEventListener('click', function () {
+      G.calibration.reset();
+      $('cal-msg').className = 'sk-msg ok';
+      $('cal-msg').textContent = 'Calibration reset: the bars show raw / 4095 until you save a new one.';
+      renderStatus();
+    });
+    $('cal-save').addEventListener('click', function () {
+      if (!calResult || !calResult.open || !calResult.fist) return;
+      if (G.calibration.set({ open: calResult.open, fist: calResult.fist, at: new Date().toISOString() })) {
+        stopCal();
+        show('settings');
+        renderStatus();
+      } else {
+        $('cal-msg').className = 'sk-msg';
+        $('cal-msg').textContent = 'Could not save on this kiosk (storage blocked).';
+      }
+    });
+
+    // ── debug panel ──
+    $('dbg-toggle').addEventListener('click', function () {
+      var open = !$('dbg').classList.contains('open');
+      $('dbg').classList.toggle('open', open);
+      $('dbg-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+      $('dbg-caret').innerHTML = open ? '&#9662;' : '&#9656;';
+      if (open) { renderConsole(); $('dbg').scrollIntoView({ block: 'start' }); }
+    });
+
+    var CONSOLE_MAX = 200;
+    var paused = false, clearedAt = 0, consoleDirty = true;
+    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; }); }
+    function stamp(ms) { var d = new Date(ms); return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0'); }
+    function renderConsole() {
+      if (!$('dbg').classList.contains('open') || paused || !consoleDirty) return;
+      consoleDirty = false;
+      var lines = G.log().filter(function (e) { return e.at >= clearedAt; }).slice(-CONSOLE_MAX);
+      var el = $('console');
+      el.innerHTML = lines.map(function (e) {
+        var cls = e.dir === 'out' ? 'out' : e.ok ? '' : 'badl';
+        var text = (e.dir === 'out' ? '> ' : '') + esc(e.line) + (e.ok ? '' : '   ✖ ' + esc(e.error));
+        return '<div class="' + cls + '"><span class="ts">' + stamp(e.at) + '</span> ' + text + '</div>';
+      }).join('');
+      el.scrollTop = el.scrollHeight;
+    }
+    G.on('raw', function () { consoleDirty = true; });
+    $('d-pause').addEventListener('click', function () {
+      paused = !paused;
+      $('d-pause').textContent = paused ? 'Resume' : 'Pause';
+      consoleDirty = true;
+      renderConsole();
+    });
+    $('d-clear').addEventListener('click', function () { clearedAt = Date.now(); consoleDirty = true; $('console').innerHTML = ''; });
+    $('d-hello').addEventListener('click', function () { G.send('hello'); });
+    $('d-ping').addEventListener('click', function () { $('d-rtt').textContent = 'round trip …'; G.ping(); });
+    G.on('pong', function (p) { $('d-rtt').textContent = 'round trip ' + p.rtt + ' ms'; });
+    $('d-send').addEventListener('click', function () {
+      var v = $('d-line').value.trim();
+      if (v) G.send(v);
+    });
+    $('d-line').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('d-send').click(); });
+    $('d-mmreset').addEventListener('click', function () { G.resetMinMax(); renderCounters(); });
+    $('d-download').addEventListener('click', function () {
+      var text = G.log().map(function (e) {
+        return new Date(e.at).toISOString() + ' ' + (e.dir === 'out' ? '> ' : '< ') + e.line + (e.ok ? '' : '   [BAD: ' + e.error + ']');
+      }).join('\n') + '\n';
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+      a.download = 'glove-log-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.txt';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    });
+
+    function ago(ms) { return ms === null ? '–' : ms < 10000 ? ms + ' ms' : Math.round(ms / 1000) + ' s'; }
+    function renderCounters() {
+      var s = G.stats();
+      $('c-lps').textContent = s.linesPerSec;
+      $('c-lines').textContent = s.lines;
+      $('c-bad').textContent = s.bad;
+      $('c-age').textContent = ago(s.lastDataAgeMs);
+      $('c-hello').textContent = ago(s.sinceHelloMs);
+      $('c-rec').textContent = s.reconnects;
+      var now = G.latest();
+      $('mm').innerHTML = NAMES.map(function (n, i) {
+        var mn = s.min[i], mx = s.max[i];
+        return '<tr><td>' + n + '</td><td>' + (mn === null ? '–' : mn) + '</td><td>' + (mx === null ? '–' : mx) + '</td><td>' +
+          (mn === null ? '–' : mx - mn) + '</td><td>' + (now ? now.raw[i] : '–') + '</td></tr>';
+      }).join('');
+      // hints (docs/system/GLOVE.md "Debugger hints")
+      var hints = [];
+      if (G.status() === 'connected') {
+        if (s.connectedMs > 3000 && !G.info()) hints.push('No hello from the glove: firmware not sending hello, or wrong baud rate (must be 115200).');
+        if (s.connectedMs > 3000 && s.linesPerSec < 10) hints.push('Only ' + s.linesPerSec + ' lines/s: check the firmware delay (should be ~33 ms).');
+        if (s.recent.length >= 30) {
+          NAMES.forEach(function (n, i) {
+            [0, 4095].forEach(function (v) {
+              if (s.recent.every(function (f) { return f[i] === v; })) hints.push(n + ': always ' + v + ': sensor not connected / check the voltage divider.');
+            });
+          });
+        }
+        if (s.lastBadAgeMs !== null && s.lastBadAgeMs < 5000) hints.push('Bad lines (last: ' + s.lastBad + '): check the firmware prints one JSON object per line.');
+      }
+      $('hints').innerHTML = hints.length
+        ? hints.map(function (h) { return '<div class="hint">' + esc(h) + '</div>'; }).join('')
+        : (G.status() === 'connected' ? '<div class="hint ok">No problems seen.</div>' : '');
+    }
+    setInterval(function () {
+      if ($('dbg').classList.contains('open')) { renderCounters(); renderConsole(); }
+      if (G.status() === 'connected') renderStatus();   // readings/s in the device line
+    }, 500);
+
+    renderStatus();
+    G.autoReconnect().then(renderStatus);
+  })();
+  </script>
+</body>
+</html>

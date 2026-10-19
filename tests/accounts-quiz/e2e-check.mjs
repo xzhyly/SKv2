@@ -376,8 +376,8 @@ try {
   const adCards = await Ad.page.$$eval('.card-btn .card-label', (els) => els.map((e) => e.textContent.trim()));
   await Ad.page.click('#sk-chip');
   const aMenu = await Ad.page.$$eval('#sk-menu .sk-menu-item', (els) => els.map((e) => e.textContent.trim()));
-  check('admin dashboard: same 3 cards; menu = Train Gestures, View Reports, Bulk import, Manage users, All conversations, Quiz results, Log out',
-    J(adCards) === J(['Learn Signs', "Let's Talk", 'Quiz']) && J(aMenu) === J(['Train Gestures', 'View Reports', 'Bulk import', 'Manage users', 'All conversations', 'Quiz results', 'Log out'])
+  check('admin dashboard: same 3 cards; menu = Train Gestures, View Reports, Bulk import, Manage users, All conversations, Quiz results, Settings, Log out',
+    J(adCards) === J(['Learn Signs', "Let's Talk", 'Quiz']) && J(aMenu) === J(['Train Gestures', 'View Reports', 'Bulk import', 'Manage users', 'All conversations', 'Quiz results', 'Settings', 'Log out'])
     && (await Ad.page.textContent('#sk-chip')).includes('ADMIN'), J({ adCards, aMenu }));
   const aMenuBottom = await Ad.page.$eval('#sk-menu', (e) => Math.round(e.getBoundingClientRect().bottom));
   check('admin menu fits the 600 px screen', aMenuBottom <= 600, aMenuBottom);

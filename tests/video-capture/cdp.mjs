@@ -17,7 +17,7 @@ const CHROME_PATH = process.env.SK_CHROME || 'C:/Program Files/Google/Chrome/App
 // navigate() logs this Chrome in as an admin (php/auth.php) the first time it opens one of them,
 // so every check that drives an admin page keeps working. SK_TEST_ADMIN_USER / SK_TEST_ADMIN_PASS
 // override the seeded admin / admin123.
-const ADMIN_PAGE_RE = /\/(gesture-training|reports|bulk-import|avatar-clips|diagnostic|users)\.html(\?|#|$)/;
+const ADMIN_PAGE_RE = /\/(gesture-training|reports|bulk-import|avatar-clips|diagnostic|users|settings)\.html(\?|#|$)/;
 
 // extraArgs: additional Chrome command-line flags (e.g. the fake-camera flags used by
 // capture-ui-check.mjs).
@@ -125,7 +125,7 @@ export async function launchChrome({ port = 9333, width = 1024, height = 600, ex
       }),
     });
     const cookie = (res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie') || ''])
-      .map((c) => /^SKSESSID=([^;]+)/.exec(c)).find(Boolean);
+      .map((c) => /^SKSESSID=([^;]+)/.exec(c)).filter(Boolean).pop();   // the last one: login regenerates the session id
     if (!res.ok || !cookie) {
       throw new Error(`admin login for ${url} failed (HTTP ${res.status}); set SK_TEST_ADMIN_USER / SK_TEST_ADMIN_PASS`);
     }

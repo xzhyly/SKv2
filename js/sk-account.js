@@ -18,6 +18,7 @@
     bars: '<path d="M6 20v-6M12 20V4M18 20v-10"/>',
     upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
     users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
     out: '<path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/>'
   };
 
@@ -49,7 +50,8 @@
         ['Bulk import', 'bulk-import.html', 'upload'],
         ['Manage users', 'users.html', 'users'],
         ['All conversations', 'conversations.html', 'chat'],
-        ['Quiz results', 'quiz-scores.html', 'quiz']
+        ['Quiz results', 'quiz-scores.html', 'quiz'],
+        ['Settings', 'settings.html', 'gear']
       ];
     }
     return [
