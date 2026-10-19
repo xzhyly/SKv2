@@ -27,7 +27,7 @@
   var KF_TRUST = 0.5;
   var TURN_MAX = Math.PI / 4;   // radians per 40 ms
   // Hand side (cleanup 2026-10-20): Holistic's left/right hand label can be the other way round for a
-  // frame where the hands are close (6 of 4,541 hand frames over 46 clips). A hand belongs to the arm
+  // frame where the hands are close (6 of 3,983 hand frames over 46 clips). A hand belongs to the arm
   // whose pose wrist it is nearer; it moves only when that is clearly so (SWAP_RATIO).
   var SWAP_RATIO = 0.5;
 
