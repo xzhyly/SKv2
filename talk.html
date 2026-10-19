@@ -694,6 +694,17 @@
   }
   .turn-switch-btn:active{transform:scale(0.97)}
   .signing-side-row{flex:none;display:flex;gap:10px}
+  /* Undo / Clear under the sentence box (owner 2026-10-20): 44 px, the same white outlined style as
+     the EN|FIL toggle's inactive segment and Guide. */
+  .signing-edit-row{flex:none;display:flex;gap:10px}
+  .signing-edit-btn{
+    flex:1;height:44px;
+    border:1px solid var(--border);border-radius:12px;
+    background:var(--surface);color:var(--navy);
+    font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;
+  }
+  .signing-edit-btn:active{transform:scale(0.97)}
+  .signing-edit-btn:disabled{opacity:0.5;cursor:not-allowed}
   .signing-side-row .guide-toggle{width:110px}
   .speaking-switch-row{margin-top:16px}
   .speaking-switch-row .turn-switch-btn{width:320px}
@@ -1197,6 +1208,11 @@
       <div class="signing-side">
         <div class="signing-side-label">SIGNED SENTENCE</div>
         <div class="signing-draft" id="signing-draft" aria-live="polite"></div>
+        <!-- &#9003; Undo drops the last sign, Clear the whole sentence (js/talk-signing.js undoLast / clearAll). -->
+        <div class="signing-edit-row">
+          <button type="button" class="signing-edit-btn" id="signing-undo-btn" disabled>&#9003; Undo</button>
+          <button type="button" class="signing-edit-btn" id="signing-clear-btn" disabled>Clear</button>
+        </div>
         <div class="lang-toggle" role="group" aria-label="Language">
           <button type="button" class="lang-seg active" id="chip-esl">EN</button>
           <button type="button" class="lang-seg" id="chip-fsl">FIL</button>

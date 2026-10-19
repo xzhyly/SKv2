@@ -81,6 +81,8 @@
     b.disabled = !stream || switching || words.length === 0;
     if (uiState === 'countdown' && words.length === 0) b.textContent = 'Starting in ' + countdown + '…';
     else b.textContent = 'Send \u{1F50A}';
+    $('signing-undo-btn').disabled = words.length === 0;
+    $('signing-clear-btn').disabled = words.length === 0;
   }
 
   function syncChips() {
@@ -168,6 +170,36 @@
   function clearDraft() {
     words = [];
     keys = [];
+    showDraft();
+    renderButton();
+  }
+
+  // ⌫ Undo / Clear (owner 2026-10-20): drop the last sign (word or phrase) or the whole sentence while
+  // signing. The recognizer buffer is reset too, and the dropped sign stays the current gesture, so a
+  // hand still holding it does not add it again at once (it can be added again after a different sign,
+  // or once the hand is lowered: tick() clears currentGesture after NO_HAND_MS without a hand).
+  function forgetRecognition(blockKey) {
+    clearHistory();
+    lastDetected = null;
+    holdStart = null;
+    if (blockKey) currentGesture = blockKey;
+  }
+
+  function undoLast() {
+    if (!words.length) return;
+    words.pop();
+    var removed = keys.pop();
+    forgetRecognition(removed);
+    showDraft();
+    renderButton();
+  }
+
+  function clearAll() {
+    if (!words.length) return;
+    var last = keys[keys.length - 1];
+    words = [];
+    keys = [];
+    forgetRecognition(last);
     showDraft();
     renderButton();
   }
@@ -395,6 +427,8 @@
       if (words.length) finish();
       else if (uiState === 'idle') beginCountdown();
     });
+    $('signing-undo-btn').addEventListener('click', undoLast);
+    $('signing-clear-btn').addEventListener('click', clearAll);
     $('chip-esl').addEventListener('click', function () { setLang('en'); });
     $('chip-fsl').addEventListener('click', function () { setLang('fil'); });
     $('chip-guide').addEventListener('click', toggleSkeleton);
