@@ -148,25 +148,12 @@
     });
   }
 
-  function pickVoice(list, lang) {
-    var want = lang === 'fil' ? ['fil', 'tl'] : ['en-us', 'en'];
-    for (var i = 0; i < want.length; i++) {
-      for (var j = 0; j < list.length; j++) {
-        if (String(list[j].lang || '').toLowerCase().indexOf(want[i]) === 0) return list[j];
-      }
-    }
-    return null;   // the browser's default voice reads it
-  }
-
   function speak(text, lang, myToken) {
     return voices().then(function (list) {
       if (myToken !== token || !list.length) return;   // no voice at all: skipped silently
       return new Promise(function (resolve) {
         var u = new SpeechSynthesisUtterance(text);
-        u.lang = lang === 'fil' ? 'fil-PH' : 'en-US';
-        u.rate = 0.9;
-        var v = pickVoice(list, lang);
-        if (v) u.voice = v;
+        window.SKVoice.apply(u, lang);   // female voice, same rate / pitch / volume (js/sk-voice.js)
         var timer = setTimeout(resolve, 3000 + text.length * 150);   // onend never fires on some engines
         u.onend = u.onerror = function () { clearTimeout(timer); resolve(); };
         window.speechSynthesis.speak(u);
