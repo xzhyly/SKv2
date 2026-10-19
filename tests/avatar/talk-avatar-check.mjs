@@ -7,8 +7,10 @@
 //   1  "zz ava one zz ava two zz ava three" plays as ONE avatar run: one play() with 3 clips,
 //      captions in order, 0 <video> created, the canvas never hidden mid-run; blend continuity of
 //      that sentence's timeline: every 40 ms window overlapping a transition (5 ms apart) <= 60 px.
-//   2  "zz ava one nice": the avatar run, then nice.webm as video.
-//   3  A clip that fails to load (file removed after the page registered it) plays as video.
+//   2  "zz ava one nice": the avatar run, then "nice" fingerspelled (talk-turns-audio phase: avatar
+//      only; the letters have no clip in the repo's data, so N I C E show in the caption only), no video.
+//   3  A clip that fails to load (file removed after the page registered it) shows its word in the
+//      caption only (before talk-turns-audio: played as video).
 //   4  Hand tracking: on the signing screen (fake camera, loop running) avatar playback stops
 //      Hands.send and the loop resumes after; on Speak or Type 0 sends during playback.
 //   5  0 console errors, scrollWidth 1024; Holistic never requested by talk.html.
@@ -154,7 +156,7 @@ try {
   await sleep(1500);
   await ev(`window.__vids = []; window.__words = []; window.__hidden = [];
     (() => { const c = document.getElementById('speaking-sign-frame'); new MutationObserver(() => { c.querySelectorAll('video').forEach((v) => { const s = v.getAttribute('src'); if (s && !window.__vids.some((x) => x.src === s)) window.__vids.push({ src: s, t: performance.now() }); }); }).observe(c, { childList: true, subtree: true, attributes: true });
-      const w = document.getElementById('speaking-sign-word'); new MutationObserver(() => { const t = w.textContent; if (t && (!window.__words.length || window.__words[window.__words.length - 1].w !== t)) window.__words.push({ w: t, t: performance.now() }); }).observe(w, { childList: true, characterData: true, subtree: true });
+      const w = document.getElementById('speaking-caption'); new MutationObserver(() => { const on = w.querySelector('.cap-word.on, .cap-spell.on'); const t = on ? on.textContent : ''; if (t && (!window.__words.length || window.__words[window.__words.length - 1].w !== t)) window.__words.push({ w: t, t: performance.now() }); }).observe(w, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class'] });
       const a = document.getElementById('speaking-avatar'); new MutationObserver(() => window.__hidden.push({ hidden: a.hidden, t: performance.now() })).observe(a, { attributes: true, attributeFilter: ['hidden'] }); })(); 1`);
   const translate = async (text) => {
     await ev(`(() => { window.__vids.length = 0; window.__words.length = 0; window.__hidden.length = 0; window.__sendsAtStart = window.__sends.length; window.__runsAtStart = (window.__avatarRuns||[]).length;
@@ -172,7 +174,7 @@ try {
       words: window.__words.map((x) => x.w), vids: window.__vids.length, hiddenChanges: window.__hidden.map((h) => h.hidden), sends: window.__sends.length - window.__sendsAtStart }; })()`);
   report.sentence3 = r1;
   check('3-sign sentence: one continuous avatar run with all 3 clips', done1 && r1.runs === 1 && J(r1.keys) === J(['zz_ava_one', 'zz_ava_two', 'zz_ava_three']) && r1.completed, J({ runs: r1.runs, keys: r1.keys, durationMs: r1.durationMs }));
-  check('3-sign sentence: captions in order', J(r1.words) === J(['ZZ AVA ONE', 'ZZ AVA TWO', 'ZZ AVA THREE']), J(r1.words));
+  check('3-sign sentence: captions in order', J(r1.words) === J(['zz ava one', 'zz ava two', 'zz ava three']), J(r1.words));
   check('3-sign sentence: no video played, avatar never hidden mid-run', r1.vids === 0 && !r1.hiddenChanges.includes(true), J({ vids: r1.vids, hidden: r1.hiddenChanges }));
   check('Speak or Type: 0 Hands.send during playback (loop paused, camera off)', r1.sends === 0, String(r1.sends));
   const cont = await ev(`(async () => {
@@ -191,28 +193,28 @@ try {
   await shot('avatar-talk-rest.png');
   const lay = await ev(`(() => { const f = document.getElementById('speaking-sign-frame').getBoundingClientRect(), a = document.getElementById('speaking-avatar').getBoundingClientRect();
     return { frame: [f.x, f.y, f.width, f.height].map(Math.round), avatar: [a.x, a.y, a.width, a.height].map(Math.round), sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight }; })()`);
-  check('panel: avatar fills the 560x260 frame, no page scroll', J(lay.frame) === J(lay.avatar) && lay.frame[2] === 560 && lay.frame[3] === 260 && lay.sw === 1024, J(lay));
+  check('panel: avatar fills the 1000x486 area under the top bar, no page scroll', J(lay.frame) === J(lay.avatar) && lay.frame[2] === 1000 && lay.frame[3] === 486 && lay.sw === 1024, J(lay));
 
-  // 2. mixed sentence: avatar then video
+  // 2. mixed sentence: avatar run, then fingerspelling (talk-turns-audio: no video)
   await ev(`document.getElementById('speaking-edit').click(); 1`);
   await sleep(300);
   await translate('zz ava one nice');
-  const done2 = await waitFor(`window.__vids.some((v) => /nice\\.webm$/.test(v.src)) && document.getElementById('speaking-sign-word').textContent === 'NICE'`, 20000);
-  await sleep(600);
-  await shot('avatar-talk-video-after.png');
-  const r2 = await ev(`(() => { const run = window.__avatarRuns[window.__avatarRuns.length-1]; return { runs: window.__avatarRuns.length - window.__runsAtStart, keys: run.keys, runEnd: run.t1, firstVideo: window.__vids[0] && window.__vids[0].t, vids: window.__vids.map((v) => v.src), words: window.__words.map((x) => x.w), avatarHidden: document.getElementById('speaking-avatar').hidden }; })()`);
+  const done2 = await waitFor(`window.__words.some((x) => x.w === 'NICE') && !document.querySelector('#speaking-caption .on')`, 20000);
+  await sleep(300);
+  await shot('avatar-talk-mixed-after.png');
+  const r2 = await ev(`(() => { const run = window.__avatarRuns[window.__avatarRuns.length-1]; return { runs: window.__avatarRuns.length - window.__runsAtStart, keys: run.keys, vids: window.__vids.map((v) => v.src), words: window.__words.map((x) => x.w) }; })()`);
   report.mixed = r2;
-  check('mixed sentence: avatar run first, then the video', done2 && r2.runs === 1 && J(r2.keys) === J(['zz_ava_one']) && r2.runEnd && r2.firstVideo > r2.runEnd && r2.avatarHidden, J(r2));
-  check('mixed sentence: captions ZZ AVA ONE then NICE', J(r2.words) === J(['ZZ AVA ONE', 'NICE']), J(r2.words));
+  check('mixed sentence: avatar run, then "nice" fingerspelled, no video', done2 && r2.runs === 1 && J(r2.keys) === J(['zz_ava_one']) && r2.vids.length === 0, J(r2));
+  check('mixed sentence: captions zz ava one then NICE', J(r2.words) === J(['zz ava one', 'NICE']), J(r2.words));
 
-  // 3. missing clip at play time -> video (fingerspelling for a probe text with no video)
+  // 3. missing clip at play time -> the word in the caption only (no video)
   fs.rmSync(path.join(dir('zz_ava_four'), 'avatar.json'));
   await ev(`document.getElementById('speaking-edit').click(); 1`);
   await sleep(300);
   await translate('zz ava four');
-  const done3 = await waitFor(`window.__vids.length >= 1`, 15000);
-  const r3 = await ev(`({ runs: (window.__avatarRuns||[]).length - window.__runsAtStart, vids: window.__vids.map((v) => v.src), hidden: document.getElementById('speaking-avatar').hidden })`);
-  check('a clip that fails to load plays its word as video', done3 && r3.runs === 0 && r3.vids.length >= 1 && r3.hidden, J(r3));
+  const done3 = await waitFor(`window.__words.some((x) => x.w === 'zz ava four')`, 15000);
+  const r3 = await ev(`({ runs: (window.__avatarRuns||[]).length - window.__runsAtStart, vids: window.__vids.map((v) => v.src) })`);
+  check('a clip that fails to load shows its word in the caption only, no video', done3 && r3.runs === 0 && r3.vids.length === 0, J(r3));
   await ev(`document.getElementById('speaking-edit').click(); 1`);
 
   // 5. errors, Holistic, frame rate

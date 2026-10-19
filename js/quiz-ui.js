@@ -1,7 +1,8 @@
 // js/quiz-ui.js
 // quiz.html's screens (accounts-quiz phase, 2026-10-18): setup -> 10 questions -> result.
 // Questions and scoring: js/quiz-core.js. Signs and their clips: php/api/quiz.php ?action=pool.
-// A clip is the sign's avatar clip (js/avatar-player.js, as Let's Talk plays it) or its video.
+// A clip is the sign's avatar clip (js/avatar-player.js, as Let's Talk plays it). Avatar only since
+// the talk-turns-audio phase: the pool lists only signs with avatar data, and no video is played.
 // Pi speed: at most one clip plays at a time; Text -> Sign shows the four as still posters and
 // only the tapped one plays. The score is POSTed (action "save") only for a logged-in account.
 (function () {
@@ -53,7 +54,7 @@
     opts = opts || {};
     box.innerHTML = '';
     box.classList.remove('playing');
-    var alive = true, playing = false, token = 0, video = null, player = null;
+    var alive = true, playing = false, token = 0, player = null;
     var view = { play: play, stop: stop, destroy: destroy };
 
     function showErr(text) {
@@ -83,53 +84,31 @@
       stopOthers(view);
       playing = true;
       box.classList.add('playing');
-      if (video) {
-        try { video.currentTime = 0; } catch (e) { /* not seekable yet */ }
-        var p = video.play();
-        if (p && p.catch) p.catch(function () { /* interrupted by stop() */ });
-      } else if (player) {
-        startAvatar();
-      }
+      if (player) startAvatar();
     }
     function stop() {
       playing = false;
       token++;
       box.classList.remove('playing');
-      if (video) video.pause();
       if (player) player.cancel();
     }
     function destroy() {
       stop();
       alive = false;
-      if (video) { video.removeAttribute('src'); video.load(); }
       box.innerHTML = '';
       views = views.filter(function (v) { return v !== view; });
     }
 
-    if (clip.type === 'video') {
-      video = document.createElement('video');
-      video.muted = true;
-      video.playsInline = true;
-      video.loop = !!opts.loop;
-      video.preload = opts.poster ? 'metadata' : 'auto';
-      // A still poster: seek a hair past 0 so the first frame is painted.
-      video.addEventListener('loadedmetadata', function () { if (!playing) { try { video.currentTime = 0.05; } catch (e) { /* ignore */ } } });
-      video.addEventListener('ended', ended);
-      video.addEventListener('error', function () { showErr('Video not found'); ended(); });
-      video.src = clip.src;
-      box.appendChild(video);
-    } else {
-      var canvas = document.createElement('canvas');
-      canvas.width = 420;
-      canvas.height = 302;          // the avatar's "admin" view is 740 x 532
-      box.appendChild(canvas);
-      avatarParts().then(function (parts) {
-        if (!alive) return;
-        player = window.AvatarPlayer.create({ canvas: canvas, parts: parts, view: window.AvatarRig.views.admin });
-        player.showRest();
-        if (playing) startAvatar();
-      }).catch(function () { showErr('Avatar not available'); ended(); });
-    }
+    var canvas = document.createElement('canvas');
+    canvas.width = 420;
+    canvas.height = 302;          // the avatar's "admin" view is 740 x 532
+    box.appendChild(canvas);
+    avatarParts().then(function (parts) {
+      if (!alive) return;
+      player = window.AvatarPlayer.create({ canvas: canvas, parts: parts, view: window.AvatarRig.views.admin });
+      player.showRest();
+      if (playing) startAvatar();
+    }).catch(function () { showErr('Avatar not available'); ended(); });
     if (opts.poster) {
       var btn = document.createElement('button');
       btn.type = 'button';
@@ -223,7 +202,7 @@
     var where = CAT_NAMES[state.cat] === 'All' ? state.lang : CAT_NAMES[state.cat] + ' (' + state.lang + ')';
     if (n < Q.CHOICES) {
       info.classList.add('bad');
-      info.textContent = (n === 0 ? 'No signs' : 'Only ' + n + (n === 1 ? ' sign' : ' signs')) + ' with a video in ' + where +
+      info.textContent = (n === 0 ? 'No signs' : 'Only ' + n + (n === 1 ? ' sign' : ' signs')) + ' with an avatar clip in ' + where +
         '. A quiz needs at least ' + Q.CHOICES + '. Pick another category or language.';
       return;
     }

@@ -3,8 +3,8 @@
 //   - the compiled model (js/knn-compile.js) accepts BOTH signs for either model (this test moved
 //     here from the retired mergeSavedGestureSamples, compact-model phase)
 //   - js/sign-to-text-ui.js autoTrainForTranslate loads the model through KnnModelStore only
-//   - js/sign-player.js registers signs.php texts in the right language maps and plays an
-//     assets/-relative path as-is (observed through a fake <video>, so no new export is needed)
+//   - js/sign-player.js registers signs.php texts in the right language maps (signs with avatar
+//     data only since the talk-turns-audio phase; everything else is fingerspelled by the avatar)
 // SIGN_TEXTS_ROOT=<dir> loads another copy of js/ (used to show the tests fail on HEAD).
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -159,117 +159,103 @@ test('autoTrainForTranslate returns false for a rejected load, a 1-label model a
 });
 
 // ── sign-player.js ──
-// Fake <video>/<img>: every src that gets set is logged. The first-step probe video (created
-// without autoplay) always errors so the asset map decides; displayMedia's video (autoplay set)
-// loads and ends at once.
+// Avatar only since the talk-turns-audio phase: what a text plays is read from SignPlayer.plan()
+// (sign key per word, else fingerspelling units), and play() is checked to create no media element
+// and to request nothing but signs.php (the avatar clips load through the store, faked here).
 function loadPlayer(signsPayload) {
-  const log = { videoSrcs: [], fetched: [] };
-  const document = {
-    createElement(tag) {
-      const v = {
-        style: {}, pause() {}, play() { return Promise.resolve(); }, removeAttribute() {},
-        load() {
-          log.videoSrcs.push(this.src);
-          setTimeout(() => {
-            if (this.autoplay !== true) { this.onerror && this.onerror(); return; }
-            this.onloadedmetadata && this.onloadedmetadata();
-            this.onended && this.onended();
-          }, 0);
-        },
-      };
-      return v;
-    },
+  const log = { created: [], fetched: [], loads: [], runs: [] };
+  const el = () => {
+    const kids = [];
+    return { kids, children: kids, className: '', textContent: '', appendChild(c) { kids.push(c); return c; },
+      classList: { add() {}, remove() {} } };
   };
+  const document = { createElement(tag) { log.created.push(tag); return el(); }, createTextNode: (t) => ({ t }) };
   const window = {};
   const ctx = {
-    window, document, console, Promise, Object, Array, String, JSON, Error, RegExp, Math,
+    window, document, console, Promise, Object, Array, String, JSON, Error, RegExp, Math, Number,
     setTimeout: (fn) => setTimeout(fn, 0), clearTimeout,
-    Image: function () {
-      const o = { style: {} };
-      Object.defineProperty(o, 'src', { set(s) { log.videoSrcs.push(s); setTimeout(() => o.onload && o.onload(), 0); } });
-      return o;
-    },
     fetch: async (url) => { log.fetched.push(url); return { ok: true, json: async () => signsPayload }; },
   };
   vm.createContext(ctx);
   vm.runInContext(read('sign-player.js'), ctx);
-  const container = { querySelectorAll: () => [], appendChild() {}, innerHTML: '' };
-  const wordLabel = { textContent: '' };
-  const player = (lang) => window.SignPlayer.create({ container, wordLabel, getLanguage: () => lang });
+  const caption = el();
+  const avatarPlayer = { play: async (preps, o) => { log.runs.push(preps.map((p) => p.key)); preps.forEach((_, k) => o.onWord(k)); return { completed: true }; }, cancel() {} };
+  const store = { load: async (key) => { log.loads.push(key); return { key }; } };
+  const player = (lang) => window.SignPlayer.create({ caption, getLanguage: () => lang, avatar: { store, getPlayer: () => avatarPlayer } });
   return { SignPlayer: window.SignPlayer, player, log };
 }
 
+const sign = (o) => ({ samples: 1, assetPath: null, audio: { en: null, fil: null }, ...o });
 const PAYLOAD = {
   success: true,
   signs: {
-    zz_both: { set: 'BOTH', textEn: 'Zz Both!', textFil: 'Zz Ba', category: 'phrase', assetPath: 'assets/signs/en/zz_both.webm', samples: 1 },
-    zz_eslonly: { set: 'ESL', textEn: 'Zz Eslonly', textFil: 'Hidden Fil', category: 'word', assetPath: 'assets/signs/en/zz_eslonly.webm', samples: 1 },
-    zz_noasset: { set: 'BOTH', textEn: 'Zz Noasset', textFil: 'Zz Walang', category: 'word', assetPath: null, samples: 1 },
-    zz_stock: { set: 'BOTH', textEn: 'Hello', textFil: 'Kamusta', category: 'word', assetPath: 'assets/signs/en/zz_override.webm', samples: 1 },
+    zz_both: sign({ set: 'BOTH', textEn: 'Zz Both!', textFil: 'Zz Ba', category: 'phrase', avatar: true }),
+    zz_eslonly: sign({ set: 'ESL', textEn: 'Zz Eslonly', textFil: 'Hidden Fil', category: 'word', avatar: true }),
+    zz_noclip: sign({ set: 'BOTH', textEn: 'Zz Noclip', textFil: 'Zz Walang', category: 'word', avatar: false }),
+    h: sign({ set: 'ESL', textEn: 'H', textFil: null, category: 'letter', avatar: true }),
+    i: sign({ set: 'ESL', textEn: 'I', textFil: null, category: 'letter', avatar: true }),
+    z: sign({ set: 'ESL', textEn: 'Z', textFil: null, category: 'letter', avatar: true }),
+    two: sign({ set: 'BOTH', textEn: 'Two', textFil: 'Dalawa', category: 'number', avatar: true }),
+    five: sign({ set: 'BOTH', textEn: 'Five', textFil: 'Lima', category: 'number', avatar: true }),
+    ten: sign({ set: 'BOTH', textEn: 'Ten', textFil: 'Sampu', category: 'number', avatar: true }),
   },
 };
-
-async function playOne(payload, lang, text) {
+// plan() -> 'key' for a sign, 'spell:a.b.?' for fingerspelling (? = a character with no sign)
+async function planOf(payload, lang, text) {
   const h = loadPlayer(payload);
   await h.SignPlayer.registerCustomGestures();
-  h.log.videoSrcs.length = 0;
-  await h.player(lang).play(text);
-  return h.log.videoSrcs.slice();
+  return plain(h.SignPlayer.plan(text, lang)).map((w) => w.kind === 'sign' ? w.units[0].key : 'spell:' + w.units.map((u) => u.key || '?').join('.'));
 }
 
-test('registerCustomGestures fetches php/api/signs.php, not save_gesture.php', async () => {
+test('registerCustomGestures fetches php/api/signs.php once and resolves to the signs', async () => {
   const h = loadPlayer(PAYLOAD);
+  const a = await h.SignPlayer.registerCustomGestures();
   await h.SignPlayer.registerCustomGestures();
   assert.deepEqual(h.log.fetched, ['php/api/signs.php']);
+  assert.deepEqual(Object.keys(a).sort(), Object.keys(PAYLOAD.signs).sort());
 });
 
-test('BOTH sign: text registered in both maps and its assets/ path is used as-is', async () => {
-  const en = await playOne(PAYLOAD, 'en-US', 'zz both');
-  assert.ok(en.includes('assets/signs/en/zz_both.webm'), JSON.stringify(en));
-  assert.ok(!en.some((s) => s.includes('/assets/signs/')), JSON.stringify(en));
-  const fil = await playOne(PAYLOAD, 'fil-PH', 'zz ba');
-  assert.ok(fil.includes('assets/signs/en/zz_both.webm'), JSON.stringify(fil));
-  assert.ok(!fil.some((s) => s.includes('/assets/signs/')), JSON.stringify(fil));
+test('BOTH sign with avatar data: its text plays the sign in both languages', async () => {
+  assert.deepEqual(await planOf(PAYLOAD, 'en-US', 'zz both'), ['zz_both']);
+  assert.deepEqual(await planOf(PAYLOAD, 'fil-PH', 'zz ba'), ['zz_both']);
 });
 
-test('ESL-only sign: English text resolves, Filipino text is not registered', async () => {
-  const en = await playOne(PAYLOAD, 'en-US', 'zz eslonly');
-  assert.ok(en.includes('assets/signs/en/zz_eslonly.webm'), JSON.stringify(en));
-  const fil = await playOne(PAYLOAD, 'fil-PH', 'hidden fil');
-  assert.ok(!fil.includes('assets/signs/en/zz_eslonly.webm'), JSON.stringify(fil));
-  assert.ok(fil.includes('assets/signs/fil/h.webm'), 'falls through to fingerspelling: ' + JSON.stringify(fil));
+test('ESL-only sign: English text resolves, Filipino text is fingerspelled', async () => {
+  assert.deepEqual(await planOf(PAYLOAD, 'en-US', 'zz eslonly'), ['zz_eslonly']);
+  assert.deepEqual(await planOf(PAYLOAD, 'fil-PH', 'hidden'), ['spell:h.i.?.?.?.?']);
 });
 
-test('sign without assetPath keeps the old key.webm value', async () => {
-  const en = await playOne(PAYLOAD, 'en-US', 'zz noasset');
-  assert.ok(en.includes('assets/signs/en/zz_noasset.webm'), JSON.stringify(en));
-  const fil = await playOne(PAYLOAD, 'fil-PH', 'zz walang');
-  assert.ok(fil.includes('assets/signs/fil/zz_noasset.webm'), JSON.stringify(fil));
+test('a sign without avatar data is fingerspelled (letters without a clip stay caption-only)', async () => {
+  assert.deepEqual(await planOf(PAYLOAD, 'en-US', 'zz noclip'), ['spell:z.z', 'spell:?.?.?.?.i.?']);
+});
+
+test('numbers: 1-10 is one number sign, others digit by digit, 0 has no sign', async () => {
+  assert.deepEqual(await planOf(PAYLOAD, 'en-US', '10 25 2 205'), ['ten', 'spell:two.five', 'two', 'spell:two.?.five']);
 });
 
 test('the key with spaces is still registered for the sign language map', async () => {
-  const payload = { success: true, signs: { zz_k_one: { set: 'ESL', textEn: 'Different Words', textFil: null, assetPath: null, samples: 1 } } };
-  const out = await playOne(payload, 'en-US', 'zz k one');
-  assert.ok(out.includes('assets/signs/en/zz_k_one.webm'), JSON.stringify(out));
-});
-
-test('stock entries are never overwritten by a sign text', async () => {
-  const en = await playOne(PAYLOAD, 'en-US', 'hello');
-  assert.ok(en.includes('assets/signs/en/hello.webm'), JSON.stringify(en));
-  assert.ok(!en.includes('assets/signs/en/zz_override.webm'), JSON.stringify(en));
+  const payload = { success: true, signs: { zz_k_one: sign({ set: 'ESL', textEn: 'Different Words', textFil: null, avatar: true }) } };
+  assert.deepEqual(await planOf(payload, 'en-US', 'zz k one'), ['zz_k_one']);
 });
 
 test('texts with "?" resolve with and without the "?" in the right maps', async () => {
-  const payload = { success: true, signs: { zz_q_key: { set: 'BOTH', textEn: 'Zz How are you?', textFil: 'Zz Kumusta ka?', assetPath: 'assets/signs/en/zz_q_key.webm', samples: 1 } } };
-  for (const t of ['zz how are you', 'zz how are you?']) {
-    const en = await playOne(payload, 'en-US', t);
-    assert.ok(en.includes('assets/signs/en/zz_q_key.webm'), t + ' ' + JSON.stringify(en));
-  }
-  for (const t of ['zz kumusta ka', 'zz kumusta ka?']) {
-    const fil = await playOne(payload, 'fil-PH', t);
-    assert.ok(fil.includes('assets/signs/en/zz_q_key.webm'), t + ' ' + JSON.stringify(fil));
-  }
-  const esl = { success: true, signs: { zz_q_esl: { set: 'ESL', textEn: 'Zz Only En?', textFil: 'Zz Hidden Fil?', assetPath: 'assets/signs/en/zz_q_esl.webm', samples: 1 } } };
-  const fil = await playOne(esl, 'fil-PH', 'zz hidden fil');
-  assert.ok(!fil.includes('assets/signs/en/zz_q_esl.webm'), JSON.stringify(fil));
+  const payload = { success: true, signs: { zz_q_key: sign({ set: 'BOTH', textEn: 'Zz How are you?', textFil: 'Zz Kumusta ka?', avatar: true }) } };
+  for (const t of ['zz how are you', 'zz how are you?']) assert.deepEqual(await planOf(payload, 'en-US', t), ['zz_q_key'], t);
+  for (const t of ['zz kumusta ka', 'zz kumusta ka?']) assert.deepEqual(await planOf(payload, 'fil-PH', t), ['zz_q_key'], t);
+  const esl = { success: true, signs: { zz_q_esl: sign({ set: 'ESL', textEn: 'Zz Only En?', textFil: 'Zz Hidden Fil?', avatar: true }) } };
+  assert.ok(!(await planOf(esl, 'fil-PH', 'zz hidden fil')).includes('zz_q_esl'));
+});
+
+test('play(): one avatar run for the whole sentence, no media element, nothing fetched but signs.php', async () => {
+  const h = loadPlayer(PAYLOAD);
+  await h.player('en-US').play('Zz Both hi 25 0');
+  assert.deepEqual(plain(h.log.runs), [['zz_both', 'h', 'i', 'two', 'five']]);
+  assert.deepEqual(plain(h.log.loads), ['zz_both', 'h', 'i', 'two', 'five']);
+  assert.deepEqual(plain(h.log.fetched), ['php/api/signs.php']);
+  assert.ok(!h.log.created.some((t) => t === 'video' || t === 'img'), JSON.stringify(h.log.created));
+});
+
+test('the old video path is gone from sign-player.js (no word -> .webm map, no assets/signs, no fallback.png)', () => {
+  const code = read('sign-player.js').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/\.webm|\.mp4|assets\/signs|fallback\.png|<video|createElement\('video'\)/.test(code));
 });

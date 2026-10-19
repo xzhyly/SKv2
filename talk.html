@@ -271,11 +271,31 @@
     background:var(--navy);border:1px solid var(--navy);color:var(--surface);
   }
   .bubble-icon{font-size:16px;flex:0 0 auto}
+  /* Talk-turns-audio: every signed message has a 🔊 button — tap = replay its audio, tap while it
+     plays = stop (js/sign-audio.js). 44 px touch target; filled orange while playing. */
+  .bubble-speak{
+    flex:0 0 auto;width:44px;height:44px;margin:-8px 0 -8px -8px;
+    border:2px solid var(--orange);border-radius:50%;
+    background:var(--surface);color:var(--orange);
+    font-family:inherit;font-size:16px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .bubble-row.playing .bubble-speak{background:var(--orange);color:var(--surface)}
+  .bubble-row.playing .bubble-label::after{content:' · playing…'}
+  /* A short message under the top bar ("🔊 Speaking: …", "✓ Sent"). */
+  .talk-toast{
+    position:fixed;left:50%;top:102px;z-index:120;transform:translateX(-50%);
+    max-width:900px;padding:10px 20px;border-radius:22px;
+    background:var(--green);color:var(--surface);
+    font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    pointer-events:none;display:none;
+  }
+  .talk-toast.show{display:block}
 
   /* ── Modal shell ──
-     Fixed overlay + centred card, hidden unless body.modal-open. All three
-     kinds — confirm (Task 5), idle/error (Task 6) — render real content
-     into this same shell via renderConfirmModal()/renderIdleModal()/
+     Fixed overlay + centred card, hidden unless body.modal-open. Both
+     kinds — idle/error (Task 6; confirm was removed in talk-turns-audio) — render real content
+     into this same shell via renderIdleModal()/
      renderErrorModal() in <script> below; openModal() throws on any other
      kind (Fix 1). */
   #modal{
@@ -297,60 +317,8 @@
   .modal-card h2{font-size:20px;font-weight:700;color:var(--navy);margin-bottom:8px}
   .modal-card p{font-size:16px;color:var(--muted);line-height:1.5}
 
-  /* ── Confirm modal content (Task 5) ──
-     docs/ui-target/README.md "Confirm — no image, build from this": small
-     muted label, recognised text 32px bold navy centred, orange "Add to
-     Conversation" full card width, plain muted "Try again" beneath. Built by
-     renderConfirmModal() below into the same .modal-card shell Task 2
-     already sized (~640 wide, radius 16, shadow) — no new card, just its
-     kind==="confirm" content. The Add-to-Conversation button here is this
-     overlay's OWN one-orange-element (README's rule is scoped per visual
-     layer; the modal sits above whichever screen is showing and does not
-     add a second orange element to that screen's own audit — see
-     docs/system/DECISIONS.md and this task's report for the reasoning). */
-  .confirm-label{
-    font-size:16px;color:var(--muted);margin-bottom:12px;
-  }
-  .confirm-text{
-    font-size:32px;font-weight:700;color:var(--navy);line-height:1.3;
-    margin-bottom:24px;
-    /* Long typed/spoken text should wrap, not blow out the fixed-width card. */
-    word-break:break-word;
-  }
-  .confirm-add-btn{
-    display:block;width:100%;height:60px;
-    border:none;border-radius:12px;
-    background:var(--orange);color:var(--surface);
-    font-family:inherit;font-size:18px;font-weight:700;
-    cursor:pointer;
-    margin-bottom:12px;
-    transition:background 0.08s;
-  }
-  .confirm-add-btn:active{
-    background:#ea6a0a;
-  }
-  .confirm-try-again-btn{
-    display:block;width:100%;height:44px;
-    border:none;background:transparent;
-    color:var(--muted);
-    font-family:inherit;font-size:16px;font-weight:600;
-    cursor:pointer;
-    transition:background 0.08s;
-  }
-  .confirm-try-again-btn:active{
-    background:rgba(0,0,0,0.05);
-  }
-  /* Fix G (review pass): 640x281.6 is within README's "roughly 640x300" —
-     the height itself was never the problem — but the shared shell's flat
-     32px padding on all sides read cramped for this specific stack (label,
-     big text, two buttons) next to the card's own 640px width. More
-     vertical breathing room, not a forced height: padding grows, the card
-     is still exactly as tall as its (now more spaced-out) content needs.
-     Scoped to kind="confirm" only, same technique as Fix D's idle
-     width/scrim — Idle/Error's own padding is untouched. */
-  #modal[data-modal-kind="confirm"] .modal-card{
-    padding:44px 32px;
-  }
+  /* The confirm card ("You signed / You said … → Add to Conversation / Try again") was removed in the
+     talk-turns-audio phase: Send adds a message directly (docs/design/talk-flow-wireframe.html). */
 
   /* ── Idle modal content (Task 6) ──
      docs/ui-target/README.md "Idle warning": "Still there?" 32px bold,
@@ -717,6 +685,21 @@
   }
   .lang-seg.active{background:var(--navy);color:var(--surface)}
   .lang-seg:disabled{opacity:0.5;cursor:not-allowed}
+  /* Turn shortcut (talk-turns-audio): one tap hands the turn to the other screen. Orange outline, not
+     an orange fill, so each screen keeps its single orange element. */
+  .turn-switch-btn{
+    flex:1 1 auto;height:52px;padding:0 16px;
+    border:2px dashed var(--orange);border-radius:12px;
+    background:var(--surface);color:var(--orange-dark);
+    font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;white-space:nowrap;
+  }
+  .turn-switch-btn:active{transform:scale(0.97)}
+  .signing-side-row{flex:none;display:flex;gap:10px}
+  .signing-side-row .guide-toggle{width:110px}
+  .speaking-switch-row{margin-top:16px}
+  .speaking-switch-row .turn-switch-btn{width:320px}
+  #screen-speaking[data-speaking="preview"] .speaking-switch-row,
+  #screen-speaking[data-wait="1"] .speaking-switch-row{display:none}
   .guide-toggle{
     flex:none;width:100%;height:52px;
     display:flex;align-items:center;justify-content:center;gap:6px;
@@ -891,23 +874,40 @@
   #screen-speaking[data-speaking="preview"] .speaking-lang,
   #screen-speaking[data-speaking="preview"] .speaking-mic-row,
   #screen-speaking[data-speaking="preview"] .speaking-input-row{display:none}
+  /* Talk-turns-audio (docs/design/talk-flow-wireframe.html screen 4): Translate shows the avatar
+     filling the whole area under the top bar (the conversation strip is hidden meanwhile), with the
+     caption and Replay / Edit / Send in a bar over its bottom edge. Avatar only: no video element. */
+  /* #stage in the selector: it must outrank the first-turn padding-top:90px rule above (2 ids). */
+  body[data-screen="speaking"] #stage #screen-speaking[data-speaking="preview"]{padding:102px 12px 12px;justify-content:flex-start;transition:none}
+  body[data-screen="speaking"]:has(#screen-speaking[data-speaking="preview"]) #thread{display:none}
+  #screen-speaking[data-speaking="preview"] .speaking-preview{flex:1 1 auto;min-height:0;width:1000px}
   .speaking-sign-frame{
-    width:560px;height:260px;border-radius:12px;background:var(--navy);
-    display:flex;align-items:center;justify-content:center;overflow:hidden;
-    position:relative;
+    width:1000px;height:486px;border-radius:12px;background:#e6ebf3;
+    overflow:hidden;position:relative;
   }
-  /* Avatar phase: the avatar canvas covers the frame while a run of signs with clips plays; the
-     video/img container underneath is today's per-word player (js/sign-player.js). */
-  .speaking-sign-media{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-  .speaking-avatar{position:absolute;inset:0;width:560px;height:260px}
-  .speaking-avatar[hidden]{display:none}
-  .speaking-sign-word{
-    min-height:34px;margin:8px 0 16px;
-    font-size:28px;font-weight:700;color:var(--navy);text-align:center;
+  .speaking-avatar{position:absolute;inset:0;width:1000px;height:486px}
+  .speaking-caption-bar{
+    position:absolute;left:0;right:0;bottom:0;padding:40px 16px 14px;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    background:linear-gradient(transparent, rgba(28,53,96,0.92) 45%);
   }
-  .speaking-preview-actions{display:flex;gap:20px;width:560px}
-  .speaking-preview-actions .speaking-edit,
-  .speaking-preview-actions .speaking-send{flex:1;width:auto;height:64px}
+  .speaking-caption{flex:1 1 auto;min-width:0;color:var(--surface)}
+  .speaking-caption .cap-sub{font-size:16px;font-weight:600;opacity:0.85;min-height:20px}
+  .speaking-caption .cap-line{
+    font-size:28px;font-weight:800;line-height:1.35;
+    max-height:2.7em;overflow:hidden;overflow-wrap:anywhere;
+  }
+  .speaking-caption .cap-word{border-radius:6px;padding:0 4px}
+  .speaking-caption .cap-word.on{background:var(--orange);color:var(--surface)}
+  .speaking-caption .ltr{
+    display:inline-block;min-width:28px;margin:0 2px;padding:0 6px;border-radius:6px;
+    background:var(--surface);color:var(--navy);font-size:24px;text-align:center;
+  }
+  .speaking-caption .ltr.nosign{background:transparent;color:var(--surface);border:2px dashed rgba(255,255,255,0.7)}
+  .speaking-caption .ltr.on{background:var(--orange);color:var(--surface)}
+  .speaking-preview-actions{flex:none;display:flex;gap:10px}
+  .speaking-preview-actions .speaking-edit{width:130px;height:56px}
+  .speaking-preview-actions .speaking-send{width:150px;height:56px}
   .speaking-edit{
     border:1px solid var(--border);border-radius:12px;
     background:var(--surface);color:var(--navy);
@@ -1155,8 +1155,8 @@
           <span class="guide-num">1</span>
           <div class="guide-item-content">
             <strong class="guide-item-title">Simulan ang Pagsasalin (Start):</strong>
-            <div class="guide-item-sub">&bull; <em>Awtomatiko:</em> Senyasan ang camera ng <strong>"start"</strong> para simulan ang 3s countdown.</div>
-            <div class="guide-item-sub">&bull; <em>Manwal:</em> O i-click ang <strong>"TRANSLATE"</strong> button.</div>
+            <div class="guide-item-sub">&bull; Kusang nagsisimula ang 3s countdown pagbukas ng camera.</div>
+            <div class="guide-item-sub">&bull; Maaari ring senyasan ang camera ng <strong>"start"</strong>.</div>
           </div>
         </li>
         <li class="guide-item">
@@ -1169,9 +1169,9 @@
         <li class="guide-item">
           <span class="guide-num">3</span>
           <div class="guide-item-content">
-            <strong class="guide-item-title">I-stop at Basahin (Stop):</strong>
-            <div class="guide-item-sub">&bull; <em>Awtomatiko:</em> Senyasan ang <strong>"stop"</strong> para tapusin, pakinggan, at i-save ang pangungusap.</div>
-            <div class="guide-item-sub">&bull; <em>Manwal:</em> O i-click ang <strong>"STOP &amp; TRANSLATE"</strong> button.</div>
+            <strong class="guide-item-title">Ipadala at Pakinggan (Send):</strong>
+            <div class="guide-item-sub">&bull; <em>Awtomatiko:</em> Senyasan ang <strong>"stop"</strong> para ipadala at basahin nang malakas ang pangungusap.</div>
+            <div class="guide-item-sub">&bull; <em>Manwal:</em> O i-click ang <strong>"SEND &#128266;"</strong> button.</div>
           </div>
         </li>
       </ul>
@@ -1202,13 +1202,16 @@
           <button type="button" class="lang-seg active" id="chip-esl">EN</button>
           <button type="button" class="lang-seg" id="chip-fsl">FIL</button>
         </div>
-        <!-- Real control (js/talk-signing.js): "Translate" starts the 3 s
-             countdown, "Stop & Add to Conversation" ends the recording and
-             hands the recognised sentence to openModal('confirm', ...) — never
-             straight to appendBubble(). Its click handler lives in
-             TalkSigning.init(), not in this file's <script>. -->
-        <button type="button" class="stop-signing-btn" id="stop-signing-btn">Translate</button>
-        <button type="button" class="guide-toggle active" id="chip-guide" aria-pressed="true">Guide</button>
+        <!-- Real control (js/talk-signing.js): "Send 🔊" (talk-turns-audio phase; it replaced
+             Translate / Stop & Add). Recording starts by itself; Send hands the sentence to
+             TalkSigning's onText below, which adds it to the conversation and speaks it. Its click
+             handler lives in TalkSigning.init(), not in this file's <script>. Under it: the turn
+             shortcut to Speak or Type, and Guide. -->
+        <button type="button" class="stop-signing-btn" id="stop-signing-btn" disabled>Send &#128266;</button>
+        <div class="signing-side-row">
+          <button type="button" class="turn-switch-btn" id="sign-to-speak-btn">&#128483; Speak or Type</button>
+          <button type="button" class="guide-toggle active" id="chip-guide" aria-pressed="true">Guide</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1241,17 +1244,25 @@
       <input type="text" id="speaking-input" class="speaking-input" placeholder="Type your message" autocomplete="off">
       <button type="button" id="speaking-translate" class="speaking-send" disabled>Translate</button>
     </div>
-    <!-- Preview panel (swaps in for the compose rows): the sign clip plays once here, pre-send.
-         Nothing in it is stored in the thread — Send routes the TEXT through the confirm card. -->
+    <!-- Turn shortcut (talk-turns-audio): straight to the Sign screen. -->
+    <div class="speaking-switch-row">
+      <button type="button" class="turn-switch-btn" id="speak-to-sign-btn">&#129311; Sign instead</button>
+    </div>
+    <!-- Preview (swaps in for the compose rows, talk-turns-audio): the avatar fills the area under the
+         top bar and signs the text (js/sign-player.js: the sign's avatar clip, else avatar
+         fingerspelling); the caption highlights the current word or letter. Send adds the TEXT to the
+         conversation directly; nothing of the preview is stored. -->
     <div class="speaking-preview" id="speaking-preview">
       <div class="speaking-sign-frame" id="speaking-sign-frame">
-        <div class="speaking-sign-media" id="speaking-sign-media"></div>
-        <canvas class="speaking-avatar" id="speaking-avatar" width="560" height="260" hidden></canvas>
-      </div>
-      <div class="speaking-sign-word" id="speaking-sign-word"></div>
-      <div class="speaking-preview-actions">
-        <button type="button" class="speaking-edit" id="speaking-edit">Edit</button>
-        <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
+        <canvas class="speaking-avatar" id="speaking-avatar" width="1000" height="486"></canvas>
+        <div class="speaking-caption-bar">
+          <div class="speaking-caption" id="speaking-caption" aria-live="polite"></div>
+          <div class="speaking-preview-actions">
+            <button type="button" class="speaking-edit" id="speaking-replay">&#8635; Replay</button>
+            <button type="button" class="speaking-edit" id="speaking-edit">Edit</button>
+            <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1276,15 +1287,17 @@
 
   <!-- Modal shell (Task 2): fixed overlay + centred card, hidden unless
        body.modal-open. data-modal-kind is set by openModal() below so
-       confirm/idle/error content is keyed off it. -->
+       idle/error content is keyed off it. -->
   <!-- Empty by default — openModal() always rebuilds .modal-card's content
-       (renderConfirmModal()/renderIdleModal()/renderErrorModal(), all
+       (renderIdleModal()/renderErrorModal(), all
        below) before showing the overlay, so there is nothing static to put
        here; the Task 2 placeholder markup this held is gone now that all
        three real kinds have real render functions (Fix 1). -->
   <div id="modal">
     <div class="modal-card"></div>
   </div>
+
+  <div class="talk-toast" id="talkToast" role="status" aria-live="polite"></div>
 
   </div><!-- #stage -->
 
@@ -1299,6 +1312,7 @@
   <script src="js/avatar-store.js"></script>
   <script src="js/avatar-player.js"></script>
   <script src="js/sign-player.js"></script>
+  <script src="js/sign-audio.js"></script>
   <script src="js/talk-speaking.js"></script>
   <script src="js/talk-history.js"></script>
   <script>
@@ -1473,60 +1487,9 @@
       pill.classList.add(kind);
     }
 
-    /**
-     * Build the confirm modal's real content (Task 5) into .modal-card:
-     * a small muted label, the recognised text large/bold/centred, an
-     * orange full-width "Add to Conversation" button, and a plain "Try
-     * again" button beneath it. Built via createElement/textContent (never
-     * innerHTML with interpolated data) so opts.text — real typed user
-     * input on the Send path — is never parsed as markup.
-     *
-     * "Add to Conversation" is the ONLY real call site of appendBubble() in
-     * this file (grepped and confirmed — see the comment at appendBubble's
-     * declaration above and this task's report).
-     *
-     * @param {{label: string, text: string, from: 'deaf'|'hearing', source: 'sign'|'speech'|'typed', signLanguage: ('ESL'|'FSL'|undefined)}} opts
-     */
-    function renderConfirmModal(opts) {
-      opts = opts || {};
-      var card = document.querySelector('.modal-card');
-      card.innerHTML = '';
-
-      var label = document.createElement('p');
-      label.className = 'confirm-label';
-      label.textContent = opts.label || '';
-      card.appendChild(label);
-
-      var text = document.createElement('div');
-      text.className = 'confirm-text';
-      text.textContent = opts.text || '';
-      card.appendChild(text);
-
-      var addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'confirm-add-btn';
-      addBtn.textContent = 'Add to Conversation';
-      addBtn.addEventListener('click', function () {
-        appendBubble({ from: opts.from, source: opts.source, text: opts.text, timestamp: new Date() });
-        try {
-          TalkHistory.saveMessage({ from: opts.from, source: opts.source, signLanguage: opts.signLanguage, text: opts.text });
-        } catch (err) { console.warn('[talk-history] saveMessage() threw', err); }
-        closeModal();
-        showScreen('thread');
-      });
-      card.appendChild(addBtn);
-
-      var tryAgainBtn = document.createElement('button');
-      tryAgainBtn.type = 'button';
-      tryAgainBtn.className = 'confirm-try-again-btn';
-      tryAgainBtn.textContent = 'Try again';
-      tryAgainBtn.addEventListener('click', function () {
-        // Returns to whichever screen opened it — no showScreen() call
-        // needed, that screen is already showing underneath the overlay.
-        closeModal();
-      });
-      card.appendChild(tryAgainBtn);
-    }
+    // The confirm card (renderConfirmModal: "You signed / You said … → Add to Conversation / Try
+    // again") was removed in the talk-turns-audio phase: both Sends add the message directly through
+    // addMessage() below (docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md 2 and 3).
 
     // Holds the running idle-countdown setInterval id (Task 6), or null when
     // no idle modal is showing. Module-level rather than local to
@@ -1661,15 +1624,16 @@
       card.appendChild(actionBtn);
     }
 
-    var VALID_MODAL_KINDS = ['confirm', 'idle', 'error'];
+    var VALID_MODAL_KINDS = ['idle', 'error'];
 
     /**
-     * Open the modal shell with a given kind ("confirm"/"idle"/"error") and
+     * Open the modal shell with a given kind ("idle"/"error"; "confirm" was removed in the
+     * talk-turns-audio phase) and
      * the data it needs to render. Sets data-modal-kind on #modal, dispatches
      * to the matching content-render step, then reveals the overlay via
      * body.modal-open (pure class change).
      *
-     * Throws on any kind other than the three real ones, matching the
+     * Throws on any kind other than the two real ones, matching the
      * pattern showScreen() above already established (validate up front,
      * throw rather than silently no-op) — now that Fix 1 has removed the
      * catch-all renderPlaceholderModal() fallback, every kind this function
@@ -1680,9 +1644,8 @@
      *   openModal('error', {heading: 'Camera not available', message: 'I cannot reach the camera.', buttonLabel: 'Go back'})
      *
      * @param {string} kind
-     * @param {{label: string, text: string, from: 'deaf'|'hearing', source: 'sign'|'speech'|'typed', signLanguage: ('ESL'|'FSL'|undefined)}|{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
-     *   Shape depends on kind — see renderConfirmModal()/renderIdleModal()/
-     *   renderErrorModal() above.
+     * @param {{seconds: number}|{message: string, buttonLabel: string, onAction: Function}} [opts]
+     *   Shape depends on kind — see renderIdleModal()/renderErrorModal() above.
      */
     function openModal(kind, opts) {
       if (VALID_MODAL_KINDS.indexOf(kind) === -1) {
@@ -1698,9 +1661,7 @@
       }
 
       document.getElementById('modal').setAttribute('data-modal-kind', kind);
-      if (kind === 'confirm') {
-        renderConfirmModal(opts);
-      } else if (kind === 'idle') {
+      if (kind === 'idle') {
         renderIdleModal(opts);
       } else {
         renderErrorModal(opts);
@@ -1854,17 +1815,11 @@
      * removal (README: "cap the thread at roughly the last 30 bubbles in
      * the DOM" — older messages still live in the database, just not here).
      *
-     * @param {{from: 'deaf'|'hearing', source: ('sign'|'speech'|'typed'|undefined), text: string, timestamp: (Date|*)}} msg
+     * @param {{from: 'deaf'|'hearing', source: ('sign'|'speech'|'typed'|undefined), text: string, timestamp: (Date|*), lang: ('en'|'fil'|undefined), words: (string[]|undefined), keys: (string[]|undefined)}} msg
+     *   lang/words/keys (signed messages): what the bubble's 🔊 speaks.
      *
-     * Task 5 note: grepped the finished file for `appendBubble(` — 2 matches
-     * total: this declaration, and the one real call site inside
-     * renderConfirmModal()'s "Add to Conversation" button handler above.
-     * Nothing else in this file calls appendBubble() directly; the signing
-     * signing recognition (js/talk-signing.js) and the speaking screen's Send
-     * (typed or spoken text) both route
-     * through openModal('confirm', ...) first, per
-     * docs/system/DECISIONS.md's "nothing enters the thread without passing
-     * through Confirm."
+     * Its only caller is addMessage() below (talk-turns-audio phase: both Sends add the message
+     * directly; the confirm card that used to sit in between is gone). -> the bubble row.
      */
     function appendBubble(msg) {
       var from = msg.from;
@@ -1886,6 +1841,16 @@
       var icon = document.createElement('span');
       icon.className = 'bubble-icon';
       icon.textContent = BUBBLE_ICON[from];
+      // Talk-turns-audio: a signed message's 🔊 is a button (replay / stop its audio).
+      if (from === 'deaf') {
+        icon = document.createElement('button');
+        icon.type = 'button';
+        icon.className = 'bubble-speak';
+        icon.textContent = BUBBLE_ICON.deaf;
+        icon.setAttribute('aria-label', 'Play this message');
+        icon.addEventListener('click', function () { toggleSpeak(row); });
+        spoken.set(row, { lang: msg.lang === 'fil' ? 'fil' : 'en', words: msg.words || [msg.text], keys: msg.keys || [] });
+      }
 
       var text = document.createElement('span');
       text.className = 'bubble-text';
@@ -1918,6 +1883,60 @@
       }
 
       list.scrollTop = list.scrollHeight;
+      return row;
+    }
+
+    // ── Talk-turns-audio: adding a message and speaking a signed one ──
+    // addMessage(): the one way a message enters the conversation (both Sends): the bubble, then the
+    // unchanged fire-and-forget save (js/talk-history.js, same fields as before). -> the bubble row.
+    function addMessage(msg) {
+      var row = appendBubble({ from: msg.from, source: msg.source, text: msg.text, timestamp: new Date(),
+        lang: msg.lang, words: msg.words, keys: msg.keys });
+      try {
+        TalkHistory.saveMessage({ from: msg.from, source: msg.source, signLanguage: msg.signLanguage, text: msg.text });
+      } catch (err) { console.warn('[talk-history] saveMessage() threw', err); }
+      return row;
+    }
+
+    var spoken = new WeakMap();        // signed bubble row -> { lang, words, keys }
+    var toastTimer = null;
+    // Not "showToast": js/sign-to-text-ui.js (loaded later by js/talk-loader.js) defines a global one.
+    function showTalkToast(text, ms) {
+      var t = document.getElementById('talkToast');
+      clearTimeout(toastTimer);
+      t.textContent = text;
+      t.classList.add('show');
+      if (ms) toastTimer = setTimeout(hideTalkToast, ms);
+    }
+    function hideTalkToast() {
+      clearTimeout(toastTimer);
+      document.getElementById('talkToast').classList.remove('show');
+    }
+
+    // Plays a signed message's audio (js/sign-audio.js: each sign's recording, else the browser voice);
+    // tapping its 🔊 while it plays stops it. Only one message plays at a time.
+    var speakingRow = null;
+    function toggleSpeak(row) {
+      if (speakingRow === row) { SignAudio.stop(); return; }
+      var info = spoken.get(row);
+      if (!info) return;
+      SignAudio.stop();
+      speakingRow = row;
+      row.classList.add('playing');
+      var text = row.querySelector('.bubble-text').textContent;
+      showTalkToast('\u{1F50A} Speaking: “' + text + '”');
+      var items = info.words.map(function (w, i) { return { key: info.keys[i] || null, text: w }; });
+      SignPlayer.registerCustomGestures().then(function (signs) {
+        if (speakingRow !== row) return;
+        var audio = {};
+        Object.keys(signs).forEach(function (k) { if (signs[k] && signs[k].audio) audio[k] = signs[k].audio; });
+        SignAudio.play(items, info.lang, audio, {
+          onEnd: function () {
+            row.classList.remove('playing');
+            if (speakingRow === row) { speakingRow = null; hideTalkToast(); }
+          }
+        });
+      });
     }
 
     // ── Screen 02 — Who speaks first ──
@@ -1932,17 +1951,23 @@
     });
 
     // ── Screen 03 — Signing ──
-    // Real camera + recognition (js/talk-signing.js). Output goes through the SAME confirm
-    // card every other path uses — nothing reaches appendBubble() directly.
+    // Real camera + recognition (js/talk-signing.js). Send (talk-turns-audio): the sentence is added to
+    // the conversation at once (no confirm card), the app returns to "Whose turn is it?" and the message
+    // is spoken in the signing language (EN/FIL).
     TalkSigning.init({
       onText: function (text, meta) {
-        openModal('confirm', { label: 'You signed', text: text, from: 'deaf', source: 'sign', signLanguage: meta && meta.signLanguage });
+        meta = meta || {};
+        var row = addMessage({ from: 'deaf', source: 'sign', signLanguage: meta.signLanguage, text: text,
+          lang: meta.lang, words: meta.words, keys: meta.keys });
+        showScreen('thread');
+        toggleSpeak(row);
       },
       onEmpty: function () {
         openModal('error', {
           heading: "Didn't catch that",
           message: 'I did not catch that.',
-          buttonLabel: 'Try again'
+          buttonLabel: 'Try again',
+          onAction: function () { closeModal(); TalkSigning.restart(); }
         });
       },
       onCameraError: function () {
@@ -1979,22 +2004,14 @@
         if (speakingInput.value.trim() === '') speakingFromMic = false;
       });
 
-      // Send: REAL typed or spoken text (docs/system/DECISIONS.md —
-      // "typed-and-sent messages are real data"). Routes through the confirm modal like
-      // every other path into the thread — Send itself never calls
-      // appendBubble() directly. Field is cleared and Send re-disabled right
-      // after handing the text off to the modal, so no stale text is left
-      // in the field once the message has been (or is being) added; if the
-      // person instead taps "Try again", they simply retype.
+      // Send: REAL typed or spoken text (docs/system/DECISIONS.md — "typed-and-sent messages are
+      // real data"), added to the conversation directly (talk-turns-audio: the "You said … / Add to
+      // Conversation" card is gone; Edit covers "Try again"). The field is cleared, then the app
+      // returns to "Whose turn is it?".
       speakingSend.addEventListener('click', function () {
         if (speakingSend.disabled) return;
         var typedText = speakingInput.value;
-        openModal('confirm', {
-          label: 'You said',
-          text: typedText,
-          from: 'hearing',
-          source: speakingFromMic ? 'speech' : 'typed'
-        });
+        addMessage({ from: 'hearing', source: speakingFromMic ? 'speech' : 'typed', text: typedText });
         speakingInput.value = '';
         speakingSend.disabled = true;
         speakingFromMic = false;
@@ -2007,13 +2024,14 @@
       var input = document.getElementById('speaking-input');
       var translateBtn = document.getElementById('speaking-translate');
       var editBtn = document.getElementById('speaking-edit');
+      var replayBtn = document.getElementById('speaking-replay');
       var sendBtn = document.getElementById('speaking-send');
       var chipEn = document.getElementById('chip-lang-en');
       var chipFil = document.getElementById('chip-lang-fil');
 
       // Avatar (avatar phase, decisions 6 and 10): the four parts load once at page load (not
-      // through the loading queue, so a failure never gates "Getting ready…": the words then simply
-      // play as video); clips load per sentence. Hand tracking is paused while the avatar plays and
+      // through the loading queue, so a failure never gates "Getting ready…": the caption then
+      // shows the words without the avatar); clips load per sentence. Hand tracking is paused while the avatar plays and
       // resumed after only if the signing screen is the one showing (it never is on Speak or Type,
       // whose entry already stopped the camera: js/talk-signing.js leave()).
       var avatarCanvas = document.getElementById('speaking-avatar');
@@ -2033,17 +2051,14 @@
           }
         });
         avatarPlayer.showRest();
-      }).catch(function (e) { console.warn('[talk] avatar parts not loaded; signs play as video:', e); });
+      }).catch(function (e) { console.warn('[talk] avatar parts not loaded; the caption shows the words only:', e); });
 
       speakingPlayer = SignPlayer.create({
-        container: document.getElementById('speaking-sign-media'),
-        wordLabel: document.getElementById('speaking-sign-word'),
+        caption: document.getElementById('speaking-caption'),
         getLanguage: function () { return TalkSpeaking.getLanguage(); },
         avatar: {
           store: window.AvatarStore.create({}),
-          getPlayer: function () { return avatarPlayer; },
-          show: function () { avatarCanvas.hidden = false; },
-          hide: function () { avatarCanvas.hidden = true; }
+          getPlayer: function () { return avatarPlayer; }
         }
       });
 
@@ -2094,15 +2109,20 @@
         // ("you?") and break matching. Pass the text without '?' — the input keeps it for Send.
         speakingPlayer.play(playableText()).catch(function (e) { console.error('[talk] sign preview failed:', e); });
       });
+      replayBtn.addEventListener('click', function () {
+        speakingPlayer.play(playableText()).catch(function (e) { console.error('[talk] sign preview failed:', e); });
+      });
       editBtn.addEventListener('click', function () {
         speakingPlayer.cancel();
         resetSpeakingUi();                  // back to compose, text kept
       });
-      // Registered AFTER the untouched Send handler above, so it runs after it: the message
-      // is already in the confirm card; cancel the preview and return to an empty compose.
+      // Registered AFTER the Send handler above, so it runs after it: the message is already in the
+      // conversation; stop the preview and go back to "Whose turn is it?".
       sendBtn.addEventListener('click', function () {
         speakingPlayer.cancel();
         resetSpeakingUi();
+        showScreen('thread');
+        showTalkToast('\u2713 Sent', 1800);
       });
     })();
 
@@ -2136,6 +2156,14 @@
     document.getElementById('turn-speak-btn').addEventListener('click', function () {
       showScreen('speaking');
     });
+    // Turn shortcuts (talk-turns-audio): one tap from inside a turn straight to the other one. The
+    // unsent signed sentence is kept (js/talk-signing.js) and shows again on return.
+    document.getElementById('sign-to-speak-btn').addEventListener('click', function () {
+      showScreen('speaking');
+    });
+    document.getElementById('speak-to-sign-btn').addEventListener('click', function () {
+      showScreen('signing');
+    });
     // End Conversation: a real page load back to the dashboard, per
     // docs/system/DECISIONS.md ("End Conversation is a real page load back
     // to index.html, not a hide") — not a showScreen() call. Calls the
@@ -2154,6 +2182,7 @@
       if (document.querySelector('#thread-list .bubble-row') === null) {
         closeModal();
         showScreen('who-first');
+        TalkSigning.clearDraft();       // the kept signed sentence belongs to the old conversation
         return;
       }
       onEndConversation('ended');
@@ -2173,8 +2202,8 @@
 
     function startIdleTimer() {
       idleTimerId = setTimeout(function () {
-        // Fix 4: a modal (most importantly "confirm") can already be open
-        // when this fires — e.g. someone reading the confirm card without
+        // Fix 4: a modal (an error card; before talk-turns-audio also "confirm") can already be open
+        // when this fires — e.g. someone reading a card without
         // tapping anything for the full IDLE_TIMEOUT_MS, since nothing about
         // an open modal itself resets this timer. openModal('idle', ...)
         // unconditionally would overwrite .modal-card's content and

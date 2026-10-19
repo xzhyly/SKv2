@@ -18,7 +18,8 @@ test('GET shape and a real sign (read-only)', () => {
   assert.ok(keys.length > 100);
   for (const k of keys) {
     const s = r.json.signs[k];
-    for (const f of ['set', 'textEn', 'textFil', 'category', 'assetPath', 'samples']) assert.ok(f in s, `${k}.${f}`);
+    for (const f of ['set', 'textEn', 'textFil', 'category', 'assetPath', 'samples', 'avatar', 'audio']) assert.ok(f in s, `${k}.${f}`);
+    assert.deepEqual(Object.keys(s.audio), ['en', 'fil'], `${k}.audio`);   // talk-turns-audio phase
     assert.ok(Number.isInteger(s.samples), `${k}.samples int`);
     assert.ok(['ESL', 'FSL', 'BOTH'].includes(s.set));
   }

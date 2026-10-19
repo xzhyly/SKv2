@@ -42,7 +42,10 @@ async function live() {
     await p.click('#guide-start-btn');
   }
   await p.waitForFunction(() => { const v = document.getElementById('signing-video'); return v.classList.contains('active') && v.videoWidth > 0; }, null, { timeout: 60000 });
-  await sleep(1500);
+  // talk-turns-audio: recording starts by itself after a 3 s countdown, which redraws the sentence box;
+  // wait for it so the sentence put in below stays.
+  await p.waitForFunction(() => document.getElementById('camera-box').classList.contains('recording'), null, { timeout: 10000 });
+  await sleep(500);
 }
 // Shows a sentence (through the page's own renderDraft) and a status, as while recording. The fake
 // camera has no hand, so the live loop would keep writing "Show your sign": it is paused for this.
@@ -73,7 +76,7 @@ function measure() {
     return {
       box: rect('#camera-box'), video: rect('#signing-video'), canvas: rect('#tlCanvas1'), side: rect('.signing-side'),
       picture: { w: Math.round(v.videoWidth * k), h: Math.round(v.videoHeight * k) }, vw: v.videoWidth, vh: v.videoHeight,
-      draft: rect('#signing-draft'), lang: rect('.lang-toggle'), main: rect('#stop-signing-btn'), guide: rect('#chip-guide'),
+      draft: rect('#signing-draft'), lang: rect('.lang-toggle'), main: rect('#stop-signing-btn'), guide: rect('#chip-guide'), sw: rect('#sign-to-speak-btn'),
       chip: rect('.signing-caption-pill'), chipFont: getComputedStyle(document.getElementById('signing-caption')).fontSize,
       fit: getComputedStyle(v).objectFit, mirror: getComputedStyle(v).transform,
       font: parseFloat(cs.fontSize), weight: Number(cs.fontWeight), bg: cs.backgroundColor, lineH: parseFloat(cs.lineHeight),
@@ -93,9 +96,11 @@ function checkLayout(label, m, words, top) {
     same(m.video, m.box) && m.fit === 'contain' && m.mirror === 'matrix(-1, 0, 0, 1, 0, 0)' && Math.abs(m.picture.w - m.box.w) <= 1 && Math.abs(m.picture.h - m.box.h) <= 1, J({ video: m.video, picture: m.picture }));
   check(`${label}: landmark canvas on the same box as the picture`, same(m.canvas, m.box), J(m.canvas));
   check(`${label}: right column from camera + 14 px to 1012, top to 588`, m.side.x === m.box.right + 14 && m.side.right === 1012 && m.side.y === top && m.side.bottom === 588, J(m.side));
-  check(`${label}: EN|FIL 52, main action 60, Guide 52 px, full column width, stacked under the sentence`,
-    m.lang.h === 52 && m.main.h === 60 && m.guide.h === 52 && [m.lang, m.main, m.guide, m.draft].every((r) => r.w === m.side.w)
-    && m.draft.bottom < m.lang.y && m.lang.bottom < m.main.y && m.main.bottom < m.guide.y && m.guide.bottom === 588, J({ draft: m.draft, lang: m.lang, main: m.main, guide: m.guide }));
+  // talk-turns-audio phase: the last row is "🗣 Speak or Type" (the turn shortcut) + Guide (110 px), both 52 px.
+  check(`${label}: EN|FIL 52, main action 60, then Speak or Type + Guide 52 px, stacked under the sentence`,
+    m.lang.h === 52 && m.main.h === 60 && m.guide.h === 52 && m.sw.h === 52 && [m.lang, m.main, m.draft].every((r) => r.w === m.side.w)
+    && m.guide.w === 110 && m.sw.x === m.side.x && m.guide.right === m.side.right && m.sw.right + 10 === m.guide.x && m.sw.y === m.guide.y
+    && m.draft.bottom < m.lang.y && m.lang.bottom < m.main.y && m.main.bottom < m.guide.y && m.guide.bottom === 588, J({ draft: m.draft, lang: m.lang, main: m.main, sw: m.sw, guide: m.guide }));
   check(`${label}: sentence >= 24 px bold, white box`, m.font >= 24 && m.weight >= 700 && m.bg === 'rgb(255, 255, 255)', J({ font: m.font, weight: m.weight, bg: m.bg }));
   check(`${label}: sentence wraps over whole lines (>= 4), clip a multiple of the line height`,
     m.clipMax >= 4 * m.lineH - 0.5 && Math.abs(m.clipMax / m.lineH - Math.round(m.clipMax / m.lineH)) < 0.01 && m.clipH <= m.clipMax + 0.5, J({ clipMax: m.clipMax, lineH: m.lineH, clipH: m.clipH }));
@@ -141,9 +146,7 @@ try {
   await p.waitForFunction(() => document.body.dataset.screen === 'speaking' && !document.body.classList.contains('modal-open'), null, { timeout: 60000 });
   await p.fill('#speaking-input', 'Hello');
   await p.click('#speaking-translate');
-  await p.click('#speaking-send');
-  await p.waitForSelector('.confirm-add-btn', { state: 'visible' });
-  await p.click('.confirm-add-btn');
+  await p.click('#speaking-send');      // adds the message directly (talk-turns-audio: no confirm card)
   await p.waitForFunction(() => document.body.dataset.screen === 'thread');
   await p.click('#turn-sign-btn');
   await live();

@@ -3,11 +3,10 @@
 //
 // GET  ?action=pool&lang=ESL|FSL
 //      -> {success, lang, signs:[{key, text, category, clip}]}: every active sign of that language
-//         that has a playable clip, found the way Let's Talk's sign player finds one
-//         (js/sign-player.js): its avatar clip (saved_gestures/<key>/avatar.json) first, else a video
-//         in the language's own folder (assets/signs/en/ for ESL, assets/signs/fil/ for FSL) named
-//         after the sign's text, else its asset_path, else <key>.webm. clip is {type:"avatar", key}
-//         or {type:"video", src}. category is letters | numbers | words | phrases. Open to guests.
+//         that has an avatar clip (saved_gestures/<key>/avatar.json); clip is {type:"avatar", key}.
+//         Avatar only since the talk-turns-audio phase (2026-10-19): the video fallback
+//         (assets/signs/<en|fil>/*.webm, asset_path) was removed, as in Let's Talk.
+//         category is letters | numbers | words | phrases. Open to guests.
 // POST {action:"save", sign_language, category, started_at_ms, answers:[{seq, question_type,
 //      sign_key, choices:[4 keys], chosen_key, answered_at_ms}]}
 //      -> {success, attempt_id, correct_items, total_items}. Logged-in users only (guests are
@@ -31,44 +30,6 @@ const QUIZ_CATEGORIES = ['word' => 'words', 'letter' => 'letters', 'number' => '
 const QUIZ_SAVE_CATEGORIES = ['letters', 'numbers', 'words', 'phrases', 'mixed'];
 const QUIZ_TYPES = ['video_to_text', 'text_to_video'];
 
-// js/sign-player.js normalizeSpeechText(): lower case, these punctuation marks removed, one space.
-function quiz_normalize($text) {
-    $t = function_exists('mb_strtolower') ? mb_strtolower((string)$text, 'UTF-8') : strtolower((string)$text);
-    $t = preg_replace("/[.,\\/#!$%^&*;:{}=\\-_`~'()]/u", '', $t);
-    return trim(preg_replace('/\s+/u', ' ', $t));
-}
-
-// The first existing clip file for a sign in one language, as a path relative to the site root.
-function quiz_video_for($root, $base, $key, $text, $assetPath) {
-    $names = [];
-    if (is_string($text) && $text !== '') {
-        $norm = quiz_normalize($text);
-        $names[] = str_replace(' ', '_', $norm);                                   // Let's Talk step 1
-        $names[] = str_replace(' ', '_', trim(preg_replace('/[?¿]/u', '', $norm)));
-        $lower = function_exists('mb_strtolower') ? mb_strtolower(trim($text), 'UTF-8') : strtolower(trim($text));
-        $names[] = preg_replace('/\s+/u', '_', trim(preg_replace('/[?¿!.,]/u', '', $lower)));  // "nag-aantok"
-    }
-    $candidates = [];
-    foreach ($names as $n) {
-        if ($n !== '' && strpos($n, '/') === false && strpos($n, '..') === false) {
-            $candidates[] = $base . $n . '.webm';
-            $candidates[] = $base . $n . '.mp4';
-        }
-    }
-    if (is_string($assetPath) && $assetPath !== '' && strpos($assetPath, '..') === false) {
-        // Only a file in this language's own folder (a Both sign's English video is not an FSL clip).
-        $candidates[] = strpos($assetPath, 'assets/') === 0 ? $assetPath : $base . $assetPath;
-    }
-    $candidates[] = $base . $key . '.webm';
-    $candidates[] = $base . $key . '.mp4';
-    foreach (array_unique($candidates) as $rel) {
-        if (strpos($rel, $base) === 0 && is_file($root . $rel) && filesize($root . $rel) > 0) {
-            return $rel;
-        }
-    }
-    return null;
-}
-
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $method === 'GET' ? ($_GET['action'] ?? '') : null;
 
@@ -79,10 +40,9 @@ if ($method === 'GET' && $action === 'pool') {
         fail('lang must be ESL or FSL');
     }
     $root = realpath(__DIR__ . '/../..') . '/';
-    $base = $lang === 'ESL' ? 'assets/signs/en/' : 'assets/signs/fil/';
     $textCol = $lang === 'ESL' ? 'text_en' : 'text_fil';
     try {
-        $stmt = mysqli_prepare($conn, "SELECT label, $textCol AS text, category, asset_path FROM gestures
+        $stmt = mysqli_prepare($conn, "SELECT label, $textCol AS text, category FROM gestures
                                         WHERE sign_language IN (?, 'BOTH') AND is_active = 1 ORDER BY label");
         mysqli_stmt_bind_param($stmt, 's', $lang);
         mysqli_stmt_execute($stmt);
@@ -94,18 +54,10 @@ if ($method === 'GET' && $action === 'pool') {
                 continue;
             }
             $text = ($row['text'] !== null && trim($row['text']) !== '') ? trim($row['text']) : sign_draft_text($key);
-            $clip = null;
-            if (is_file($root . 'saved_gestures/' . $key . '/avatar.json')) {
-                $clip = ['type' => 'avatar', 'key' => $key];
-            } else {
-                $src = quiz_video_for($root, $base, $key, $row['text'], $row['asset_path']);
-                if ($src !== null) {
-                    $clip = ['type' => 'video', 'src' => $src];
-                }
-            }
-            if ($clip === null) {
+            if (!is_file($root . 'saved_gestures/' . $key . '/avatar.json')) {
                 continue;
             }
+            $clip = ['type' => 'avatar', 'key' => $key];
             $signs[] = [
                 'key' => $key,
                 'text' => $text,

@@ -1,6 +1,7 @@
 <?php
 // Signs list + edit. GET: every sign with set/texts/category/asset/sample count from the DB, plus
-// whether it has an avatar clip on disk.
+// whether it has an avatar clip on disk and the URLs of its audio (talk-turns-audio phase:
+// `audio: {en, fil}`, saved_gestures/<key>/audio_<lang>.<ext>?v=<mtime>, null when there is none).
 // POST {action:"update", key, set, textEn, textFil}: changes a sign's set and texts without touching
 // its samples (sign.json is written first -- disk is the source of truth -- then the gestures row).
 header('Content-Type: application/json');
@@ -22,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once __DIR__ . '/../connect.php';
 require_once __DIR__ . '/gesture_category.php';
 require_once __DIR__ . '/sign_meta.php';
+require_once __DIR__ . '/sign_audio_lib.php';
 
 // PHP 8.0 mysqli returns false on failure, 8.1+ throws; both end up as a thrown RuntimeException.
 function db_fail_check($conn, $ok, $stmtOrNull = null) {
@@ -62,11 +64,13 @@ try {
         // avatar: the sign has an avatar clip (saved_gestures/<key>/avatar.json; disk only, no DB column).
         $signsDir = __DIR__ . '/../../saved_gestures/';
         while ($row = mysqli_fetch_assoc($result)) {
+            $safe = clean_label($row['label']) === $row['label'];
             $signs[$row['label']] = sign_from_row($row) + [
                 'category'  => $row['category'],
                 'assetPath' => $row['asset_path'],
                 'samples'   => (int)$row['samples'],
-                'avatar'    => clean_label($row['label']) === $row['label'] && is_file($signsDir . $row['label'] . '/avatar.json'),
+                'avatar'    => $safe && is_file($signsDir . $row['label'] . '/avatar.json'),
+                'audio'     => $safe ? sign_audio_urls($row['label'], $signsDir . $row['label']) : ['en' => null, 'fil' => null],
             ];
         }
         echo json_encode(['success' => true, 'signs' => (object)$signs]);

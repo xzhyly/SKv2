@@ -5,6 +5,11 @@
 // Contract: enter() acquires the camera; leave() releases the camera hardware (stops every
 // track) but never touches the MediaPipe Hands instance, the k-NN model or the queue, so
 // re-entry only pays for getUserMedia.
+// Talk-turns-audio phase (docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md): the main
+// button is "Send 🔊" (it replaces Translate / Stop & Add): recording starts by itself (the same 3 s
+// countdown) once the camera runs, and Send (or the "stop" sign) hands the sentence and its sign keys
+// to onText. The unsent sentence survives leave() and a language switch; only Send and clearDraft()
+// (+ New conversation) empty it. Recognition (tick's prediction, filter and debounce) is unchanged.
 (function () {
   'use strict';
 
@@ -27,6 +32,7 @@
   var uiState = 'idle';           // 'idle' | 'countdown' | 'recording'
   var switching = false;
   var words = [];
+  var keys = [];                  // the sign key of each word in `words` (for its audio)
   var history = [];
   var lastConfirmed = null;
   var stableTicks = 0;
@@ -60,7 +66,7 @@
   function showDraft() {
     var el = $('signing-draft');
     renderDraft(el, words);
-    el.classList.toggle('show', uiState === 'recording' && words.length > 0);
+    el.classList.toggle('show', words.length > 0);   // a kept sentence shows during the countdown too
   }
 
   function setOverlay(show, text) {
@@ -68,12 +74,12 @@
     $('signing-cam-overlay').classList.toggle('show', !!show);
   }
 
+  // Send is enabled once there is a word to send (a kept sentence can be sent during the countdown).
   function renderButton(countdown) {
     var b = $('stop-signing-btn');
-    b.disabled = !stream || switching || uiState === 'countdown';
-    if (uiState === 'countdown') b.textContent = 'Starting in ' + countdown + '…';
-    else if (uiState === 'recording') b.textContent = 'Stop & Add to Conversation';
-    else b.textContent = 'Translate';
+    b.disabled = !stream || switching || words.length === 0;
+    if (uiState === 'countdown' && words.length === 0) b.textContent = 'Starting in ' + countdown + '…';
+    else b.textContent = 'Send \u{1F50A}';
   }
 
   function syncChips() {
@@ -98,10 +104,11 @@
     stableTicks = 0;
   }
 
-  function endSession() {
+  // clearWords: Send only; leaving the screen or switching the language keeps the sentence.
+  function endSession(clearWords) {
     if (countdownId) { clearInterval(countdownId); countdownId = null; }
     uiState = 'idle';
-    words = [];
+    if (clearWords) { words = []; keys = []; }
     currentGesture = null;
     lastDetected = null;
     holdStart = null;
@@ -123,7 +130,6 @@
       clearInterval(countdownId);
       countdownId = null;
       uiState = 'recording';
-      words = [];
       currentGesture = null;
       lastDetected = null;
       holdStart = null;
@@ -134,15 +140,35 @@
     }, 1000);
   }
 
+  // Send (the button, or the "stop" sign while recording). meta.words / meta.keys: the signs in order.
   function finish() {
-    if (uiState !== 'recording') return;
     var got = words.slice();
-    endSession();
+    var gotKeys = keys.slice();
     if (!got.length) {
+      if (uiState !== 'recording') return;
+      endSession(true);
       if (cb.onEmpty) cb.onEmpty();
       return;
     }
-    if (cb.onText) cb.onText(formulateSmartSentence(got, signLang), { signLanguage: signLang === 'fil' ? 'FSL' : 'ESL' });
+    endSession(true);
+    if (cb.onText) {
+      cb.onText(formulateSmartSentence(got, signLang), {
+        signLanguage: signLang === 'fil' ? 'FSL' : 'ESL', lang: signLang, words: got, keys: gotKeys
+      });
+    }
+  }
+
+  // Starts recording again (after "Didn't catch that"), if the camera is running.
+  function restart() {
+    if (active && stream && !switching && uiState === 'idle') beginCountdown();
+  }
+
+  // + New conversation: the kept sentence is dropped.
+  function clearDraft() {
+    words = [];
+    keys = [];
+    showDraft();
+    renderButton();
   }
 
   function tick() {
@@ -221,7 +247,9 @@
         } else if (confirmed !== 'start' && confirmed !== 'stop' && currentGesture !== confirmed) {
           currentGesture = confirmed;
           words.push(translateGestureLabel(confirmed, signLang));
+          keys.push(confirmed);
           showDraft();
+          renderButton();
           lastDetected = null;
           holdStart = null;
           clearHistory();
@@ -250,7 +278,7 @@
     var prev = signLang;
     switching = true;
     try {
-      endSession();
+      endSession(false);
       setOverlay(true, 'AI is switching language…');
       signLang = next;
       syncChips();
@@ -277,7 +305,11 @@
       switching = false;   // every exit path, including a throw from loadModel/callbacks
     }
     setOverlay(false);
+    // The kept sentence is shown in the new language (same signs).
+    words = keys.map(function (k) { return translateGestureLabel(k, signLang); });
+    showDraft();
     renderButton();
+    restart();
   }
 
   function toggleSkeleton() {
@@ -296,7 +328,8 @@
     active = true;
     var myGen = ++gen;
     syncChips();
-    endSession();
+    words = keys.map(function (k) { return translateGestureLabel(k, signLang); });   // kept sentence, current language
+    endSession(false);
     setOverlay(true, 'Starting camera…');
     renderButton();
     initCameraWithFallback(320, 240, function (s) {
@@ -316,6 +349,7 @@
         tickId = setInterval(tick, TICK_MS);
         setOverlay(false);
         renderButton();
+        beginCountdown();               // recording starts by itself (no Translate button any more)
       } catch (e) {
         // must not throw: camera-helper would treat it as a getUserMedia failure and re-request
         console.error('[talk-signing] camera start failed:', e);
@@ -351,20 +385,22 @@
     var ctx = c.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, c.width, c.height);
     setOverlay(false);
-    endSession();
+    endSession(false);
   }
 
   function init(callbacks) {
     cb = callbacks || {};
     try { window.showSkeleton = localStorage.getItem(SKELETON_KEY) !== 'false'; } catch (e) { window.showSkeleton = true; }
     $('stop-signing-btn').addEventListener('click', function () {
-      if (uiState === 'idle') beginCountdown();
-      else if (uiState === 'recording') finish();
+      if (words.length) finish();
+      else if (uiState === 'idle') beginCountdown();
     });
     $('chip-esl').addEventListener('click', function () { setLang('en'); });
     $('chip-fsl').addEventListener('click', function () { setLang('fil'); });
     $('chip-guide').addEventListener('click', toggleSkeleton);
   }
 
-  window.TalkSigning = { init: init, enter: enter, leave: leave, renderDraft: renderDraft };
+  function getDraft() { return { words: words.slice(), keys: keys.slice() }; }
+
+  window.TalkSigning = { init: init, enter: enter, leave: leave, renderDraft: renderDraft, restart: restart, clearDraft: clearDraft, getDraft: getDraft };
 })();

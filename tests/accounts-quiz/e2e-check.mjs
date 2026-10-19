@@ -8,8 +8,8 @@
 // server + Playwright's Chromium); on the laptop it runs against Apache if Playwright is installed.
 // Test accounts are "zzqa..."; conversations seeded through the API end in "[e2e]"; the guest
 // conversation typed into Let's Talk ("Hello") is found by its title and the test's start time.
-// Let's Talk messages use words that have their own sign video (Let's Talk's preview asks for
-// assets/signs/en/<word>.webm first, and a missing one is a 404 console error). All of it is
+// (Since the talk-turns-audio phase Let's Talk's preview is avatar only and requests no video, so
+// the words typed no longer matter for the console.) All of it is
 // removed at the start and at the end. Avatar clips for the avatar quiz are served by request
 // interception (nothing is written to saved_gestures/).
 //
@@ -60,8 +60,29 @@ const browser = await chromium.launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
 });
 
+// The quiz is avatar only since the talk-turns-audio phase, and this data has no avatar.json, so the
+// real pool is empty. Every page answers the pool as if every sign except the number signs had an
+// avatar clip (the numbers stay empty, so the "fewer than 4 signs" case is still ESL Numbers), and
+// the clips come from the committed Holistic fixture. Nothing is written to saved_gestures/.
+const POOL_CAT = { word: 'words', letter: 'letters', number: 'numbers', phrase: 'phrases' };
+async function stubAvatarQuiz(ctx) {
+  await ctx.route('**/php/api/quiz.php?action=pool*', async (route) => {
+    const lang = new URL(route.request().url()).searchParams.get('lang');
+    const res = await route.fetch();
+    const signs = (await (await ctx.request.get(BASE + 'php/api/signs.php')).json()).signs;
+    const list = Object.keys(signs).sort().filter((k) => (signs[k].set === lang || signs[k].set === 'BOTH') && signs[k].category !== 'number')
+      .map((k) => ({ key: k, text: (lang === 'ESL' ? signs[k].textEn : signs[k].textFil) || k, category: POOL_CAT[signs[k].category] || 'words', clip: { type: 'avatar', key: k } }));
+    route.fulfill({ response: res, json: { success: true, lang, signs: list } });
+  });
+  await ctx.route('**/saved_gestures/*/avatar.json', (route) => {
+    const key = decodeURIComponent(/saved_gestures\/([^/]+)\/avatar\.json/.exec(route.request().url())[1]);
+    route.fulfill({ contentType: 'application/json', body: J(fixtureClip(key, [...key].reduce((n, c) => n + c.charCodeAt(0), 0))) });
+  });
+}
+
 async function newPage() {
   const ctx = await browser.newContext({ viewport: { width: 1024, height: 600 } });
+  await stubAvatarQuiz(ctx);
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push({ page: page.url(), text: m.text(), url: (m.location() || {}).url || '' }); });
   page.on('pageerror', (e) => consoleErrors.push({ page: page.url(), text: 'uncaught: ' + e.message }));
@@ -90,7 +111,8 @@ async function apiStatus(page, url, body) {
 }
 const ADMIN_PAGES = ['gesture-training.html', 'reports.html', 'bulk-import.html', 'avatar-clips.html', 'diagnostic.html', 'users.html'];
 
-// Sends one typed message through Let's Talk's real Speak-or-Type -> Send -> Add to Conversation.
+// Sends one typed message through Let's Talk's real Speak-or-Type -> Translate -> Send (the message is
+// added directly since the talk-turns-audio phase; there is no Add to Conversation card any more).
 async function talkSay(page, text) {
   const screen = await page.evaluate(() => document.body.dataset.screen);
   if (screen === 'who-first') await page.click('#card-speak');
@@ -99,8 +121,6 @@ async function talkSay(page, text) {
   await page.fill('#speaking-input', text);
   await page.click('#speaking-translate');
   await page.click('#speaking-send');
-  await page.waitForSelector('.confirm-add-btn', { state: 'visible', timeout: 10000 });
-  await page.click('.confirm-add-btn');
   await page.waitForFunction(() => document.body.dataset.screen === 'thread');
   await sleep(600);    // the save is fire-and-forget
 }
@@ -223,8 +243,13 @@ try {
   check('guest result: 6/10, missed list has 4 with Watch', (await G.page.textContent('#res-big')) === '6/10' && (await G.page.$$('#missed-list .sk-li')).length === 4);
   await shot(G.page, '15-quiz-result-guest');
   await G.page.click('#missed-list .sk-li .sk-mini');
-  await G.page.waitForFunction(() => { const v = document.querySelector('#ov-clip video'); return v && v.currentTime > 0.2; }, null, { timeout: 10000 }).catch(() => {});
-  check('result: Watch plays the right sign', await G.page.evaluate(() => { const v = document.querySelector('#ov-clip video'); return !!v && !v.paused && v.currentTime > 0; }));
+  // avatar only since the talk-turns-audio phase: Watch plays the sign on the avatar (the canvas moves)
+  await G.page.waitForSelector('#ov-clip canvas', { timeout: 10000 });
+  await sleep(700);
+  const w1 = await G.page.$eval('#ov-clip canvas', (c) => c.toDataURL());
+  await sleep(400);
+  const w2 = await G.page.$eval('#ov-clip canvas', (c) => c.toDataURL());
+  check('result: Watch plays the right sign (on the avatar)', w1 !== w2 && await G.page.evaluate(() => document.getElementById('ov-clip').classList.contains('playing')));
   await shot(G.page, '15b-quiz-watch');
   await G.page.click('#ov-close');
 
@@ -314,14 +339,16 @@ try {
   await U.page.click('#seg-cat button[data-v="letters"]');
   await U.page.waitForFunction(() => !document.getElementById('start-btn').disabled);
   await U.page.click('#start-btn');
-  await U.page.waitForSelector('#t2s .vc video');
-  const still = await U.page.$$eval('#t2s .vc video', (vs) => vs.map((v) => v.paused));
+  await U.page.waitForFunction(() => document.querySelectorAll('#t2s .vc canvas').length === 4);
+  await sleep(600);
+  const playingNow = () => U.page.$$eval('#t2s .vc .clip', (cs) => cs.map((c) => c.classList.contains('playing')));
+  const still = await playingNow();
   await U.page.click('#t2s .vc:nth-child(1) .play');
   await sleep(500);
   await U.page.click('#t2s .vc:nth-child(2) .play');
-  await sleep(700);
-  const playing = await U.page.$$eval('#t2s .vc video', (vs) => vs.map((v) => !v.paused));
-  check('Text->Sign: 4 still posters; tapping one plays only that one', still.every(Boolean) && J(playing) === J([false, true, false, false]), J({ still, playing }));
+  await sleep(300);
+  const playing = await playingNow();
+  check('Text->Sign: 4 still posters; tapping one plays only that one', still.every((x) => !x) && J(playing) === J([false, true, false, false]), J({ still, playing }));
   await U.page.click('#back-btn');   // Quit -> setup (nothing saved)
   check('Quit mid-quiz: back to setup, nothing saved', await U.page.isVisible('#screen-setup') && count(`SELECT COUNT(*) AS n FROM quiz_attempts WHERE user_id = ${user1.id}`) === 1);
   const f2 = await playQuiz(U.page, { mode: 'text-to-sign', lang: 'ESL', cat: 'letters', wantRight: (i) => i !== 2 && i !== 5 && i !== 8, shotAt: { i: 0, name: '12-quiz-text-to-sign' } });

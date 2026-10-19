@@ -201,11 +201,11 @@ try {
   await ev(`document.getElementById('speaking-translate').click(); 1`);
   await waitFor(`(window.__avatarRuns||[]).length === 1`, 15000);
   await sleep(1500);
-  const mid = await ev(`({ hidden: document.getElementById('speaking-avatar').hidden, word: document.getElementById('speaking-sign-word').textContent })`);
+  const mid = await ev(`({ hidden: document.getElementById('speaking-avatar').hidden, word: (() => { const on = document.querySelector('#speaking-caption .cap-word.on, #speaking-caption .cap-spell.on'); return on ? on.textContent : ''; })() })`);
   await shot('avatar-import-talk.png');
   await waitFor(`(window.__avatarRuns||[]).length === 1 && window.__avatarRuns[0].done`, 40000);
   const run = await ev(`({ runs: window.__avatarRuns, vids: window.__vids })`);
-  check('Let\'s Talk plays the imported clip on the avatar', run.runs.length === 1 && J(run.runs[0].keys) === J([KEY]) && run.runs[0].completed && run.runs[0].frames[0] === clip.frames.length && run.vids === 0 && !mid.hidden && mid.word === 'ZZ AVATAR IMPORT',
+  check('Let\'s Talk plays the imported clip on the avatar', run.runs.length === 1 && J(run.runs[0].keys) === J([KEY]) && run.runs[0].completed && run.runs[0].frames[0] === clip.frames.length && run.vids === 0 && !mid.hidden && mid.word === 'zz avatar import',
     J({ ...run.runs[0], vids: run.vids, caption: mid.word }));
   const errs2 = c.getConsoleErrors().concat(c.getExceptions());
   check('talk.html: 0 console errors', errs2.length === errs1.length, J(errs2).slice(0, 400));

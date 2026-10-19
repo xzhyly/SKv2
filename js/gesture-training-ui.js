@@ -46,7 +46,7 @@ function applyStepLayoutClass(step) {
 // ── Dataset Modal Logic ──
 // Tab order and titles for the dataset modal; the default tab is the first one.
 const DATASET_TABS = [['word', 'Words'], ['letter', 'Letters'], ['number', 'Numbers'], ['phrase', 'Phrases']];
-let datasetGroups = null;          // category -> [{label, signSet, textEn, textFil, samples, avatar}], set by renderSavedDataset(); null = no table
+let datasetGroups = null;          // category -> [{label, signSet, textEn, textFil, samples, avatar, audio}], set by renderSavedDataset(); null = no table
 let datasetActiveTab = 'word';
 let datasetEditing = null;         // { key, oldSet } while the edit panel is open, else null
 let datasetEditBusy = false;
@@ -114,13 +114,13 @@ function trRenderDatasetView() {
   const table = document.createElement('table');
   table.className = 'tr-ds-table';
   const head = table.createTHead().insertRow();
-  ['English text', 'Filipino text', 'Set', 'Samples', 'Avatar', 'Edit', 'Delete'].forEach(t => {
+  ['English text', 'Filipino text', 'Set', 'Samples', 'Avatar', 'Audio', 'Edit', 'Delete'].forEach(t => {
     const th = document.createElement('th'); th.textContent = t; head.appendChild(th);
   });
   const body = table.createTBody();
   if (rows.length === 0) {
     const td = body.insertRow().insertCell();
-    td.colSpan = 7; td.className = 'tr-ds-empty';
+    td.colSpan = 8; td.className = 'tr-ds-empty';
     td.textContent = query ? 'No matches' : 'No gestures in this category yet.';
   }
   rows.forEach(row => {
@@ -133,6 +133,11 @@ function trRenderDatasetView() {
     const av = tr.insertCell(); av.className = 'tr-ds-c tr-ds-avatar' + (row.avatar ? ' yes' : '');
     av.textContent = row.avatar === null ? '?' : row.avatar ? '✓' : '—';
     av.title = row.avatar === null ? 'Unknown' : row.avatar ? 'Has an avatar clip' : 'No avatar clip';
+    // 🔊 marker (talk-turns-audio): which languages have recorded audio.
+    const audLangs = row.audio ? ['en', 'fil'].filter(l => row.audio[l]).map(l => l === 'en' ? 'EN' : 'FIL') : [];
+    const au = tr.insertCell(); au.className = 'tr-ds-c tr-ds-audio' + (audLangs.length ? ' yes' : '');
+    au.textContent = row.audio === null ? '?' : audLangs.length ? '\u{1F50A} ' + audLangs.join(' · ') : '—';
+    au.title = audLangs.length ? 'Audio: ' + audLangs.join(', ') : 'No audio';
     const editTd = tr.insertCell(); editTd.className = 'tr-ds-c';
     const editBtn = document.createElement('button');
     editBtn.type = 'button'; editBtn.className = 'tr-ds-btn tr-ds-editbtn'; editBtn.textContent = 'Edit';
@@ -157,6 +162,11 @@ function trShowDatasetEditPanel(on) {
     if (el) el.style.display = on ? 'none' : '';
   });
   if (!on && title) title.textContent = '📁 Active Gesture Dataset';
+  if (!on) {
+    if (window.SignAudioAdmin) SignAudioAdmin.close();
+    const aud = document.getElementById('dsEditAudio');
+    if (aud) aud.hidden = true;
+  }
 }
 function trDatasetEditSet() {
   const r = document.querySelector('input[name="dsEditSet"]:checked');
@@ -188,6 +198,15 @@ function trOpenDatasetEdit(key) {
   trDatasetEditMessage('');
   trDatasetEditUpdateFields();
   trShowDatasetEditPanel(true);
+  // Audio section: one row per language the sign's saved set uses; letters take English only.
+  const aud = document.getElementById('dsEditAudio');
+  if (aud && window.SignAudioAdmin) {
+    const letter = cat === 'letter';
+    const langs = letter ? ['en'] : oldSet === 'ESL' ? ['en'] : oldSet === 'FSL' ? ['fil'] : ['en', 'fil'];
+    SignAudioAdmin.open(aud, { key, audio: row.audio || { en: null, fil: null }, langs, letter }, (k, audio) => {
+      Object.keys(datasetGroups || {}).forEach(c => datasetGroups[c].forEach(r => { if (r.label === k) r.audio = audio; }));
+    });
+  }
 }
 function trDatasetEditCancel() {
   datasetEditing = null;
@@ -500,7 +519,8 @@ async function renderSavedDataset(prefetchedGestures, loadError) {
       const stored = storedCategoryFor(label, String(signSet).toUpperCase());
       const category = stored || GestureCategory.guess(label);
       const avatar = avatarFlags ? !!(avatarFlags[label] && avatarFlags[label].avatar) : null;
-      (groups[category] || groups.word).push({ label, signSet, textEn: sign && sign.textEn, textFil: sign && sign.textFil, samples: samples.length, avatar });
+      const audio = avatarFlags ? ((avatarFlags[label] && avatarFlags[label].audio) || { en: null, fil: null }) : null;
+      (groups[category] || groups.word).push({ label, signSet, textEn: sign && sign.textEn, textFil: sign && sign.textFil, samples: samples.length, avatar, audio });
     });
     Object.keys(groups).forEach(cat => groups[cat].sort((a, b) => a.label.localeCompare(b.label)));
     datasetGroups = groups;

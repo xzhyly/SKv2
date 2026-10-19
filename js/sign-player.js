@@ -1,169 +1,23 @@
 // js/sign-player.js
-// DOM-agnostic port of archive/script.js's text-to-sign pipeline for talk.html's Speak-or-Type
-// preview (docs/superpowers/specs/2026-09-21-text-to-sign-merge-design.md). archive/script.js
-// cannot be loaded into talk.html (it dereferences index.html-only ids at load, script.js:13
-// and :441), and it was retired (archived) together with index.html's #translator-pane, so this is a port of a copy, not a
-// shared module. Sections marked VERBATIM are unchanged from archive/script.js (line ranges given);
-// the only departures are listed in docs/superpowers/plans/2026-09-21-text-to-sign-merge.md.
-// Two further departures from the VERBATIM sections (sign-texts phase, one sign / two texts):
-//  1. fetchAndRegisterCustomGestures reads php/api/signs.php (not save_gesture.php) and registers
-//     each sign's normalized English text (ESL/BOTH) and Filipino text (FSL/BOTH) in the matching
-//     language map, valued by the sign's assetPath (else key.webm), plus the key as before.
-//  2. displaySignWithFallback uses an asset-map value that starts with "assets/" as the path as-is,
-//     instead of prefixing the language asset base.
-// Avatar phase (docs/reports/2026-10-05-avatar-step1.md (a)): fetchAndRegisterCustomGestures also
-// fills a text -> sign-key map per language for signs that have an avatar clip (signs.php `avatar`),
-// and playSequence() plays each run of consecutive items that have a clip on the avatar as one
-// continuous movement (opts.avatar, js/avatar-player.js). Every other item still goes through the
-// unchanged displaySignWithFallback chain (video, fingerspelling, fallback.png). Without opts.avatar
-// the behaviour is exactly the previous one.
+// Let's Talk "Speak or Type" sign playback, avatar only (talk-turns-audio phase,
+// docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md section 4). Every sign shown to the
+// signer comes from the 2D avatar (js/avatar-player.js):
+//   - a word or phrase whose sign has avatar data (php/api/signs.php `avatar`, the clip is
+//     saved_gestures/<key>/avatar.json) plays that sign;
+//   - any other word is fingerspelled by the avatar with the letter signs a-z and the number signs
+//     1-10 (a number 1-10 is one sign; other numbers are spelled digit by digit); a character with
+//     no sign (no clip, or no sign at all, e.g. "0" or "ñ") is shown only in the caption.
+// The whole sentence plays as one continuous movement on the avatar; a caption-only character is a
+// short pause at rest. The caption shows the sentence with the current word (or letter) highlighted.
+// Before this phase the player ported archive/script.js's video pipeline (a word -> .webm map,
+// assets/signs/<lang>/<word>.webm probes, video fingerspelling, fallback.png); that path is gone:
+// this file requests no video and no image.
 (function () {
   'use strict';
 
-  // ── VERBATIM archive/script.js:19-141 ──
-const signAssetMapEn = {
-    "i dont know": "dont_know.webm",
-    "dont know": "dont_know.webm",
-    "i dont understand": "dont_understand.webm",
-    "dont understand": "dont_understand.webm",
-    "dont like": "dont_like.webm",
-    "dont want": "dont_want.webm",
-    "how are you": "how_are_you.webm",
-    "how are you doing": "how_are_you.webm",
-    "good morning": "good_morning.webm",
-    "nice to meet you": "nice_to_meet_you.webm",
-    "see you later": "see_you_later.webm",
-    "where do you live": "where_do_you_live.webm",
-    "where is the bathroom": "where_is_the_bathroom.webm",
-    "what is your name": "what_is_your_name.webm",
-    "what did you say": "what_did_you_say.webm",
-    "do you understand": "do_you_understand.webm",
-    "no i dont understand": "no_i_dont_understand.webm",
-    "are you hearing": "are_you_hearing.webm",
-    "my name": "my_name.webm",
-    "please": "please.webm",
-    "love": "love.webm",
-    "happy": "happy.webm",
-    "sad": "sad.webm",
-    "morning": "morning.webm",
-    "afternoon": "afternoon.webm",
-    "night": "night.webm",
-    "hello": "hello.webm",
-    "goodbye": "goodbye.webm",
-    "yes": "yes.webm",
-    "no": "no.webm",
-    "help": "help.webm",
-    "thank you": "nice_to_meet_you.webm",
-    "deaf": "deaf.webm",
-    "hearing": "hearing.webm",
-    "friend": "friend.webm",
-    "family": "family.webm",
-    "mother": "mother.webm",
-    "father": "father.webm",
-    "sister": "sister.webm",
-    "brother": "brother.webm",
-    "understand": "understand.webm",
-    "name": "name.webm",
-    "where": "where.webm",
-    "what": "what.webm",
-    "when": "when.webm",
-    "who": "who.webm",
-    "why": "why.webm",
-    "how": "how.webm",
-    "know": "know.webm",
-    "want": "want.webm",
-    "like": "like.webm",
-    "good": "good.webm",
-    "bad": "bad.webm",
-    "more": "more.webm",
-    "nothing": "nothing.webm",
-    "come": "come.webm",
-    "go": "go.webm",
-    "work": "work.webm",
-    "learn": "learn.webm",
-    "student": "student.webm",
-    "meet": "meet.webm",
-    "see": "see.webm",
-    "tired": "tired.webm",
-    "sick": "sick.webm",
-    "scared": "scared.webm",
-    "confused": "confused.webm",
-    "excited": "excited.webm",
-    "bored": "bored.webm",
-    "busy": "busy.webm",
-    "nice": "nice.webm",
-    "done": "done.webm",
-    "home": "home.webm",
-    "time": "time.webm",
-    "day": "day.webm",
-    "week": "week.webm",
-    "month": "month.webm",
-    "year": "year.webm"
-};
-
-const signAssetMapFil = {
-    "kamusta": "kamusta.webm",
-    "magandang umaga": "magandang_umaga.webm",
-    "magandang hapon": "hapon.webm",
-    "magandang gabi": "gabi.webm",
-    "paalam": "paalam.webm",
-    "asawa": "asawa.webm",
-    "ama": "ama.webm",
-    "ina": "ina.webm",
-    "ate": "ate.webm",
-    "kapatid": "kapatid_sa_pangasinan.webm",
-    "mag-anak": "mag-anak.webm",
-    "kailan": "kailan.webm",
-    "saan": "saan.webm",
-    "bakit": "bakit.webm",
-    "sino": "sino.webm",
-    "ano": "ano_ba_sabi_mo.webm",
-    "kailangan": "kailangan.webm",
-    "tulong": "tulong.webm",
-    "salamat": "nice_to_meet_you.webm",
-    "oo": "yes.webm",
-    "hindi": "no.webm",
-    "tapos": "tapos.webm",
-    "bukas": "bukas.webm",
-    "gabi": "gabi.webm",
-    "umaga": "magandang_umaga.webm",
-    "hapon": "hapon.webm",
-    "mahal": "love.webm",
-    "masaya": "happy.webm",
-    "malungkot": "sad.webm",
-    "sige": "go.webm",
-    "punta": "go.webm",
-    "linggo": "linggo.webm",
-    "buwan": "buwan.webm",
-    "taon": "taon.webm",
-    "araw": "day.webm"
-};
-
-// Populate alphabet letters for both language maps
-for (const letter of "abcdefghijklmnopqrstuvwxyz") {
-    signAssetMapEn[letter] = `${letter}.webm`;
-    signAssetMapFil[letter] = `${letter}.webm`;
-}
-
-  // ── VERBATIM archive/script.js:838-849 ──
-let knownPhrasesEn = [];
-let knownPhrasesFil = [];
-
-function rebuildKnownPhrases() {
-    knownPhrasesEn = Object.keys(signAssetMapEn)
-        .filter((key) => key.includes(" "))
-        .sort((a, b) => b.split(" ").length - a.split(" ").length);
-    knownPhrasesFil = Object.keys(signAssetMapFil)
-        .filter((key) => key.includes(" "))
-        .sort((a, b) => b.split(" ").length - a.split(" ").length);
-}
-rebuildKnownPhrases();
-
-  // archive/script.js:144-159 with the language passed in (script.js reads #lang-select).
-  function isFilipino(lang) { return lang === 'fil-PH'; }
-  function getSignAssetBase(lang) { return isFilipino(lang) ? 'assets/signs/fil/' : 'assets/signs/en/'; }
-  function getActiveSignMap(lang) { return isFilipino(lang) ? signAssetMapFil : signAssetMapEn; }
-  function getActiveKnownPhrases(lang) { return isFilipino(lang) ? knownPhrasesFil : knownPhrasesEn; }
+  var CAPTION_ONLY_MS = 700;      // a character with no sign stays highlighted this long
+  // Number signs: the sign whose key is the numeral ("3"), else the English word key ("three").
+  var NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 
   // ── VERBATIM archive/script.js:944-950 ──
 function normalizeSpeechText(text) {
@@ -173,20 +27,6 @@ function normalizeSpeechText(text) {
         .replace(/\s+/g, " ")
         .trim();
 }
-
-  // archive/script.js:952-963, only change: the language is an argument.
-  function findLongestKnownPhrase(words, startIndex, lang) {
-    const phrases = getActiveKnownPhrases(lang);
-    for (const phrase of phrases) {
-      const phraseWords = phrase.split(" ");
-      const candidate = words.slice(startIndex, startIndex + phraseWords.length).join(" ");
-      if (candidate === phrase) {
-        return { text: phrase, wordCount: phraseWords.length };
-      }
-    }
-
-    return null;
-  }
 
   // ── VERBATIM archive/script.js:357-413 ──
 function formatGrammar(text) {
@@ -247,93 +87,176 @@ function formatGrammar(text) {
     return result.trim();
 }
 
-  // Avatar phase: normalized text / key -> sign key, only for signs with an avatar clip.
-  const avatarKeyMapEn = {};
-  const avatarKeyMapFil = {};
+  // Normalized text / key / key with spaces -> sign key, per language, for signs with avatar data
+  // only (a sign without it is fingerspelled). First registration wins.
+  var avatarKeyMapEn = {};
+  var avatarKeyMapFil = {};
+  var knownPhrasesEn = [];
+  var knownPhrasesFil = [];
+  var avatarKeys = {};            // every sign key with avatar data, any set (letters and numbers)
+  var signs = {};                 // php/api/signs.php `signs`, by key
 
-  // archive/script.js:851-878, with the endpoint and the registration changed (departure 1 below).
-  const SAVE_ENDPOINT = "php/api/signs.php";
-async function fetchAndRegisterCustomGestures() {
-    try {
-        const response = await fetch(SAVE_ENDPOINT);
-        if (!response.ok) return;
-        const data = await response.json();
-        if (data && data.success && data.signs) {
-            Object.keys(data.signs).forEach(key => {
-                const sign = data.signs[key] || {};
-                const set = String(sign.set || '').toUpperCase();
-                const inEn = set === 'ESL' || set === 'BOTH';
-                const inFil = set === 'FSL' || set === 'BOTH';
-                const value = (typeof sign.assetPath === 'string' && sign.assetPath) ? sign.assetPath : `${key}.webm`;
-                const spaceKey = key.replace(/_/g, ' ');
-                const register = (map, text) => {
-                    const names = [key, spaceKey];
-                    if (typeof text === 'string' && text) {
-                        // normalizeSpeechText keeps "?"; speech never has it, typed text may. Register both.
-                        const norm = normalizeSpeechText(text);
-                        const bare = norm.replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim();
-                        if (bare && bare !== norm) names.unshift(bare);
-                        names.unshift(norm);
-                    }
-                    names.forEach(name => { if (name && !map[name]) map[name] = value; });
-                };
-                if (inEn) register(signAssetMapEn, sign.textEn);
-                if (inFil) register(signAssetMapFil, sign.textFil);
-                if (sign.avatar === true) {
-                    // same names as the asset maps, valued by the key (first registration wins)
-                    const registerKey = (map, text) => {
-                        const names = [key, spaceKey];
-                        if (typeof text === 'string' && text) {
-                            const norm = normalizeSpeechText(text);
-                            names.unshift(norm, norm.replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim());
-                        }
-                        names.forEach(name => { if (name && !map[name]) map[name] = key; });
-                    };
-                    if (inEn) registerKey(avatarKeyMapEn, sign.textEn);
-                    if (inFil) registerKey(avatarKeyMapFil, sign.textFil);
-                }
-            });
-            rebuildKnownPhrases();
-        }
-    } catch (e) {
-        console.warn('Failed to load custom gestures for text-to-sign:', e);
+  function rebuildKnownPhrases() {
+    function multi(map) {
+      return Object.keys(map).filter(function (k) { return k.indexOf(' ') !== -1; })
+        .sort(function (a, b) { return b.split(' ').length - a.split(' ').length; });
     }
-}
-  let customGesturesPromise = null;
-  function registerCustomGestures() {
-    if (!customGesturesPromise) customGesturesPromise = fetchAndRegisterCustomGestures();
-    return customGesturesPromise;
+    knownPhrasesEn = multi(avatarKeyMapEn);
+    knownPhrasesFil = multi(avatarKeyMapFil);
   }
 
-  function create(opts) {
-    const container = opts.container;
-    const wordLabel = opts.wordLabel;
-    const getLanguage = opts.getLanguage;
-    // opts.avatar (optional): { store (js/avatar-store.js), getPlayer() -> AvatarPlayer or null while
-    // the parts load, show(), hide() } -- show/hide swap the avatar canvas and the video container.
-    const avatar = opts.avatar || null;
-    let token = 0;
-    let playing = false;
-    let aborts = [];   // each settles whatever the current step is waiting on
+  function isFilipino(lang) { return lang === 'fil-PH' || lang === 'fil'; }
 
-    function releaseVideo(v) {
-      try { v.pause(); } catch (e) { /* not playing */ }
-      v.removeAttribute('src');
-      v.load();
+  // signs.php GET -> the maps above. Texts are registered with and without "?" (speech never has it,
+  // typed text may).
+  var SIGNS_ENDPOINT = 'php/api/signs.php';
+  async function fetchSigns() {
+    try {
+      var response = await fetch(SIGNS_ENDPOINT);
+      if (!response.ok) return signs;
+      var data = await response.json();
+      if (!data || !data.success || !data.signs) return signs;
+      Object.keys(data.signs).forEach(function (key) {
+        var sign = data.signs[key] || {};
+        signs[key] = sign;
+        if (sign.avatar !== true) return;
+        avatarKeys[key] = true;
+        var set = String(sign.set || '').toUpperCase();
+        var register = function (map, text) {
+          var names = [key, key.replace(/_/g, ' ')];
+          if (typeof text === 'string' && text) {
+            var norm = normalizeSpeechText(text);
+            names.unshift(norm, norm.replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim());
+          }
+          names.forEach(function (name) { if (name && !map[name]) map[name] = key; });
+        };
+        if (set === 'ESL' || set === 'BOTH') register(avatarKeyMapEn, sign.textEn);
+        if (set === 'FSL' || set === 'BOTH') register(avatarKeyMapFil, sign.textFil);
+      });
+      rebuildKnownPhrases();
+    } catch (e) {
+      console.warn('Failed to load the signs for text-to-sign:', e);
     }
-    function clearContainer() {
-      const vids = container.querySelectorAll('video');
-      for (let i = 0; i < vids.length; i++) releaseVideo(vids[i]);
-      container.innerHTML = '';
+    return signs;
+  }
+  var signsPromise = null;
+  // One signs.php fetch per page load; resolves to the signs by key (also used by js/sign-audio.js).
+  function registerCustomGestures() {
+    if (!signsPromise) signsPromise = fetchSigns();
+    return signsPromise;
+  }
+
+  function numberKey(n) {
+    var names = [String(n), NUMBER_WORDS[n]];
+    for (var i = 0; i < names.length; i++) if (names[i] && avatarKeys[names[i]]) return names[i];
+    return null;
+  }
+
+  // One word without a sign -> its fingerspelling units. Punctuation is dropped; a letter or digit
+  // with no sign stays as a caption-only unit (key null).
+  function spell(word) {
+    var units = [];
+    Array.from(word).forEach(function (ch) {
+      if (/[a-z]/.test(ch)) units.push({ key: avatarKeys[ch] ? ch : null, label: ch.toUpperCase() });
+      else if (/[0-9]/.test(ch)) units.push({ key: numberKey(Number(ch)), label: ch });
+      else if (/[\p{L}\p{N}]/u.test(ch)) units.push({ key: null, label: ch.toUpperCase() });
+    });
+    return units;
+  }
+
+  // Text -> [{ text, kind: 'sign' | 'spell', units: [{ key|null, label }] }] in sentence order.
+  // Longest known phrase first (signs with avatar data only), then the single word, then a number
+  // 1-10 as one sign, else fingerspelling.
+  function plan(text, lang) {
+    var fil = isFilipino(lang);
+    var map = fil ? avatarKeyMapFil : avatarKeyMapEn;
+    var phrases = fil ? knownPhrasesFil : knownPhrasesEn;
+    var clean = normalizeSpeechText(text).replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim();
+    if (!clean) return [];
+    var words = clean.split(' ');
+    // The caption shows the words as typed (case kept) when they line up one to one with `words`.
+    var typed = String(text).replace(/[.,/#!$%^&*;:{}=\-_`~'()?¿]/g, '').replace(/\s+/g, ' ').trim().split(' ');
+    var shown = typed.length === words.length ? typed : words;
+    var out = [];
+    for (var i = 0; i < words.length; i++) {
+      var matched = null;
+      for (var p = 0; p < phrases.length && !matched; p++) {
+        var n = phrases[p].split(' ').length;
+        if (words.slice(i, i + n).join(' ') === phrases[p]) matched = { text: phrases[p], n: n };
+      }
+      if (matched) {
+        out.push({ text: shown.slice(i, i + matched.n).join(' '), kind: 'sign', units: [{ key: map[matched.text], label: matched.text }] });
+        i += matched.n - 1;
+        continue;
+      }
+      var w = words[i];
+      var num = /^[0-9]+$/.test(w) ? Number(w) : 0;
+      var key = map[w] || (num >= 1 && num <= 10 ? numberKey(num) : null);
+      if (key) { out.push({ text: shown[i], kind: 'sign', units: [{ key: key, label: w }] }); continue; }
+      var units = spell(w);
+      if (units.length) out.push({ text: shown[i], kind: 'spell', units: units });
     }
-    function abortAll() {
-      const list = aborts;
-      aborts = [];
-      list.forEach(function (fn) { fn(); });
-    }
+    return out;
+  }
+
+  // The caption: the sentence, one span per word, a fingerspelled word as letter boxes. -> setActive(w, u)
+  function renderCaption(el, planned) {
+    el.textContent = '';
+    var sub = document.createElement('div');
+    sub.className = 'cap-sub';
+    var line = document.createElement('div');
+    line.className = 'cap-line';
+    var wordEls = planned.map(function (w, i) {
+      if (i > 0) line.appendChild(document.createTextNode(' '));
+      var span = document.createElement('span');
+      if (w.kind === 'spell') {
+        span.className = 'cap-spell';
+        w.units.forEach(function (u) {
+          var l = document.createElement('span');
+          l.className = 'ltr' + (u.key ? '' : ' nosign');
+          l.textContent = u.label;
+          span.appendChild(l);
+        });
+      } else {
+        span.className = 'cap-word';
+        span.textContent = w.text;
+      }
+      line.appendChild(span);
+      return span;
+    });
+    el.appendChild(sub);
+    el.appendChild(line);
+    var on = [];
+    return function setActive(wi, ui) {
+      on.forEach(function (x) { x.classList.remove('on'); });
+      on = [];
+      if (wi < 0 || !planned[wi]) { sub.textContent = ''; return; }
+      var w = planned[wi];
+      on.push(wordEls[wi]);
+      if (w.kind === 'spell') {
+        var l = wordEls[wi].children[ui];
+        if (l) on.push(l);
+        sub.textContent = 'Spelling “' + w.text + '” (no sign yet) · letter ' + (ui + 1) + ' of ' + w.units.length;
+      } else {
+        sub.textContent = planned.length > 1 ? 'Word ' + (wi + 1) + ' of ' + planned.length : '';
+      }
+      on.forEach(function (x) { x.classList.add('on'); });
+    };
+  }
+
+  // opts: { caption: element, getLanguage() -> 'en-US' | 'fil-PH',
+  //         avatar: { store (js/avatar-store.js), getPlayer() -> AvatarPlayer or null while the parts load } }
+  function create(opts) {
+    var caption = opts.caption;
+    var getLanguage = opts.getLanguage;
+    var avatar = opts.avatar || null;
+    var token = 0;
+    var playing = false;
+    var aborts = [];
+
     function sleep(ms) {
       return new Promise(function (resolve) {
-        const timer = setTimeout(done, ms);
+        var timer = setTimeout(done, ms);
         function done() {
           clearTimeout(timer);
           aborts = aborts.filter(function (f) { return f !== done; });
@@ -342,194 +265,48 @@ async function fetchAndRegisterCustomGestures() {
         aborts.push(done);
       });
     }
-
-    // archive/script.js:965-1010
-    function displayMedia(path, label, duration) {
-      duration = duration || 0;
-      return new Promise(function (resolve) {
-        let settled = false;
-        let video = null;
-        let img = null;
-        let timer = null;
-        function finish(ok) {
-          if (settled) return;
-          settled = true;
-          aborts = aborts.filter(function (f) { return f !== abort; });
-          clearTimeout(timer);
-          if (video) {
-            video.onloadedmetadata = video.onended = video.onerror = null;
-            if (!ok) releaseVideo(video);   // a clip that ended stays as the last frame until replaced
-          }
-          if (img) img.onload = img.onerror = null;
-          resolve(ok);
-        }
-        function abort() { finish(false); }
-        aborts.push(abort);
-
-        // Handle video files (.webm, .mp4)
-        if (/\.(webm|mp4)$/i.test(path)) {
-          video = document.createElement('video');
-          video.src = path;
-          video.autoplay = true;
-          video.muted = true;
-          video.loop = false;
-          video.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
-          video.onloadedmetadata = function () {
-            wordLabel.textContent = label.toUpperCase();
-            clearContainer();
-            container.appendChild(video);
-            video.play().catch(function () {});
-          };
-          video.onended = function () { finish(true); };
-          video.onerror = function () { finish(false); };
-          video.load();
-          return;
-        }
-
-        // Handle image files
-        img = new Image();
-        img.onload = function () {
-          wordLabel.textContent = label.toUpperCase();
-          clearContainer();
-          img.alt = label;
-          img.style.cssText = 'max-width:100%; max-height:100%; object-fit:contain;';
-          container.appendChild(img);
-          if (duration > 0) {
-            timer = setTimeout(function () { finish(true); }, duration);
-          } else {
-            finish(true);
-          }
-        };
-        img.onerror = function () { finish(false); };
-        img.src = path;
-      });
+    function abortAll() {
+      var list = aborts;
+      aborts = [];
+      list.forEach(function (fn) { fn(); });
     }
 
-    // archive/script.js:906-942
-    async function displaySignWithFallback(item, myToken) {
-      const lang = getLanguage();
-      const normalizedItem = normalizeSpeechText(item);
-      const assetBase = getSignAssetBase(lang);
-
-      // 1. Check for a custom recorded .webm video in language-specific assets/signs/ folder
-      const customVideoPath = assetBase + normalizedItem.replace(/\s+/g, '_') + '.webm';
-      const hasCustomVideo = await new Promise(function (resolve) {
-        const v = document.createElement('video');
-        function done(ok) {
-          v.onloadedmetadata = null;
-          v.onerror = null;
-          releaseVideo(v);
-          resolve(ok);
-        }
-        v.onloadedmetadata = function () { done(true); };
-        v.onerror = function () { done(false); };
-        v.src = customVideoPath;
-        v.load();
-      });
+    async function playSequence(text, myToken) {
+      await registerCustomGestures();
       if (myToken !== token) return;
-      if (hasCustomVideo) {
-        await displayMedia(customVideoPath, item);
-        return;
-      }
-
-      // 2. Fall back to language-specific static asset map
-      const assetMap = getActiveSignMap(lang);
-      const assetFile = assetMap[normalizedItem];
-      const isSuccess = assetFile
-        ? await displayMedia(assetFile.indexOf('assets/') === 0 ? assetFile : assetBase + assetFile, item)
-        : false;
-      if (myToken !== token) return;
-
-      if (!isSuccess && normalizedItem.length > 1) {
-        // Fingerspell letter by letter using .webm from the active language folder
-        const letters = normalizedItem.replace(/\s/g, "").split("");
-        for (const letter of letters) {
-          if (myToken !== token) return;
-          await displayMedia(assetBase + letter + '.webm', letter, 800);
-        }
-      } else if (!isSuccess) {
-        await displayMedia(assetBase + 'fallback.png', item, 1200);
-      } else {
-        await sleep(2000);
-      }
-    }
-
-    // Avatar phase: the sign key of an item that has an avatar clip, else null.
-    function avatarKeyFor(item) {
-      if (!avatar || !avatar.getPlayer() || !window.AvatarTimeline) return null;
-      const map = isFilipino(getLanguage()) ? avatarKeyMapFil : avatarKeyMapEn;
-      return map[normalizeSpeechText(item)] || null;
-    }
-
-    // Plays one run of items that have clips. A clip that fails to load plays its word as video.
-    async function playAvatarRun(items, myToken) {
-      const preps = await Promise.all(items.map(function (it) { return avatar.store.load(it.key); }));
-      let i = 0;
-      while (i < items.length) {
+      var planned = plan(text, getLanguage());
+      var setActive = renderCaption(caption, planned);
+      var flat = [];
+      planned.forEach(function (w, wi) { w.units.forEach(function (u, ui) { flat.push({ w: wi, u: ui, key: u.key }); }); });
+      var player = avatar && avatar.getPlayer();
+      var preps = await Promise.all(flat.map(function (f) {
+        return f.key && player ? avatar.store.load(f.key) : Promise.resolve(null);
+      }));
+      var i = 0;
+      while (i < flat.length) {
         if (myToken !== token) return;
         if (!preps[i]) {
-          avatar.hide();
-          await displaySignWithFallback(items[i].item, myToken);
+          setActive(flat[i].w, flat[i].u);
+          await sleep(CAPTION_ONLY_MS);
           i++;
           continue;
         }
-        let j = i;
-        while (j < items.length && preps[j]) j++;
-        const run = items.slice(i, j);
-        clearContainer();
-        avatar.show();
-        await avatar.getPlayer().play(preps.slice(i, j), {
-          onWord: function (k) { if (myToken === token && run[k]) wordLabel.textContent = run[k].item.toUpperCase(); }
+        var j = i;
+        while (j < flat.length && preps[j]) j++;
+        var run = flat.slice(i, j);
+        await player.play(preps.slice(i, j), {
+          onWord: function (k) { if (myToken === token && run[k]) setActive(run[k].w, run[k].u); }
         });
         i = j;
       }
-    }
-
-    // archive/script.js:881-904
-    async function playSequence(text, myToken) {
-      const cleanText = normalizeSpeechText(text);
-      if (!cleanText) {
-        return;
-      }
-
-      let words = cleanText.split(" ");
-      let sequence = [];
-
-      for (let i = 0; i < words.length; i++) {
-        const phrase = findLongestKnownPhrase(words, i, getLanguage());
-        if (phrase) {
-          sequence.push(phrase.text);
-          i += phrase.wordCount - 1;
-          continue;
-        }
-
-        sequence.push(words[i]);
-      }
-
-      if (avatar && window.AvatarTimeline) {
-        const runs = window.AvatarTimeline.splitRuns(sequence.map(function (item) { return { item: item, key: avatarKeyFor(item) }; }));
-        for (const run of runs) {
-          if (myToken !== token) return;
-          if (run.type === 'avatar') {
-            await playAvatarRun(run.items, myToken);
-          } else {
-            avatar.hide();
-            await displaySignWithFallback(run.item, myToken);
-          }
-        }
-        return;
-      }
-
-      for (const item of sequence) {
-        if (myToken !== token) return;
-        await displaySignWithFallback(item, myToken);
-      }
+      if (myToken === token) setActive(-1);
     }
 
     function play(text) {
       abortAll();                       // a new play() supersedes any sequence still running
-      if (avatar && avatar.getPlayer()) avatar.getPlayer().cancel();
-      const myToken = ++token;
+      var p = avatar && avatar.getPlayer();
+      if (p) p.cancel();
+      var myToken = ++token;
       playing = true;
       return playSequence(text, myToken).finally(function () {
         if (myToken === token) playing = false;
@@ -540,13 +317,9 @@ async function fetchAndRegisterCustomGestures() {
       token++;
       playing = false;
       abortAll();
-      if (avatar) {
-        const p = avatar.getPlayer();
-        if (p) p.cancel();
-        avatar.hide();
-      }
-      clearContainer();
-      wordLabel.textContent = '';
+      var p = avatar && avatar.getPlayer();
+      if (p) p.cancel();
+      caption.textContent = '';
     }
 
     function isPlaying() { return playing; }
@@ -556,6 +329,7 @@ async function fetchAndRegisterCustomGestures() {
 
   window.SignPlayer = {
     create: create,
+    plan: plan,
     normalizeSpeechText: normalizeSpeechText,
     formatGrammar: formatGrammar,
     registerCustomGestures: registerCustomGestures

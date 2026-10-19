@@ -67,28 +67,16 @@ async function main() {
 
     console.log('--- text-to-sign ---');
     await ev(`SignPlayer.registerCustomGestures()`);
-    // Play the text through a real SignPlayer on an offscreen container and record the shown media.
-    const play = (lang, text) => ev(`(async () => {
-      const c = document.createElement('div'); c.style.cssText = 'position:fixed;left:-9999px;width:200px;height:200px'; document.body.appendChild(c);
-      const lbl = document.createElement('span'); document.body.appendChild(lbl);
-      const p = SignPlayer.create({ container: c, wordLabel: lbl, getLanguage: () => ${JSON.stringify(lang)} });
-      const seen = [];
-      const mo = new MutationObserver(() => { c.querySelectorAll('video').forEach((v) => { const s = v.getAttribute('src'); if (s && !seen.includes(s)) seen.push(s); }); });
-      mo.observe(c, { childList: true, subtree: true });
-      await Promise.race([p.play(${JSON.stringify(text)}), new Promise((r) => setTimeout(r, 15000))]);
-      mo.disconnect(); p.cancel(); c.remove(); lbl.remove();
-      return seen;
-    })()`);
-    for (const [lang, text, expect] of [['en-US', 'how are you', 'assets/signs/en/how_are_you.webm'], ['fil-PH', 'kamusta ka', null]]) {
-      const seen = await play(lang, text);
-      console.log(`  ${lang} "${text}" -> ${JSON.stringify(seen)}`);
-      check(`${lang} "${text}" plays exactly one clip (no fingerspelling)`, seen.length === 1, `${seen.length}`);
-      if (seen[0]) {
-        if (expect) check('asset path as expected', seen[0] === expect, seen[0]);
-        const res = await fetch(BASE + seen[0], { method: 'HEAD' });
-        check(`asset ${seen[0]} returns 200`, res.status === 200, String(res.status));
-      }
+    // Avatar only since the talk-turns-audio phase: the sign's text plays its sign when the sign has
+    // avatar data (signs.php `avatar`), else the avatar fingerspells it. No video is ever shown.
+    const flags = await ev(`(async () => (await (await fetch('php/api/signs.php')).json()).signs.how_are_you.avatar)()`);
+    for (const [lang, text] of [['en-US', 'how are you'], ['fil-PH', 'kamusta ka']]) {
+      const plan = await ev(`SignPlayer.plan(${JSON.stringify(text)}, ${JSON.stringify(lang)})`);
+      console.log(`  ${lang} "${text}" -> ${JSON.stringify(plan.map((w) => w.kind + ':' + w.units.map((u) => u.key).join('.')))} (how_are_you has avatar data: ${flags})`);
+      if (flags) check(`${lang} "${text}" plays the how_are_you sign (no fingerspelling)`, plan.length === 1 && plan[0].units[0].key === 'how_are_you', JSON.stringify(plan));
+      else check(`${lang} "${text}" (no avatar data here) is fingerspelled word by word`, plan.length === text.split(' ').length && plan.every((w) => w.kind === 'spell'), JSON.stringify(plan));
     }
+    check('no <video> anywhere on talk.html', (await ev(`document.querySelectorAll('video:not(#signing-video)').length`)) === 0);
 
     console.log('--- console ---');
     const errs = chrome.getConsoleErrors();

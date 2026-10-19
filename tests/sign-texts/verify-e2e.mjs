@@ -11,7 +11,8 @@
 //   5  record an ESL-only and an FSL-only sign; knn membership, sample signLanguage, modal Set column
 //   6  edit ESL -> Both with a Filipino text in the dataset view; reload + full sync; samples byte-identical
 //   7  collision: ESL text equal to the FSL-only probe -> "already exists as FSL", Record disabled
-//   8  Let's Talk: live captions show texts (EN/FIL), Translate flow, text-to-sign by text
+//   8  Let's Talk: live captions show texts (EN/FIL), the Send 🔊 flow (talk-turns-audio phase; was the
+//      Translate flow), text-to-sign by text (avatar only since talk-turns-audio: no video)
 //   11 0 console errors and scrollWidth 1024 on gesture-training, talk, reports, index
 //
 // Every probe sign is zz-prefixed and removed in `finally` (delete_gesture + a zz sweep); real
@@ -336,28 +337,20 @@ async function main() {
     const capFil = await captions('fil', 20000);
     console.log('  FIL captions: ' + J(capFil.all));
     check('FIL live caption: at least one sign text shown, every shown caption is a Filipino sign text (no slug)', capFil.shown.length > 0 && capFil.bad.length === 0 && capFil.slug.length === 0, J({ shown: capFil.shown, bad: capFil.bad }));
-    // Translate button flow (manual start): countdown -> recording -> words -> stop -> confirm card
+    // Send 🔊 flow (talk-turns-audio phase; was Translate -> Stop -> confirm card): recording starts by itself
+    // after the countdown and the sentence builds in the box; Send is enabled once it holds a word. Send is
+    // not pressed (it would add and save a conversation message).
     const flowAttempts = [];
-    let modalInfo = null, draft = '';
-    for (let attempt = 1; attempt <= 4 && !(modalInfo && modalInfo.kind === 'confirm'); attempt++) {
-      await t.ev(`document.getElementById('stop-signing-btn').click(); true`);
-      const recMs = await t.waitFor(`document.getElementById('camera-box').classList.contains('recording')`, 8000, 100);
-      check(`Translate button (attempt ${attempt}): countdown -> recording`, recMs >= 0, `${recMs} ms`);
-      draft = '';
-      for (let i = 0; i < 60; i++) { draft = await t.ev(`document.getElementById('signing-draft').textContent`); if (draft) break; await sleep(250); }
-      await t.ev(`document.getElementById('stop-signing-btn').click(); true`);
-      await sleep(800);
-      modalInfo = await t.ev(`({ kind: document.getElementById('modal').getAttribute('data-modal-kind'), open: document.body.classList.contains('modal-open'), text: document.querySelector('#modal .modal-card').textContent.replace(/\\s+/g, ' ').trim() })`);
-      flowAttempts.push({ attempt, draft, modal: modalInfo });
-      console.log(`  attempt ${attempt}: draft ${J(draft)}, modal ${J(modalInfo)}`);
-      if (modalInfo.kind !== 'confirm') { await t.ev(`Array.from(document.querySelectorAll('#modal button')).forEach((b) => { if (/try again/i.test(b.textContent)) b.click(); }); true`); await sleep(500); }
-    }
+    const recMs = await t.waitFor(`document.getElementById('camera-box').classList.contains('recording')`, 8000, 100);
+    check('Send flow: recording starts by itself (countdown -> recording)', recMs >= 0, `${recMs} ms`);
+    let draft = '';
+    for (let i = 0; i < 60; i++) { draft = await t.ev(`document.getElementById('signing-draft').textContent`); if (draft) break; await sleep(250); }
+    const sendBtn = await t.ev(`({ text: document.getElementById('stop-signing-btn').textContent, disabled: document.getElementById('stop-signing-btn').disabled })`);
+    flowAttempts.push({ draft, sendBtn });
     const allFil = new Set(allTexts.fil);
-    // The recording flow with the fake camera is timing dependent (the looped clip, and three probe signs recorded from that same
-    // clip fight with hello for the stable label), so a confirm card is asserted when it appears and otherwise reported, not failed:
-    // the live captions above are the required check. Nothing is ever confirmed or saved.
-    if (modalInfo && modalInfo.kind === 'confirm') check('Translate flow: confirm card "You signed <sign text>." (never confirmed, nothing saved)', modalInfo.open && [...allFil].some((x) => modalInfo.text.includes(x)) && !/w_w/.test(modalInfo.text), J(modalInfo));
-    else console.log('  (info) Translate flow not driven to a confirm card in ' + flowAttempts.length + ' attempts (no stable sign word in the recording window): ' + J(flowAttempts.map((a) => a.modal.text)));
+    // Timing dependent with the fake camera (see the captions above), so asserted when a word arrived, else reported.
+    if (draft) check('Send flow: the sentence shows Filipino sign text and "Send 🔊" is enabled', [...allFil].some((x) => draft.includes(x)) && !/w_w/.test(draft) && sendBtn.text === 'Send 🔊' && !sendBtn.disabled, J({ draft, sendBtn }));
+    else console.log('  (info) no stable sign word in the recording window: ' + J(flowAttempts));
     report.talkFlow = flowAttempts;
     check('Part B (signing): 0 console errors', chrome2.getConsoleErrors().length === 0 && chrome2.getExceptions().length === 0, J(chrome2.getConsoleErrors().slice(0, 3)));
     await chrome2.close(); chrome2 = null;
@@ -378,7 +371,7 @@ async function main() {
       await sleep(200);
       await s.ev(`document.getElementById('speaking-translate').click(); true`);
       const t0 = Date.now(); let words = [];
-      while (Date.now() - t0 < 9000) { const w = await s.ev(`document.getElementById('speaking-sign-word').textContent`); if (w && !words.includes(w)) words.push(w); await sleep(120); }
+      while (Date.now() - t0 < 9000) { const w = await s.ev(`(() => { const on = document.querySelector('#speaking-caption .cap-word.on, #speaking-caption .cap-spell.on'); return on ? on.textContent : ''; })()`); if (w && !words.includes(w)) words.push(w); await sleep(120); }
       const vids = await s.ev(`window.__vids.slice()`);
       const statuses = [];
       for (const v of vids) { const r = await fetch(new URL(v, BASE)).catch(() => null); statuses.push(r ? r.status : -1); }
@@ -396,8 +389,9 @@ async function main() {
       console.log(`  ${lang} ${J(text)} -> words ${J(r.words)}, clips shown ${J(r.vids)}, http ${J(r.statuses)}; asset URLs requested (HEAD status) ${J(r.attemptStatus)}`);
     }
     report.tts = tts;
-    check('"how are you" (EN) plays a clip, HTTP 200', tts[2].vids.length >= 1 && tts[2].statuses.every((x) => x === 200), J(tts[2]));
-    check('"kamusta ka" (FIL; the real Filipino text of how_are_you) plays a clip, HTTP 200', tts[3].vids.length >= 1 && tts[3].statuses.every((x) => x === 200), J(tts[3]));
+    // Avatar only since the talk-turns-audio phase: no video and no assets/signs request, whatever the sign has.
+    check('"how are you" (EN): shown on the avatar, no video requested', tts[2].vids.length === 0 && Object.keys(tts[2].attemptStatus).length === 0 && tts[2].words.length >= 1, J(tts[2]));
+    check('"kamusta ka" (FIL; the real Filipino text of how_are_you): shown on the avatar, no video requested', tts[3].vids.length === 0 && Object.keys(tts[3].attemptStatus).length === 0 && tts[3].words.length >= 1, J(tts[3]));
     console.log('  (info) "kumusta ka" (the brief spelling, not a stored text): ' + J(tts[4]));
     console.log('  (info) probe text-to-sign: EN ' + J(tts[0].vids) + ' ' + J(tts[0].statuses) + ' | FIL ' + J(tts[1].vids) + ' ' + J(tts[1].statuses));
     const errB = chrome3.getConsoleErrors();

@@ -1,5 +1,5 @@
-// php/api/quiz.php (accounts-quiz phase): the sign pool (signs with a playable clip in a language,
-// found like Let's Talk finds them), saving an attempt (logged-in only, scored server-side) and the
+// php/api/quiz.php (accounts-quiz phase): the sign pool (signs with an avatar clip in a language;
+// avatar only since the talk-turns-audio phase), saving an attempt (logged-in only, scored server-side) and the
 // scores (own for a user, everyone's or one user's for an admin).
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,7 +21,7 @@ const pool = (lang) => callPhp({ script: 'quiz.php', method: 'GET', query: `acti
 const save = (body, cookie) => callPhp({ script: 'quiz.php', body: { action: 'save', ...body }, cookie });
 const scores = (q, cookie) => callPhp({ script: 'quiz.php', method: 'GET', query: 'action=scores&' + q, cookie });
 
-test('pool: a sign with a video named after its text is in; one without a clip is out; avatar first', () => {
+test('pool: avatar clips only (talk-turns-audio: no video fallback); inactive and clip-less signs are out', () => {
   exec(`INSERT INTO gestures (label, sign_language, text_en, text_fil, category) VALUES
         ('zz_quiz_hello', 'BOTH', 'Hello', 'Kamusta', 'word'),
         ('zz_quiz_noclip', 'ESL', 'Zz no clip here', NULL, 'word'),
@@ -34,17 +34,17 @@ test('pool: a sign with a video named after its text is in; one without a clip i
   const esl = pool('ESL');
   assert.equal(esl.status, 200);
   const byKey = Object.fromEntries(esl.json.signs.map((s) => [s.key, s]));
-  assert.deepEqual(byKey.zz_quiz_hello, { key: 'zz_quiz_hello', text: 'Hello', category: 'words', clip: { type: 'video', src: 'assets/signs/en/hello.webm' } });
+  // zz_quiz_hello's text matches assets/signs/en/hello.webm, which made it a quiz sign before this phase.
+  assert.equal(byKey.zz_quiz_hello, undefined, 'a sign with only a video is not in the pool');
   assert.equal(byKey.zz_quiz_noclip, undefined);
   assert.equal(byKey.zz_quiz_off, undefined, 'inactive signs are left out');
-  assert.deepEqual(byKey.zz_quiz_avatar.clip, { type: 'avatar', key: 'zz_quiz_avatar' });
-  assert.equal(byKey.zz_quiz_avatar.category, 'phrases');
+  assert.deepEqual(byKey.zz_quiz_avatar, { key: 'zz_quiz_avatar', text: 'Zz avatar sign', category: 'phrases', clip: { type: 'avatar', key: 'zz_quiz_avatar' } });
+  assert.ok(esl.json.signs.every((s) => s.clip.type === 'avatar'), 'every clip is an avatar clip');
 
   const fsl = pool('FSL').json.signs;
-  const hello = fsl.find((s) => s.key === 'zz_quiz_hello');
-  assert.deepEqual(hello, { key: 'zz_quiz_hello', text: 'Kamusta', category: 'words', clip: { type: 'video', src: 'assets/signs/fil/kamusta.webm' } });
+  assert.equal(fsl.find((s) => s.key === 'zz_quiz_hello'), undefined);
   assert.equal(fsl.find((s) => s.key === 'zz_quiz_avatar'), undefined, 'an ESL sign is not in the FSL pool');
-  assert.ok(fsl.every((s) => s.clip.type === 'avatar' || s.clip.src.startsWith('assets/signs/fil/')), 'FSL videos come from the fil folder');
+  assert.ok(fsl.every((s) => s.clip.type === 'avatar'));
   assert.equal(pool('XX').status, 400);
 });
 
