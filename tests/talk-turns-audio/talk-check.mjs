@@ -83,6 +83,13 @@ const INIT = `(() => {
   window.SpeechSynthesisUtterance = function (t) { this.text = t; };
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () { if (this.src && !this.srcObject) window.__plays.push(this.src); return play.apply(this, arguments); };
+  // recordings scheduled through Web Audio (js/sign-audio.js since the gapless change): the fetched URL
+  // and each AudioBufferSourceNode started
+  window.__audioFetches = []; window.__sources = 0;
+  const f = window.fetch;
+  window.fetch = function (u) { if (/audio_/.test(String(u))) window.__audioFetches.push(String(u)); return f.apply(this, arguments); };
+  const st = AudioBufferSourceNode.prototype.start;
+  AudioBufferSourceNode.prototype.start = function () { window.__sources++; return st.apply(this, arguments); };
   let AP;
   Object.defineProperty(window, 'AvatarPlayer', { configurable: true, get() { return AP; }, set(v) {
     AP = v; const create = v.create;
@@ -276,9 +283,11 @@ try {
   check('"🔊 Speaking" toast', (await p.textContent('#talkToast')).startsWith('🔊 Speaking'));
   await shot('2-sent-speaking');
   await p.waitForFunction(() => !document.querySelector('#thread-list .bubble-row.playing'), null, { timeout: 20000 });
-  const heard = await p.evaluate((n) => ({ plays: window.__plays.filter((s) => /audio_/.test(s)).map((s) => s.replace(location.origin, '')), utter: window.__utter.slice(n) }), nUtter);
-  check('auto-speak: hello from its recording, the rest by the voice as one utterance (EN)',
-    heard.plays.length === 1 && /saved_gestures\/hello\/audio_en\.wav\?v=1$/.test(heard.plays[0]) && J(heard.utter) === J([{ text: 'My name How are you', lang: 'en-US' }]), J(heard));
+  const heard = await p.evaluate((n) => ({ plays: window.__plays.filter((s) => /audio_/.test(s)).map((s) => s.replace(location.origin, '')), fetched: window.__audioFetches.slice(), sources: window.__sources, utter: window.__utter.slice(n) }), nUtter);
+  // hello's recording is fetched once and scheduled on the AudioContext (no <audio> element), then the voice
+  check('auto-speak: hello from its recording (Web Audio), the rest by the voice as one utterance (EN)',
+    heard.plays.length === 0 && heard.fetched.length === 1 && /saved_gestures\/hello\/audio_en\.wav\?v=1$/.test(heard.fetched[0]) && heard.sources === 1
+    && J(heard.utter) === J([{ text: 'My name How are you', lang: 'en-US' }]), J(heard));
   // 🔊: replay, then stop while playing
   await p.click('#thread-list .bubble-row.deaf:last-child .bubble-speak');
   await p.waitForFunction(() => document.querySelector('#thread-list .bubble-row.deaf:last-child').classList.contains('playing'), null, { timeout: 5000 });
