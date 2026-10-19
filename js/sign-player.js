@@ -165,12 +165,17 @@ function formatGrammar(text) {
   }
 
   // Text -> [{ text, kind: 'sign' | 'spell', units: [{ key|null, label }] }] in sentence order.
-  // Longest known phrase first (signs with avatar data only), then the single word, then a number
-  // 1-10 as one sign, else fingerspelling.
+  // Longest known phrase first across both languages (signs with avatar data only; at equal length
+  // the selected language wins), then the single word in the selected language, then in the other
+  // language (EN<->FIL), then a number 1-10 as one sign, else fingerspelling.
   function plan(text, lang) {
     var fil = isFilipino(lang);
     var map = fil ? avatarKeyMapFil : avatarKeyMapEn;
-    var phrases = fil ? knownPhrasesFil : knownPhrasesEn;
+    var other = fil ? avatarKeyMapEn : avatarKeyMapFil;
+    var phrases = (fil ? knownPhrasesFil : knownPhrasesEn).map(function (t) { return { text: t, map: map }; })
+      .concat((fil ? knownPhrasesEn : knownPhrasesFil).map(function (t) { return { text: t, map: other }; }))
+      .map(function (ph, idx) { ph.n = ph.text.split(' ').length; ph.idx = idx; return ph; })
+      .sort(function (a, b) { return b.n - a.n || a.idx - b.idx; });
     var clean = normalizeSpeechText(text).replace(/[?¿]/g, '').replace(/\s+/g, ' ').trim();
     if (!clean) return [];
     var words = clean.split(' ');
@@ -181,17 +186,16 @@ function formatGrammar(text) {
     for (var i = 0; i < words.length; i++) {
       var matched = null;
       for (var p = 0; p < phrases.length && !matched; p++) {
-        var n = phrases[p].split(' ').length;
-        if (words.slice(i, i + n).join(' ') === phrases[p]) matched = { text: phrases[p], n: n };
+        if (words.slice(i, i + phrases[p].n).join(' ') === phrases[p].text) matched = phrases[p];
       }
       if (matched) {
-        out.push({ text: shown.slice(i, i + matched.n).join(' '), kind: 'sign', units: [{ key: map[matched.text], label: matched.text }] });
+        out.push({ text: shown.slice(i, i + matched.n).join(' '), kind: 'sign', units: [{ key: matched.map[matched.text], label: matched.text }] });
         i += matched.n - 1;
         continue;
       }
       var w = words[i];
       var num = /^[0-9]+$/.test(w) ? Number(w) : 0;
-      var key = map[w] || (num >= 1 && num <= 10 ? numberKey(num) : null);
+      var key = map[w] || other[w] || (num >= 1 && num <= 10 ? numberKey(num) : null);
       if (key) { out.push({ text: shown[i], kind: 'sign', units: [{ key: key, label: w }] }); continue; }
       var units = spell(w);
       if (units.length) out.push({ text: shown[i], kind: 'spell', units: units });

@@ -259,3 +259,25 @@ test('the old video path is gone from sign-player.js (no word -> .webm map, no a
   const code = read('sign-player.js').replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!/\.webm|\.mp4|assets\/signs|fallback\.png|<video|createElement\('video'\)/.test(code));
 });
+
+test('cross-language lookup: selected language first, then the other one, then numbers, then spelling', async () => {
+  const payload = { success: true, signs: {
+    ...PAYLOAD.signs,
+    zz_good: sign({ set: 'BOTH', textEn: 'Zz Good', textFil: 'Mabuti', avatar: true }),
+    zz_fine: sign({ set: 'BOTH', textEn: 'Zz I am fine', textFil: 'Mabuti ako', avatar: true }),
+    zz_hi: sign({ set: 'BOTH', textEn: 'Hello', textFil: 'Kumusta', avatar: true }),
+    zz_same_en: sign({ set: 'ESL', textEn: 'Zz Same', textFil: null, avatar: true }),
+    zz_same_fil: sign({ set: 'FSL', textEn: null, textFil: 'Zz Same', avatar: true }),
+  } };
+  assert.deepEqual(await planOf(payload, 'en-US', 'mabuti'), ['zz_good']);
+  assert.deepEqual(await planOf(payload, 'fil-PH', 'hello'), ['zz_hi']);
+  // longest phrase first across both maps: "mabuti ako" (FIL) beats "mabuti" in EN mode
+  assert.deepEqual(await planOf(payload, 'en-US', 'hello mabuti ako'), ['zz_hi', 'zz_fine']);
+  assert.deepEqual(await planOf(payload, 'en-US', 'zz i am fine'), ['zz_fine']);
+  // the same text in both maps: the selected language wins
+  assert.deepEqual(await planOf(payload, 'en-US', 'zz same'), ['zz_same_en']);
+  assert.deepEqual(await planOf(payload, 'fil-PH', 'zz same'), ['zz_same_fil']);
+  // an ESL-only text now resolves in FIL mode too; an unknown word is still spelled
+  assert.deepEqual(await planOf(PAYLOAD, 'fil-PH', 'zz eslonly'), ['zz_eslonly']);
+  assert.deepEqual(await planOf(payload, 'en-US', 'hiz'), ['spell:h.i.z']);
+});

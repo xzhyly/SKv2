@@ -165,7 +165,8 @@
     z-index:60;
     display:none;
   }
-  body[data-screen="signing"] #thread,
+  /* Owner 2026-10-20 (talk-turns-audio): the Sign turn never shows the strip, so the camera always
+     gets the full height under the top bar; it stays on "Whose turn is it?" and Speak or Type. */
   body[data-screen="speaking"] #thread{
     display:block;height:96px;
     transition:height 140ms ease;
@@ -181,7 +182,6 @@
      re-matches and the 96px rule above takes over, with the same
      transition. Chromium (this kiosk's browser) has supported :has() since
      v105, well within what this project already assumes. */
-  body[data-screen="signing"] #thread:not(:has(.bubble-row)),
   body[data-screen="speaking"] #thread:not(:has(.bubble-row)){
     height:0;border:none;
   }
@@ -447,14 +447,14 @@
   body[data-screen="speaking"] #screen-speaking{display:flex}
   body[data-screen="thread"] #screen-thread{display:flex}
 
-  /* Task 3: #thread sits collapsed (96px) over y=90..186 on signing/speaking
+  /* Task 3: #thread sits collapsed (96px) over y=90..186 on speaking (signing: hidden, 2026-10-20)
      (see the body[data-screen="signing"]/"speaking" #thread rule above) —
      `.screen`'s flat padding-top:90px isn't enough on those two screens, or
      their own content would render underneath the collapsed strip. Override
      just these two ids to clear y=186 instead. who-first (no #thread yet)
      and thread (#thread starts at y=90 same as the header-clearing value)
      both keep the base 90px from `.screen` above. */
-  #screen-signing,
+  #screen-signing{padding-top:90px;align-items:center}
   #screen-speaking{
     padding-top:186px;
     align-items:center;
@@ -483,7 +483,6 @@
      the base .screen padding-top of 90px instead, so the camera/mic content
      actually moves up into the space the empty strip just gave back rather
      than leaving a second, content-side hole in its place. */
-  body[data-screen="signing"]:not(:has(#thread .bubble-row)) #screen-signing,
   body[data-screen="speaking"]:not(:has(#thread .bubble-row)) #screen-speaking{
     padding-top:90px;
   }
@@ -648,7 +647,7 @@
   .guide-start-btn:active{background:#ea6a0a}
   .guide-start-btn:disabled{opacity:0.5;cursor:not-allowed}
 
-  /* Row under the top bar (and under the thread strip on later turns): camera | right column.
+  /* Row under the top bar (no thread strip in the Sign turn): camera | right column.
      12 px padding, 14 px between them; fills the screen's height, so nothing scrolls. */
   .signing-live{
     display:flex;flex-direction:row;align-items:stretch;gap:14px;
@@ -740,8 +739,8 @@
   }
   .signing-caption-pill{z-index:3}
   /* The sentence being built: a white box in the right column, >= 24 px bold, wrapping over as many
-     whole lines as fit (--draft-max, set by the script below from the box's height: 7 lines on the first
-     turn, 4 under the thread strip). Bottom-aligned clip, so a longer sentence keeps its newest words;
+     whole lines as fit (--draft-max, set by the script below from the box's height: 7 lines on every
+     turn, the strip being hidden in the Sign turn). Bottom-aligned clip, so a longer sentence keeps its newest words;
      the newest word is highlighted orange. A muted hint while empty. */
   .signing-draft{
     flex:1 1 auto;min-height:0;padding:14px 16px;
