@@ -6,11 +6,14 @@
 //   B  "Hello Jose 25 3": hello is a sign, Jose spelled J-O-S-E, 25 spelled 2-5, 3 one number sign,
 //      all one continuous avatar run; Replay plays it again; Edit returns to the text; Send adds the
 //      message directly (no popup) and returns to "Whose turn is it?".
-//   C  Sign screen: Send 🔊 (no Translate / Stop & Add), "🗣 Speak or Type" -> Speak or Type,
-//      "🤟 Sign instead" -> Sign: the unsent signed sentence is kept and restored; Send adds it at
-//      once, returns to "Whose turn is it?" and speaks it: recorded audio for a sign that has it,
-//      the browser voice for the rest (one utterance); 🔊 on the bubble stops / replays it.
-//   D  + New conversation (no messages) drops a kept sentence. The conversation is saved as before.
+//   C  Sign screen: Send 🔊 (no Translate / Stop & Add). Leaving a turn discards what was not sent
+//      (owner change 2026-10-19), both directions: "🗣 Speak or Type" empties the signed sentence and
+//      the recognizer buffer (Sign starts empty again); "🤟 Sign instead" empties the typed text,
+//      stops the running mic and drops its transcript; Back drops an unsent avatar preview; Back
+//      from Sign empties the sentence; + New conversation (no messages yet) empties the field. A
+//      language switch inside the turn keeps the sentence. Send adds the message at once, returns to
+//      "Whose turn is it?" and speaks it: recorded audio for a sign that has it, the browser voice
+//      for the rest (one utterance); 🔊 on the bubble stops / replays it.
 //   E  Learn Signs and Quiz request no video either. 0 console errors, no scroll on every screen.
 // Recognition is driven the way the live loop reads it (window.knnPredict / extractFeatures /
 // GestureDataRecorder.getLatestLandmarks replaced in the page), not changed. Avatar clips are built
@@ -133,6 +136,15 @@ try {
   check('Speak or Type has "🤟 Sign instead"', (await p.textContent('#speak-to-sign-btn')).includes('Sign instead') && (await rect('#speak-to-sign-btn')).visible);
   await shot('3-speak-type');
   await noScroll('Speak or Type');
+  // + New conversation with nothing sent yet: back to "Who speaks first?", the typed text is gone.
+  // (set without focus: a focused field raises the on-screen keyboard, which hides + New conversation)
+  await p.evaluate(() => { const i = document.getElementById('speaking-input'); i.value = 'zz never sent'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await p.click('#newConversationBtn');
+  await sleep(200);
+  const nc = { screen: await screen(), field: await p.inputValue('#speaking-input') };
+  await p.click('#card-speak');
+  await sleep(200);
+  check('+ New conversation drops the unsent typed text', nc.screen === 'who-first' && nc.field === '' && (await p.inputValue('#speaking-input')) === '', J(nc));
 
   // ── A. "hi" -> fingerspelled by the avatar ──
   await p.fill('#speaking-input', 'hi');
@@ -226,15 +238,33 @@ try {
   check('signed words build the sentence', J(await p.evaluate(() => window.TalkSigning.getDraft())) === J({ words: ['Hello', 'My name'], keys: ['hello', 'my_name'] }), J(await p.evaluate(() => window.TalkSigning.getDraft())));
   await shot('1-sign');
   await noScroll('Sign');
+  // Sign -> Speak or Type: the unsent sentence and the recognizer buffer are discarded.
+  await p.evaluate(() => { window.__label = 'hello'; });   // a sign half-recognised (in the filter) when leaving
+  await sleep(200);
   await p.click('#sign-to-speak-btn');
+  await p.evaluate(() => { window.__label = null; });
   await sleep(300);
-  const away = await p.evaluate(() => ({ screen: document.body.dataset.screen, cam: !!document.getElementById('signing-video').srcObject }));
-  check('"🗣 Speak or Type" goes straight to Speak or Type; camera released', away.screen === 'speaking' && !away.cam, J(away));
+  const away = await p.evaluate(() => ({ screen: document.body.dataset.screen, cam: !!document.getElementById('signing-video').srcObject, draft: window.TalkSigning.getDraft(), box: document.getElementById('signing-draft').textContent }));
+  check('"🗣 Speak or Type" goes straight to Speak or Type; camera released; the unsent sentence is discarded',
+    away.screen === 'speaking' && !away.cam && J(away.draft) === J({ words: [], keys: [] }) && away.box === '', J(away));
+  check('Speak or Type opens with an empty field', (await p.inputValue('#speaking-input')) === '');
+  // Speak or Type -> Sign: typed text + a running mic with its transcript are discarded.
+  await p.evaluate(() => { const i = document.getElementById('speaking-input'); i.value = 'zz typed but not sent'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await p.click('#speaking-mic-btn');
+  const micOn = await p.waitForFunction(() => window.TalkSpeaking.isCapturing(), null, { timeout: 15000 }).then(() => true, () => false);
+  // the live transcript as the mic writes it (js/talk-speaking.js: field value + an input event)
+  await p.evaluate(() => { const i = document.getElementById('speaking-input'); i.value = 'zz spoken but not sent'; i.dispatchEvent(new Event('input', { bubbles: true })); });
+  await shot('3c-speak-type-unsent');
   await p.click('#speak-to-sign-btn');
   await p.waitForFunction(() => { const v = document.getElementById('signing-video'); return document.body.dataset.screen === 'signing' && v.classList.contains('active') && v.videoWidth > 0; }, null, { timeout: 60000 });
-  const back = await p.evaluate(() => ({ draft: document.getElementById('signing-draft').textContent, shown: document.getElementById('signing-draft').classList.contains('show'), btn: document.getElementById('stop-signing-btn').disabled }));
-  check('"🤟 Sign instead" goes straight back; the unsent sentence is restored and can be sent', back.draft === 'Hello My name' && back.shown && back.btn === false, J(back));
-  await shot('1b-sign-restored');
+  const left = await p.evaluate(() => ({ field: document.getElementById('speaking-input').value, busy: window.TalkSpeaking.isBusy(), capturing: window.TalkSpeaking.isCapturing() }));
+  check('"🤟 Sign instead": mic was on, is stopped, the typed text and transcript are dropped', micOn && left.field === '' && !left.busy && !left.capturing, J({ micOn, ...left }));
+  const back = await p.evaluate(() => ({ draft: document.getElementById('signing-draft').textContent, shown: document.getElementById('signing-draft').classList.contains('show'), btn: document.getElementById('stop-signing-btn').disabled, keys: window.TalkSigning.getDraft().keys }));
+  check('back on Sign: it starts empty (Send disabled)', back.draft === '' && !back.shown && back.btn === true && back.keys.length === 0, J(back));
+  await shot('1b-sign-empty-after-switch');
+  await p.waitForFunction(() => document.getElementById('camera-box').classList.contains('recording'), null, { timeout: 10000 });
+  await sign('hello');
+  await sign('my_name');
   await p.waitForFunction(() => document.getElementById('camera-box').classList.contains('recording'), null, { timeout: 10000 });
   await sign('how_are_you');
   const nUtter = await p.evaluate(() => window.__utter.length);
@@ -264,15 +294,32 @@ try {
   await sign('good_morning');
   await p.click('#backBtn');
   await sleep(200);
+  check('Back from Sign discards the unsent sentence', J(await p.evaluate(() => window.TalkSigning.getDraft().keys)) === '[]');
   await p.click('#turn-sign-btn');
-  await sleep(500);
-  check('Back and Sign again also keeps the unsent sentence', J(await p.evaluate(() => window.TalkSigning.getDraft().keys)) === J(['good_morning']));
+  await p.waitForFunction(() => document.getElementById('camera-box').classList.contains('recording'), null, { timeout: 10000 });
+  check('Sign again starts empty', J(await p.evaluate(() => window.TalkSigning.getDraft().keys)) === '[]');
+  await sign('good_morning');
   await p.click('#chip-fsl');
   await p.waitForFunction(() => !document.getElementById('signing-cam-overlay').classList.contains('show'), null, { timeout: 60000 });
   const fil = await p.evaluate(() => window.TalkSigning.getDraft());
-  check('switching to FIL keeps the sentence, in Filipino', J(fil.keys) === J(['good_morning']) && fil.words[0] !== 'Good Morning', J(fil));
+  check('switching to FIL inside the turn keeps the sentence, in Filipino', J(fil.keys) === J(['good_morning']) && fil.words[0] !== 'Good Morning', J(fil));
   await p.click('#chip-esl');
   await p.waitForFunction(() => !document.getElementById('signing-cam-overlay').classList.contains('show'), null, { timeout: 60000 });
+  // Speak or Type -> Translate -> Back: the unsent preview and text are dropped.
+  await p.click('#backBtn');
+  await sleep(200);
+  await p.click('#turn-speak-btn');
+  await sleep(300);
+  await p.fill('#speaking-input', 'hello');
+  await p.dispatchEvent('#speaking-input', 'input');
+  await p.click('#speaking-translate');
+  await p.waitForFunction(() => document.querySelector('#speaking-caption .on'), null, { timeout: 15000 });
+  await p.click('#backBtn');
+  await sleep(300);
+  await p.click('#turn-speak-btn');
+  await sleep(300);
+  const prev = await p.evaluate(() => ({ state: document.getElementById('screen-speaking').dataset.speaking, field: document.getElementById('speaking-input').value, caption: document.getElementById('speaking-caption').textContent }));
+  check('Back from an unsent avatar preview drops it and the text', prev.state === 'compose' && prev.field === '' && prev.caption === '', J(prev));
   check('0 console errors in Let\'s Talk', errors.length === 0, J(errors));
 
   // ── E. Learn Signs and Quiz: no video requests ──

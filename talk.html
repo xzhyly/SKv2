@@ -1390,11 +1390,20 @@
     // still counts as 'speech' until the field is emptied, per docs/reports/
     // 2026-09-25-saved-conversations-step1.md's owner answer.
     var speakingFromMic = false;
-    // Leaving Speak or Type: stop any sign playback, release the mic (js/talk-speaking.js),
-    // and return the screen to the compose state (typed text is kept) for the next entry.
+    // Leaving Speak or Type: stop any sign playback, release the mic (js/talk-speaking.js) and return
+    // the screen to the compose state. Owner change 2026-10-19 (talk-turns-audio): leaving the turn
+    // discards what was not sent, so the field is emptied too — the typed text and the transcript that
+    // TalkSpeaking.leave() has just written into it when it stopped a running capture (later results
+    // are ignored there). Only Send keeps a message.
     function onLeaveSpeaking() {
       if (speakingPlayer) speakingPlayer.cancel();
       TalkSpeaking.leave();
+      var input = document.getElementById('speaking-input');
+      if (input.value !== '') {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));   // Send/Translate disabled, mic flag reset
+      }
+      speakingFromMic = false;
       resetSpeakingUi();
     }
     // End Conversation / idle "End Now": release the camera and the mic before the real page
@@ -2156,8 +2165,8 @@
     document.getElementById('turn-speak-btn').addEventListener('click', function () {
       showScreen('speaking');
     });
-    // Turn shortcuts (talk-turns-audio): one tap from inside a turn straight to the other one. The
-    // unsent signed sentence is kept (js/talk-signing.js) and shows again on return.
+    // Turn shortcuts (talk-turns-audio): one tap from inside a turn straight to the other one. What was
+    // not sent is discarded on the way out (owner change 2026-10-19: onLeaveSigning / onLeaveSpeaking).
     document.getElementById('sign-to-speak-btn').addEventListener('click', function () {
       showScreen('speaking');
     });
@@ -2182,7 +2191,7 @@
       if (document.querySelector('#thread-list .bubble-row') === null) {
         closeModal();
         showScreen('who-first');
-        TalkSigning.clearDraft();       // the kept signed sentence belongs to the old conversation
+        TalkSigning.clearDraft();       // nothing unsent survives into the new conversation
         return;
       }
       onEndConversation('ended');

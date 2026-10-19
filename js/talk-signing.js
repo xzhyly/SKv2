@@ -8,8 +8,9 @@
 // Talk-turns-audio phase (docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md): the main
 // button is "Send 🔊" (it replaces Translate / Stop & Add): recording starts by itself (the same 3 s
 // countdown) once the camera runs, and Send (or the "stop" sign) hands the sentence and its sign keys
-// to onText. The unsent sentence survives leave() and a language switch; only Send and clearDraft()
-// (+ New conversation) empty it. Recognition (tick's prediction, filter and debounce) is unchanged.
+// to onText. Owner change 2026-10-19: leaving the turn discards what was not sent — leave() empties the
+// sentence and the recognizer buffer, so Sign always starts empty; a language switch inside the turn
+// keeps it. Recognition (tick's prediction, filter and debounce) is unchanged.
 (function () {
   'use strict';
 
@@ -66,7 +67,7 @@
   function showDraft() {
     var el = $('signing-draft');
     renderDraft(el, words);
-    el.classList.toggle('show', words.length > 0);   // a kept sentence shows during the countdown too
+    el.classList.toggle('show', words.length > 0);   // a sentence kept across a language switch shows during the countdown too
   }
 
   function setOverlay(show, text) {
@@ -74,7 +75,7 @@
     $('signing-cam-overlay').classList.toggle('show', !!show);
   }
 
-  // Send is enabled once there is a word to send (a kept sentence can be sent during the countdown).
+  // Send is enabled once there is a word to send (also during the countdown after a language switch).
   function renderButton(countdown) {
     var b = $('stop-signing-btn');
     b.disabled = !stream || switching || words.length === 0;
@@ -104,7 +105,7 @@
     stableTicks = 0;
   }
 
-  // clearWords: Send only; leaving the screen or switching the language keeps the sentence.
+  // clearWords: Send and leave() (leaving the turn discards it); a language switch keeps the sentence.
   function endSession(clearWords) {
     if (countdownId) { clearInterval(countdownId); countdownId = null; }
     uiState = 'idle';
@@ -163,7 +164,7 @@
     if (active && stream && !switching && uiState === 'idle') beginCountdown();
   }
 
-  // + New conversation: the kept sentence is dropped.
+  // Drops the unsent sentence without leaving (+ New conversation also calls it; leave() already does).
   function clearDraft() {
     words = [];
     keys = [];
@@ -328,8 +329,7 @@
     active = true;
     var myGen = ++gen;
     syncChips();
-    words = keys.map(function (k) { return translateGestureLabel(k, signLang); });   // kept sentence, current language
-    endSession(false);
+    endSession(true);                 // a turn always starts with an empty sentence
     setOverlay(true, 'Starting camera…');
     renderButton();
     initCameraWithFallback(320, 240, function (s) {
@@ -385,7 +385,7 @@
     var ctx = c.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, c.width, c.height);
     setOverlay(false);
-    endSession(false);
+    endSession(true);                 // leaving the turn discards the unsent sentence and the recognizer buffer
   }
 
   function init(callbacks) {
