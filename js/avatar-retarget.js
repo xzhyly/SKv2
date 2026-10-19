@@ -18,6 +18,18 @@
   var ROLL_MAX = 0.15;
   var DX_MAX = 20;
   var SHRUG_MAX = 12;
+  // Forearm direction (cleanup 2026-10-20). Where the forearm points at the camera its 2D length
+  // (kf) drops to 0.1-0.2 and its angle is noise: measured flips of 107-179 degrees in one frame at
+  // the ends of d, o, p, u, y. Below KF_HOLD the previous direction is kept, from KF_HOLD to KF_TRUST
+  // the measured one is blended in, and the change per 40 ms is capped at TURN_MAX. A turn of more than
+  // 90 degrees on a short forearm is the 180-degree ambiguity: the opposite direction is used.
+  var KF_HOLD = 0.3;
+  var KF_TRUST = 0.5;
+  var TURN_MAX = Math.PI / 4;   // radians per 40 ms
+  // Hand side (cleanup 2026-10-20): Holistic's left/right hand label can be the other way round for a
+  // frame where the hands are close (6 of 4,541 hand frames over 46 clips). A hand belongs to the arm
+  // whose pose wrist it is nearer; it moves only when that is clearly so (SWAP_RATIO).
+  var SWAP_RATIO = 0.5;
 
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
   function smoothstep(e0, e1, x) { var t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); }
@@ -133,17 +145,38 @@
     };
   }
 
+  // The frame's hands in ARMS order ([arm 0's hand, arm 1's hand], pixel space), each given to the arm
+  // whose pose wrist it is nearer when Holistic's label says otherwise (SWAP_RATIO above).
+  function handsOf(clip, frame) {
+    var P = Clip.P, pose = frame[0];
+    var wr = Clip.ARMS.map(function (A) { return Clip.px(clip, pose[A.W]); });
+    var h = Clip.ARMS.map(function (A) { return frame[A.hand] ? frame[A.hand].map(function (p) { return Clip.px(clip, p); }) : null; });
+    function d(hand, i) { return Math.hypot(hand[0].x - wr[i].x, hand[0].y - wr[i].y); }
+    if (h[0] && h[1]) {
+      if (d(h[0], 1) + d(h[1], 0) < SWAP_RATIO * (d(h[0], 0) + d(h[1], 1))) h = [h[1], h[0]];
+    } else if (h[0] || h[1]) {
+      var i = h[0] ? 0 : 1;
+      if (d(h[i], 1 - i) < SWAP_RATIO * d(h[i], i)) { h[1 - i] = h[i]; h[i] = null; }
+    }
+    return h;
+  }
+
   // Retargets one stored frame (with a pose) -> { pose, detected: [bool, bool], face: [w, w] }.
-  function retargetFrame(clip, cal, rig, frame, head) {
+  // wristShift (optional, per arm, px): added to the pose wrist of an arm whose hand is missing in this
+  // frame, so the wrist stays where the hand model put it in the nearest frame that has the hand.
+  function retargetFrame(clip, cal, rig, frame, head, wristShift) {
     var P = Clip.P;
     var pose = frame[0];
     var N_s = Clip.px(clip, pose[P.nose]);
     var socketGap = rig.sockets[1].x - rig.sockets[0].x;
     var sh = rig.palm / cal.palm;
     var detected = [false, false], faceW = [0, 0];
+    var hands = handsOf(clip, frame);
     var arms = Clip.ARMS.map(function (A, i) {
       var S_s = Clip.px(clip, pose[A.S]), E_s = Clip.px(clip, pose[A.E]), Wp = Clip.px(clip, pose[A.W]);
-      var hp = frame[A.hand] ? frame[A.hand].map(function (p) { return Clip.px(clip, p); }) : null;
+      var hp = hands[i];
+      if (!hp && wristShift && wristShift[i]) Wp = add(Wp, wristShift[i]);
+      // the hand model's wrist wins over the pose wrist (it is the one the hand is drawn from)
       var W_s = hp ? hp[0] : Wp;
       var shrug = clamp((S_s.y - cal.shoulderY[i]) * (socketGap / cal.sigma), -SHRUG_MAX, SHRUG_MAX);
       var S = rig.pivot(i, shrug);
@@ -186,6 +219,56 @@
       return arm;
     });
     return { pose: { arms: arms, head: { roll: head.roll, dx: head.dx } }, detected: detected, face: faceW };
+  }
+
+  // Per arm, per frame without the hand: the offset hand wrist - pose wrist of the nearest frame (at
+  // most GAP_INTERP away) that has it, else null.
+  function wristShifts(clip) {
+    var n = clip.frames.length;
+    var shift = clip.frames.map(function () { return [null, null]; });
+    var known = clip.frames.map(function (f) {
+      if (!f[0]) return [null, null];
+      var h = handsOf(clip, f);
+      return Clip.ARMS.map(function (A, i) { return h[i] ? sub(h[i][0], Clip.px(clip, f[0][A.W])) : null; });
+    });
+    for (var i = 0; i < n; i++) {
+      for (var a = 0; a < 2; a++) {
+        if (!clip.frames[i][0] || known[i][a]) continue;
+        for (var k = 1; k <= GAP_INTERP; k++) {
+          var o = (i - k >= 0 && known[i - k][a]) || (i + k < n && known[i + k][a]);
+          if (o) { shift[i][a] = o; break; }
+        }
+      }
+    }
+    return shift;
+  }
+
+  // Forearm direction stabilizer (KF_HOLD / KF_TRUST / TURN_MAX above), per arm, in place. Runs forward
+  // and backward from the frame with the longest forearm, so both clip ends are anchored. A turned
+  // forearm keeps its hand where it was drawn: the forearm-local hand is turned back by the same angle.
+  function stabilizeForearms(poses, fps) {
+    var n = poses.length;
+    if (n < 2) return;
+    var cap = TURN_MAX * 25 / (fps || 25);   // per frame
+    [0, 1].forEach(function (a) {
+      var seed = 0;
+      for (var i = 1; i < n; i++) if (poses[i].arms[a].kf > poses[seed].arms[a].kf) seed = i;
+      function step(i, prev) {
+        var arm = poses[i].arms[a];
+        var d = wrap(arm.af - prev);
+        if (Math.abs(d) > Math.PI / 2 && arm.kf < KF_TRUST) d = wrap(arm.af + Math.PI - prev);
+        var trust = smoothstep(KF_HOLD, KF_TRUST, arm.kf);
+        var af = prev + clamp(d * trust, -cap, cap);
+        var turn = arm.af - af;
+        if (arm.hand && turn) arm.hand = arm.hand.map(function (p) { var q = rot(p, turn); return { x: q.x, y: q.y, z: p.z }; });
+        arm.af = af;
+        return af;
+      }
+      var prev = poses[seed].arms[a].af;
+      for (i = seed + 1; i < n; i++) prev = step(i, prev);
+      prev = poses[seed].arms[a].af;
+      for (i = seed - 1; i >= 0; i--) prev = step(i, prev);
+    });
   }
 
   // Fill missing hands (decision 7): gaps <= GAP_INTERP frames interpolate between the neighbouring
@@ -257,9 +340,10 @@
     });
     var out = [];
     var faceMax = 0;
+    var shifts = wristShifts(clip);
     clip.frames.forEach(function (f, i) {
       if (!f[0]) { out.push(null); return; }
-      var r = retargetFrame(clip, cal, rig, f, smooth[i]);
+      var r = retargetFrame(clip, cal, rig, f, smooth[i], shifts[i]);
       faceMax = Math.max(faceMax, r.face[0], r.face[1]);
       out.push(r.pose);
     });
@@ -272,6 +356,7 @@
     out = out.map(function (p) {
       return { arms: p.arms.map(function (a) { return Object.assign({}, a); }), head: p.head };
     });
+    stabilizeForearms(out, clip.fps);
     fillHands(out, 0, rig, clip.fps);
     fillHands(out, 1, rig, clip.fps);
     return { fps: clip.fps, cal: cal, poses: opts && opts.smooth === false ? out : smoothPoses(out), ready: clip.frames.map(Clip.handsReady), faceMax: faceMax };
@@ -287,6 +372,7 @@
     avatarNose: avatarNose,
     smoothstep: smoothstep,
     smoothPoses: smoothPoses,
+    stabilizeForearms: stabilizeForearms,
     GAP_INTERP: GAP_INTERP
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
