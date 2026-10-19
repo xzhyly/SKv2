@@ -1,7 +1,7 @@
 Phase: Let's Talk turns, sign audio, avatar-only playback (talk-turns-audio)
 Date: 2026-10-19
 Status: DONE
-Decision needed from owner: none required; four points to confirm in section 6, and whether the fixed 70 ms gap between recorded words is the pause you want (section 2b).
+Decision needed from owner: none required; four points to confirm in section 6.
 
 # Let's Talk turns, sign audio, avatar-only playback — report
 
@@ -100,6 +100,9 @@ PASSED, `accounts-quiz/e2e-check` 87/87, `talk-texts` + `talk-turns-audio` node 
 
 ## 2b. Gapless signed messages (2026-10-19, owner ask)
 
+**Update (owner, 2026-10-19): the gap is now 30 ms** (was 70 ms; code commit `397d2cf`, still the one constant `GAP_S`,
+`js/sign-audio.js:21`). The measurements below were all re-run with 30 ms.
+
 Code commit `aee82a2` (`js/sign-audio.js`, 274 lines; the API — `play` / `stop` / `isPlaying` / `segments` — and the 🔊
 replay/stop on each signed bubble are unchanged).
 
@@ -117,7 +120,7 @@ on the laptop with the real clips (checklist step 8).**
   `:60`; only the clips of the message being played; a failed fetch is not cached, an undecodable file is cached as
   "use `<audio>`").
 - Each run of consecutive recordings is scheduled back to back on the context timeline (`playRun()`, `:80`):
-  `GAP_S` = 70 ms between clips (`:21`), a `GainNode` fade 0 -> 1 over `FADE_S` = 15 ms at the start and 1 -> 0 over
+  `GAP_S` = 30 ms between clips (`:21`; 70 ms until `397d2cf`), a `GainNode` fade 0 -> 1 over `FADE_S` = 15 ms at the start and 1 -> 0 over
   15 ms at the end of each clip (`:22`), the run starting `LEAD_S` = 30 ms ahead of `currentTime` (`:23`). No load wait
   between words.
 - A word without a recording ends the run: the clips before it play, the voice reads it (`speechSynthesis`, rate 0.9
@@ -129,9 +132,11 @@ on the laptop with the real clips (checklist step 8).**
   voice. One message at a time, as before.
 - The context is created and resumed inside the first tap (`pointerdown` / `keydown`, `unlock()`, `:41`).
 
-**Measured** (`tests/talk-turns-audio/audio-gap-check.mjs`, new; the BEFORE side is the committed `js/sign-audio.js`
-served by interception, the AFTER side the new one; each run = 1 cold play + 5 warm plays for the event timings, then 5
-metered plays). "Audible silence" = the silence between the 4 sounding words in what each path actually sends to the
+**Measured with the 30 ms gap** (`tests/talk-turns-audio/audio-gap-check.mjs`; the BEFORE side is `js/sign-audio.js` as it
+was before the gapless change, commit `aee82a2^`, served by interception, the AFTER side the working copy; the gap under
+test is read from `GAP_S`; each run = 1 cold play + 5 warm plays for the event timings, then 5 metered plays, each
+starting after a 600 ms pause and counting only its own sound). 3 runs unthrottled, 3 with CPU throttling 4x, 15/15
+checks passed in all 6. "Audible silence" = the silence between the 4 sounding words in what each path actually sends to the
 speakers (level below 1 % of full scale, timed on the audio clock; old path: each `<audio>` element routed through a
 `MediaElementSource` for the meter; new path: a tap on the context's output). It includes the mp3 files' own encoder
 padding and, for the old path, each element's start-up. "Event gap" = old: `ended` -> next `playing` event; new: the
@@ -139,29 +144,36 @@ scheduled start minus the previous clip's end.
 
 | | Before (`<audio>` per clip) | After (Web Audio, scheduled) |
 |---|---|---|
-| Audible silence between words, this container, 3 runs x 15-16 gaps | medians 17.4 / 20.3 / 23.2 ms, range 14.5-34.8 ms | median 84.2 ms in all 3 runs, range 81.3-95.8 ms |
-| Same with Chromium CPU throttling 4x (rough stand-in for a slow device, **not the Pi**), 2 runs | medians 31.9 / 31.9 ms, range 23.2-43.5 ms | median 84.2 ms in both, range 75.5-95.8 ms |
-| Event gap | cold medians 7.5-8.6 ms, warm medians 7.5-7.6 ms (max 19.0); 4x: 13-86 ms | scheduled exactly 70.0 ms (18 of 18 per run) |
-| Dropout inside a word (the meter heard 5 sounds instead of 4) | in 2 of the 3 unthrottled runs, 1 play of 5 each | 0 |
-| First sound after `play()` | cold 138-145 ms, warm medians 7.6-8.0 ms (4x: cold 62-66, warm 17.8-22.2, max 160.8) | cold 42-44 ms (once 155.6 ms), warm 30.2-30.3 ms (the 30 ms lead) |
+| Audible silence between words, this container, 3 runs x 15 gaps | medians 17.4 / 23.2 / 17.4 ms, range 11.6-31.9 ms | medians 46.4 / 40.6 / 46.4 ms, range 34.8-52.2 ms |
+| Same with Chromium CPU throttling 4x (rough stand-in for a slow device, **not the Pi**), 3 runs | medians 34.8 / 31.9 / 29.0 ms, range 23.2-52.2 ms | medians 49.3 / 46.4 / 40.6 ms, range 34.8-52.2 ms |
+| Event gap | cold medians 7.2-9.7 ms, warm medians 7.0-7.4 ms (max 19.7); 4x: warm medians 15.0-16.6, cold up to 44.9 | scheduled exactly 30.0 ms (18 of 18 per run) |
+| Dropout inside a word | 0 in all 6 runs | 0 in all 6 runs |
+| First sound after `play()` | cold 111-128 ms, warm medians 7.2-8.6 ms (4x: cold 55-61, warm medians 15.5-19.3, max 88.9) | cold 43-45 ms, warm 30.2-30.3 ms (the 30 ms lead) (4x: cold 59-71, warm 30.9-31.2) |
 | Fetches for 6 plays of the message | one per clip per play | 4 (once; then the cache) |
 
-**What this means.** The new code does what was asked: every word of the message is decoded before the first one
-plays, the gap between recorded words is the same every time (70 ms scheduled, 75-96 ms audible with the fades and
-the mp3 padding), clips fade in and out, and the old path's occasional dropout inside a word did not occur. But on this
-machine the old path's silences were already **shorter** (about 17-32 ms), because the files came from localhost and
-the CPU is fast; the 70 ms gap is a deliberate pause, so a message now has about 50-65 ms more silence per word
-boundary here. Whether the old path's gaps are longer on the Pi 4 with Apache was not measured. If 70 ms sounds too
-slow, it is one constant (`GAP_S`, `js/sign-audio.js:21`).
+**What this means.** Every word of the message is decoded before the first one plays, the gap between recorded words is
+the same every time (30 ms scheduled; 35-52 ms audible, which adds the two 15 ms fades' quiet edges and the silence
+the mp3 files themselves carry at their ends), and clips fade in and out. On this machine the old path's silences were
+still a little **shorter** (median 17-23 ms; 29-35 ms with 4x throttling), because the files came from localhost and the
+CPU is fast; with 30 ms the medians differ by about 23-29 ms per word boundary (12-17 ms with 4x throttling); with 70 ms
+it was about 60 ms.
+Whether the old path's gaps are longer on the Pi 4 with Apache was not measured. The gap stays one constant (`GAP_S`,
+`js/sign-audio.js:21`).
 
-**Other checks** (`audio-gap-check.mjs`, 15/15 in each of the 5 runs): fades at the right times and values; the 4 clips
+**Correction to the first version of this section:** it reported "a dropout inside a word" in the old path (2 of 3
+runs, the meter hearing 5 sounds instead of 4). That was a measurement error: with plays back to back, the previous
+message's last word could reach the meter late (a busy main thread) and count as a 5th sound. Each metered play now
+waits 600 ms and keeps only its own sound; neither path shows a dropout (0 in 6 runs each).
+
+**Other checks** (`audio-gap-check.mjs`, 15/15 in each of the 6 runs): fades at the right times and values; the 4 clips
 fetched in parallel (within 50 ms) and only once for 6 plays; a message with words without recordings in the middle
 (hello, thank you, *my name*, where, *is*, bathroom) plays clip clip -> voice "My name" -> clip -> voice "is" -> clip, the
 voice starting only after the clips before it ended, all voice words at the same rate; an undecodable file for `where`
 plays through `<audio>` while the other three stay scheduled, in order; `stop()` 300 ms in stops all 4 scheduled
 sources at once and calls `onEnd` once; a second message stops the first; 0 console errors.
 
-**Existing tests after the change:** `node --test tests/*/*.test.mjs` 440 tests, 398 pass, 5 fail, 37 skipped — the same 5
+**Existing tests after the change** (run with 70 ms; with 30 ms, `talk-turns-audio/sign-audio.test.mjs` 5/5 and
+`talk-check.mjs` 43/43 were run again — only the constant changed): `node --test tests/*/*.test.mjs` 440 tests, 398 pass, 5 fail, 37 skipped — the same 5
 Windows-only failures as before (`multi-sample/save-endpoint` 4, `bulk-import/save-import` 1);
 `tests/talk-turns-audio/talk-check.mjs` 43/43 (its auto-speak check now expects hello's recording to be fetched once and
 scheduled through Web Audio, not played by an `<audio>` element); `tests/accounts-quiz/e2e-check.mjs` 87/87.
@@ -297,5 +309,4 @@ letter), so the hand shapes are not the real letters; with your own `avatar.json
 7. Copy `saved_gestures/` to the Pi as before; the audio files travel with it.
 8. Gapless audio (section 2b): with your real clips, `node tests/talk-turns-audio/audio-gap-check.mjs` measures the
    generated test clips; to hear the real ones, sign hello, thank you, where, bathroom (or tap 🔊 on such a message) and
-   listen: the words should follow each other with the same short pause, without clicks. Tell me if 70 ms is too long
-   or too short.
+   listen: the words should follow each other with the same short 30 ms pause, without clicks.
