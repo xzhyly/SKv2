@@ -67,7 +67,14 @@ function findSampleFiles() {
   return files;
 }
 
-test('golden: every saved v2 sample on disk produces byte-identical rows vs the phase-base commit', () => {
+// Skipped when saved_gestures/ holds no v2 sample any more (cleanup 2026-10-20: the dataset is v3
+// video imports only; the old v2 live captures were removed from disk). The v3 tests below still run.
+const hasV2Sample = findSampleFiles().some((file) => {
+  const sample = JSON.parse(fs.readFileSync(file, 'utf8'));
+  return !(Array.isArray(sample.frames) && sample.frames.some((f) => Array.isArray(f && f.hands)));
+});
+test('golden: every saved v2 sample on disk produces byte-identical rows vs the phase-base commit',
+  { skip: hasV2Sample ? false : 'no v2 sample in saved_gestures/ (the dataset is v3 imports only since the old live captures were removed)' }, () => {
   const files = findSampleFiles();
   assert.ok(files.length > 0, 'expected to find at least one saved sample file');
 

@@ -87,6 +87,9 @@ test('admin only: guest and user get 403, nothing written', () => {
 
 test('upload each format: stored as audio_<lang>.<sniffed ext>, replacing the previous one; listed by signs.php', () => {
   const keep = snapshot(KEY);
+  // another sign's audio is not touched (hello has the owner's real recordings since 2026-10-19,
+  // so the check is "unchanged", not "none")
+  const helloAudio = signsApi({ method: 'GET' }).json.signs.hello.audio;
   for (const ext of ['webm', 'mp3', 'm4a', 'wav', 'ogg']) {
     const r = upload('en', ext, admin);
     assert.equal(r.status, 200, r.raw);
@@ -103,7 +106,7 @@ test('upload each format: stored as audio_<lang>.<sniffed ext>, replacing the pr
   assert.match(s.audio.fil, /audio_fil\.webm\?v=\d+$/);
   assert.equal(s.avatar, true);
   assert.deepEqual(snapshot(KEY), keep, 'samples, sign.json and avatar.json untouched');
-  assert.deepEqual(signsApi({ method: 'GET' }).json.signs.hello.audio, { en: null, fil: null });
+  assert.deepEqual(signsApi({ method: 'GET' }).json.signs.hello.audio, helloAudio);
 });
 
 test('refused: not audio, over 2 MB, no file, bad lang, unknown sign, Filipino for a letter', () => {

@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const code = fs.readFileSync(path.join(here, '..', '..', 'js', 'sign-audio.js'), 'utf8');
+// js/sk-voice.js (the fallback voice's settings) is loaded first, as talk.html does.
+const voiceCode = fs.readFileSync(path.join(here, '..', '..', 'js', 'sk-voice.js'), 'utf8');
 const plain = (v) => JSON.parse(JSON.stringify(v));
 
 function load({ voices = [{ lang: 'en-US' }, { lang: 'fil-PH' }], badUrls = [] } = {}) {
@@ -34,6 +36,7 @@ function load({ voices = [{ lang: 'en-US' }, { lang: 'fil-PH' }], badUrls = [] }
   const window = { speechSynthesis };
   const ctx = { window, Audio, SpeechSynthesisUtterance, console, Promise, setTimeout, clearTimeout, String };
   vm.createContext(ctx);
+  vm.runInContext(voiceCode, ctx);
   vm.runInContext(code, ctx);
   return { SignAudio: window.SignAudio, log };
 }

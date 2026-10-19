@@ -334,7 +334,8 @@ function list_samples($defaultRoot) {
         'saved_gestures_fsl'
     ];
 
-    $gestures = [];
+    // label => [[folder, sample file], ...] (paths only), in the same order as before.
+    $sampleFiles = [];
     $signs = [];
     // summary=1 (compact-model phase): the same listing without each sample's `frames` (Train
     // Gestures' dataset table and Step 2 card need names and counts only). Works with no_sync.
@@ -347,43 +348,50 @@ function list_samples($defaultRoot) {
         foreach (glob($dirPath . '/*', GLOB_ONLYDIR) ?: [] as $labelDir) {
             $label = basename($labelDir);
             if ($labelFilter !== null && !isset($labelFilter[$label])) continue;
-            $files = glob($labelDir . '/sample_*.json') ?: [];
-
-            if (!isset($gestures[$label])) {
-                $gestures[$label] = [];
+            if (!isset($sampleFiles[$label])) {
+                $sampleFiles[$label] = [];
             }
             if (!isset($signs[$label])) {
                 $signs[$label] = derive_sign($folder, $label, $labelDir);
             }
-
-            foreach ($files as $file) {
-                $json = json_decode(file_get_contents($file), true);
-                if (is_array($json)) {
-                    $entry = [
-                        'file' => $folder . '/' . $label . '/' . basename($file),
-                        'label' => $json['label'] ?? $label,
-                        'frames' => $json['frames'] ?? [],
-                        'frameCount' => count($json['frames'] ?? []),
-                        'createdAt' => $json['createdAt'] ?? null,
-                        'signLanguage' => $json['signLanguage'] ?? $json['sign_language'] ?? 'ESL',
-                    ];
-                    if ($summary) {
-                        unset($entry['frames']);
-                    }
-                    $gestures[$label][] = $entry;
-                }
-                unset($json, $entry);   // free the decoded sample before reading the next one
+            foreach (glob($labelDir . '/sample_*.json') ?: [] as $file) {
+                $sampleFiles[$label][] = [$folder, $file];
             }
         }
     }
 
-    echo json_encode([
-        'success' => true,
-        'datasetRoot' => 'saved_gestures',
-        'gestures' => $gestures,
-        'signs' => (object)$signs,
-        'categories' => build_categories_map($conn, $signs),
-    ]);
+    // Streamed one sample at a time (cleanup 2026-10-20): building the whole response first ran out
+    // of PHP's 512 MB memory_limit with frames at 1,267 samples (a PHP fatal error page instead of
+    // JSON). The output is the same JSON document as json_encode() of the whole array gave.
+    echo '{"success":true,"datasetRoot":"saved_gestures","gestures":' . ($sampleFiles ? '{' : '[');
+    $firstLabel = true;
+    foreach ($sampleFiles as $label => $files) {
+        echo ($firstLabel ? '' : ',') . json_encode((string)$label) . ':[';
+        $firstLabel = false;
+        $firstEntry = true;
+        foreach ($files as [$folder, $file]) {
+            $json = json_decode(file_get_contents($file), true);
+            if (is_array($json)) {
+                $entry = [
+                    'file' => $folder . '/' . $label . '/' . basename($file),
+                    'label' => $json['label'] ?? $label,
+                    'frames' => $json['frames'] ?? [],
+                    'frameCount' => count($json['frames'] ?? []),
+                    'createdAt' => $json['createdAt'] ?? null,
+                    'signLanguage' => $json['signLanguage'] ?? $json['sign_language'] ?? 'ESL',
+                ];
+                if ($summary) {
+                    unset($entry['frames']);
+                }
+                echo ($firstEntry ? '' : ',') . json_encode($entry);
+                $firstEntry = false;
+            }
+            unset($json, $entry);   // free the decoded sample before reading the next one
+        }
+        echo ']';
+    }
+    echo ($sampleFiles ? '}' : ']') . ',"signs":' . json_encode((object)$signs)
+        . ',"categories":' . json_encode(build_categories_map($conn, $signs)) . '}';
     exit;
 }
 
