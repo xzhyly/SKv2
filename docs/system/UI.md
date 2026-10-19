@@ -1754,6 +1754,9 @@ owner to verify on real hardware (`docs/system/DEBT.md` item 85).
 
 ### 3e. 2D avatar in Speak or Type (avatar phase, 2026-10-05)
 
+**Superseded in part 2026-10-19 (3g):** the video fallback, the 560x260 frame and the word label are gone; every
+word plays or is fingerspelled on the avatar.
+
 Proposal `docs/reports/2026-10-05-avatar-step1.md`; final report `docs/reports/2026-10-05-avatar-final.md`;
 decisions in `DECISIONS.md` ("2D avatar phase").
 - **What the user sees.** Translate in Speak or Type now plays every run of consecutive words whose sign has an
@@ -1823,6 +1826,43 @@ No `talk.html` markup, CSS or behaviour changed, and `js/talk-signing.js` is unc
 - **Not verified:** a missing or broken model file on the real kiosk page in a browser (covered by
   `tests/compact-model/store-check.mjs` for the store and by a unit test with a rejecting store,
   `tests/sign-texts/talk-texts.test.mjs`), and anything on the Pi (`docs/system/DEBT.md` items 129, 138).
+
+### 3g. Turns, sign audio, avatar-only playback (talk-turns-audio phase, 2026-10-19)
+
+Spec `docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md`; wireframes `docs/design/talk-flow-wireframe.html`,
+`docs/design/sign-audio-wireframe.html`; report `docs/reports/2026-10-19-talk-turns-audio.md` (before/after screenshots).
+Supersedes the video parts of 3e and the confirm card of the earlier sections.
+- **Avatar only (no video).** `js/sign-player.js` (337 lines, rewritten) plays a word/phrase whose sign has avatar data
+  (`signs.php` `avatar`) as that sign, and fingerspells every other word on the avatar with the letter signs a-z and
+  the number signs (`plan()`, `:170`; a number 1-10 is one sign, others digit by digit; the number sign is key `"3"` if
+  it exists, else `three`, `numberKey()` `:149`). A character with no clip shows in the caption only for
+  `CAPTION_ONLY_MS` = 700 ms (`:18`). No `<video>`/`<img>`, no `assets/signs` request, no `fallback.png`.
+- **Sign screen.** The main button is "Send 🔊" (`js/talk-signing.js` `renderButton()` `:78`), enabled once the sentence
+  has a word. Recording starts by itself when the camera runs (`:352`, the same 3 s countdown). Send or the "stop" sign
+  -> `finish()` (`:144`) -> `onText(text, {signLanguage, lang, words, keys})`. Under it: "🗣 Speak or Type"
+  (`#sign-to-speak-btn`, `talk.html:2161`) and Guide (110 px). The unsent sentence and its sign keys survive
+  `leave()` and a language switch (re-translated from the keys); `clearDraft()` (`:167`) drops it on "+ New
+  conversation" (`talk.html:2185`).
+- **Speak or Type.** "🤟 Sign instead" (`#speak-to-sign-btn`, `talk.html:2164`) under the input row. Translate shows
+  the avatar filling the area under the top bar (frame and canvas 1000x486 at 12,102; `#thread` hidden while
+  `data-speaking="preview"`, `talk.html:881`), with a caption bar: the sentence (`#speaking-caption`; current word
+  orange, fingerspelled words as letter boxes, "Spelling “Jose” (no sign yet) · letter 2 of 4") and Replay / Edit /
+  Send.
+- **Send, both sides.** `addMessage()` (`talk.html:1892`) = `appendBubble()` + the unchanged
+  `TalkHistory.saveMessage()`; then "Whose turn is it?". The confirm card ("You signed / You said … -> Add to
+  Conversation / Try again", `renderConfirmModal`, modal kind `confirm`) is removed; `openModal()` takes `idle` and
+  `error` only. Non-PWD Send shows a "✓ Sent" toast (`#talkToast`).
+- **Speaking a signed message.** `toggleSpeak()` (`talk.html:1919`) with `js/sign-audio.js` (133 lines): the signs in
+  order, each sign's recording for the language (`signs.php` `audio`), the browser voice for the others (consecutive ones
+  as one utterance), skipped with no voice. Each signed bubble's 🔊 is a 44 px button: replay / stop; one message at a
+  time; "· playing…" on the label and a "🔊 Speaking: …" toast while it plays.
+- **Train Gestures sign details** (dataset modal -> Edit): an Audio section (`#dsEditAudio`, `js/sign-audio-admin.js`,
+  277 lines): per language the sign uses (letters: English only) ▶ / ● Record (MediaRecorder, max 10 s, then the take
+  with ▶ / Save / Discard) / ⇪ Upload / ✕, each saved at once through `php/api/sign_audio.php`. The list's new Audio
+  column shows "🔊 EN · FIL" / "🔊 EN" / "—".
+- **Quiz** (`js/quiz-ui.js`): avatar clips only (no video branch); the pool comes from `quiz.php` (avatar only).
+- **Measured** (`tests/talk-turns-audio/talk-check.mjs` 38/38, `train-audio-check.mjs` 20/20, Playwright 1024x600): no
+  scroll on any screen, 0 console errors, 0 video requests across Let's Talk, Learn Signs and Quiz.
 
 ### 1. Owns these files
 

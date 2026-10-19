@@ -97,8 +97,9 @@ heuristic, manually re-taggable in `gesture-training.html`'s Step 1) — see
 `avatar-clips.html` (opened from Train Gestures, laptop only) makes one 2D-avatar
 clip per sign from a video or an imported landmark JSON, saved as
 `saved_gestures/<key>/avatar.json`; in Let's Talk, Speak or Type plays a word on
-the avatar when its sign has a clip and as video otherwise — see
-`docs/system/UI.md` ("Avatar clips", Part 3 3e).
+the avatar when its sign has a clip and otherwise fingerspells it on the avatar
+with the letter and number signs — no video anywhere since the 2026-10-19
+talk-turns-audio phase — see `docs/system/UI.md` ("Avatar clips", Part 3 3e/3g).
 
 `bulk-import.html` (laptop only, admin only; **no kiosk page links to it** — open it
 by typing `http://localhost/SKR/bulk-import.html`) turns a folder of videos named
@@ -142,8 +143,8 @@ Pi) unless the git-ignored `config/device.txt` says `pi` or `laptop`. See
 
 `talk.html` is the "Let's Talk" two-way conversation screen (see
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing
-screen is real**: live camera + MediaPipe + the k-NN, output going through the
-confirm card. A background loading queue (`js/talk-loader.js`) loads the sign
+screen is real**: live camera + MediaPipe + the k-NN, output added to the
+conversation on Send (through a confirm card until 2026-10-19). A background loading queue (`js/talk-loader.js`) loads the sign
 stack and then the Vosk speech model once per page load and gates the Guide /
 "Getting ready…" screens on the whole queue; `talk.html?devqueue` shows a
 diagnostic overlay for it (off otherwise). Leaving the signing screen stops the
@@ -151,9 +152,17 @@ camera tracks (hardware released) but keeps the loaded model and the single
 MediaPipe instance. The **speak side is real too** (2026-09-21): Speak or Type has
 a real Vosk microphone (`js/talk-speaking.js`, English-only model; Filipino disables
 the mic) filling the text field, an explicit **Translate** button, and an in-place
-word-by-word sign-video preview (`js/sign-player.js`, a port of `js/script.js`'s
-pipeline) before the unchanged Send → confirm → Add to Conversation flow; the
-preview is never stored in the thread. As of the 2026-09-25 saved-conversations
+word-by-word sign preview (`js/sign-player.js`) before Send; the preview is never
+stored in the thread. **Since the talk-turns-audio phase (2026-10-19,
+`docs/reports/2026-10-19-talk-turns-audio.md`):** the preview is avatar only (the
+avatar fills the area under the top bar; Replay / Edit / Send), the confirm card is
+gone (both Sends add the message directly and return to "Whose turn is it?"), the
+Sign screen's main button is "Send 🔊" (recording starts by itself) and speaks the
+message (each sign's recorded audio `saved_gestures/<key>/audio_en|audio_fil.<ext>`,
+else the browser voice; 🔊 on each signed bubble replays/stops), "🗣 Speak or Type" /
+"🤟 Sign instead" switch turns and the unsent signed sentence is kept. Sign audio is
+recorded/uploaded in Train Gestures' sign details (`php/api/sign_audio.php`, admin
+only). As of the 2026-09-25 saved-conversations
 phase, every message added to the thread (signed, spoken or typed) and every
 conversation end (End Conversation, the idle timeout, reload/tab-close) is
 also fire-and-forget POSTed to `php/api/save_conversation.php`

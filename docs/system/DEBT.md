@@ -1864,13 +1864,15 @@ so a later session does not re-litigate them:
      PHP's session garbage collection removes it (`session.gc_maxlifetime`, PHP default 1440 s of no request;
      XAMPP's php.ini value not checked here). On a shared kiosk the next person sees the previous user's name
      chip and lists if nobody logs out.
-160. **Low, open (accounts-quiz): the quiz's clip source is Let's Talk's, not Learn Signs'.** The brief said "use
+160. **Superseded 2026-10-19 (talk-turns-audio): the quiz is avatar only now** (`php/api/quiz.php` pools only signs
+     with `avatar.json`; Let's Talk and the quiz use the same avatar clips). Was: **Low, open (accounts-quiz): the quiz's clip source is Let's Talk's, not Learn Signs'.** The brief said "use
      the same clip/avatar source Learn Signs uses", but `learn-signs.html` is an external website in an iframe
      (item 29) with no local source. `php/api/quiz.php ?action=pool` uses the source Let's Talk's sign player
      uses: the avatar clip (`saved_gestures/<key>/avatar.json`) first, else a video in the language's own folder
      named after the sign's text, else its `asset_path`, else `<key>.webm`. A Both sign's English video is never
      used for an FSL question.
-161. **Low, open (accounts-quiz, measured 2026-10-17 on the repo's data): ESL has no Numbers quiz.** The 10 ESL
+161. **Superseded 2026-10-19 (talk-turns-audio) by item 170: the quiz needs avatar clips for every category now.**
+     Let's Talk's "one" gap is gone (a number 1-10 plays its number sign on the avatar). Was: **Low, open (accounts-quiz, measured 2026-10-17 on the repo's data): ESL has no Numbers quiz.** The 10 ESL
      number signs (`one` ... `ten`) have videos named `1.webm` ... `10.webm` (`assets/signs/en/`), not after their
      key or text, and no `asset_path` in a fresh DB, so the ESL Numbers pool is 0 signs and the quiz shows "No
      signs with a video in Numbers (ESL)". FSL Numbers has 10. Setting `gestures.asset_path` to
@@ -1879,7 +1881,8 @@ so a later session does not re-litigate them:
 162. **Low, open (accounts-quiz): conversations saved before this phase have no title or user.** The migration
      fills nothing (`title` and `user_id` stay NULL); the Conversations page shows their first message as the
      title and an admin sees them as Guest.
-163. **Low, open (accounts-quiz): Let's Talk's sign preview logs a 404 for every word without its own video.**
+163. **Resolved 2026-10-19 (talk-turns-audio): Let's Talk requests no video at all any more** (avatar only; a word
+     without a sign is fingerspelled by the avatar; measured 0 video requests). Was: **Low, open (accounts-quiz): Let's Talk's sign preview logs a 404 for every word without its own video.**
      Pre-existing (`js/sign-player.js` `displaySignWithFallback()` probes `assets/signs/<lang>/<word>.webm`
      before the asset map and fingerspelling); each miss is a "Failed to load resource" console error. Seen
      while testing this phase (typed "Guest hello" -> `guest.webm` 404); the e2e check now types words that have
@@ -1899,6 +1902,25 @@ so a later session does not re-litigate them:
      thread strip). Recognition reads the whole frame and is not affected; the signer may not see a hand raised
      high or held low. A narrower column (`.signing-live` width in `talk.html`) crops less (640 px: 67 % on the first
      turn). Not changed without the owner.
+
+167. **Medium, open (talk-turns-audio, 2026-10-19): Pi frame rate of the full-area avatar not measured.** Let's Talk's
+     avatar canvas is now 1000x486 (was 560x260, 3.3x the pixels). Measured here (software Chromium): 1.8 ms median /
+     2.6 ms p95 per frame vs 1.3 / 1.7 before; the 30 fps budget is 33 ms. Run `tests/avatar/pi-bench.sh` on the Pi; if
+     it is slow, lower the canvas's `width`/`height` attributes in `talk.html` (CSS keeps it full size).
+168. **Low, open (talk-turns-audio): no separate FSL letter signs.** Filipino fingerspelling uses the letter signs a-z
+     (ESL in the data); letters take English audio only (spec).
+169. **Low, open (talk-turns-audio): the assets/signs videos stay in the repo.** Nothing shown to a user plays them
+     any more, but `save_gesture.php` (writes a new word's first recording there), `reports.php`, the 2026-09-24
+     backfill migration and several tests (fake camera from `hello.webm`, the avatar fixture's sources) still use
+     them, so per the spec they are not deleted.
+170. **Low, open (talk-turns-audio): the quiz and Let's Talk depend on `avatar.json` files.** A category whose signs
+     have no clip shows "No signs with an avatar clip in …" (Start disabled), and Let's Talk fingerspells such words
+     (caption only for letters without a clip). This git clone has no `avatar.json` at all, so a fresh checkout
+     shows every quiz category empty and every word caption-only until clips are made in `avatar-clips.html` or
+     copied from the laptop.
+171. **Low, open (talk-turns-audio): no browser voice on the kiosk means signs without a recording are silent.**
+     `js/sign-audio.js` skips them when `speechSynthesis.getVoices()` is empty (spec). Whether the Pi's Chromium has
+     an offline voice was not checked; recording audio per sign in Train Gestures avoids depending on it.
 
 Note (2026-09-23, gesture-categorization): `gesture_recordings.gesture_type`
 (item 8/`db-local.js`, and the `core_api.php` router in item 2's "dead

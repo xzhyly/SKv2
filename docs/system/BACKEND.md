@@ -1140,7 +1140,9 @@ list and add `has_more`; without `limit` every row comes back, as `reports.html`
 **`php/api/quiz.php`** — `GET ?action=pool&lang=ESL|FSL` (open to guests, `:76`): active signs of that language
 (`sign_language IN (lang, 'BOTH') AND is_active = 1`) with a playable clip, found the way Let's Talk's sign player
 finds one: `saved_gestures/<key>/avatar.json` first, else a video in that language's own folder named after the
-sign's text, else `asset_path`, else `<key>.webm` (`quiz_video_for()`, `:42`). Categories map
+sign's text, else `asset_path`, else `<key>.webm` (`quiz_video_for()`, `:42`). **Changed 2026-10-19
+(talk-turns-audio):** avatar clips only — a sign without `saved_gestures/<key>/avatar.json` is left out (`:57`);
+`quiz_video_for()` and `quiz_normalize()` are removed; `clip` is always `{type:"avatar", key}`. Categories map
 `word/letter/number/phrase` -> `words/letters/numbers/phrases`. `POST {action:"save"}` (`:226`, logged in only,
 403 for a guest): validates 1-50 answers with 4 distinct choices containing `sign_key`, works out `is_correct`,
 `correct_items` and `total_items` itself, and writes one `quiz_attempts` row + one `quiz_answers` row per question
@@ -1150,3 +1152,26 @@ their own, an admin everyone's or `user=<id>`. `mode` per attempt is read back f
 
 **Not session-checked (DEBT 157, kept open by owner decision 2026-10-18):** `save_gesture.php`, `signs.php` POST, `gesture_category.php`,
 `compile_model.php`, `bulk_import.php`, `avatar_clip.php` — unchanged, still open to any caller.
+
+
+## Sign audio (talk-turns-audio phase, 2026-10-19)
+
+Spec `docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md` section 5; report
+`docs/reports/2026-10-19-talk-turns-audio.md`. No schema change: the audio lives on disk with the sign.
+
+- **Files.** `saved_gestures/<key>/audio_en.<ext>` and `audio_fil.<ext>`, next to `sign.json`, at most one per language
+  (`php/api/sign_audio_lib.php`, 50 lines: `SIGN_AUDIO_EXTS` webm/mp3/m4a/wav/ogg, `SIGN_AUDIO_MAX_BYTES` 2 MB). Copied to
+  the Pi with `saved_gestures/`. Read as static files (public).
+- **`php/api/signs.php` GET** adds `audio: {en, fil}` per sign: `saved_gestures/<key>/audio_<lang>.<ext>?v=<mtime>` or
+  null (`:73`, `sign_audio_urls()`), so a re-recorded file is never served from the browser cache.
+- **`php/api/sign_audio.php`** (121 lines), POST only (405 otherwise), **admin only** (`sk_require_admin()`, `:29`, 403
+  for a guest or user — unlike the training write endpoints of DEBT 157):
+  - multipart `{action:"upload", key, lang: en|fil, file}`: the sign must exist (`saved_gestures/<key>/sign.json`,
+    `clean_label($key) === $key`, realpath inside `saved_gestures/`, else 404); `lang` en|fil (400); letters
+    (stored category, else `gesture_category()`) take `en` only (400); no file 400; over 2 MB 413; the format is
+    sniffed from the first bytes (`sign_audio_sniff()`: EBML -> webm, `OggS`, `RIFF....WAVE`, `....ftyp` -> m4a,
+    `ID3`/MPEG frame sync -> mp3; anything else 400) and becomes the extension. Written to a temp name, renamed, then
+    the language's other extensions are removed. -> `{success, key, audio}`.
+  - JSON `{action:"delete", key, lang}`: removes that language's file(s) -> `{success, key, deleted, audio}`.
+  - Samples, `sign.json` and `avatar.json` are never touched (`tests/talk-turns-audio/sign-audio-endpoint.test.mjs`).
+- Deleting a sign (`save_gesture.php` `delete_gesture`) removes its folder, audio included.

@@ -62,7 +62,7 @@ and listing all 300+ leaf files individually would not add ownership information
 | js/db-api.js | 148 | **Deleted 2026-09-25** (saved-conversations phase, Task 6, option A). Was: loaded by camera-translator.html/diagnostic.html/gesture-training.html; fetch wrapper targeting `php/api/` (`save_translation.php`, `get_translations.php`) |
 | js/db-local.js | 65 | **Deleted 2026-09-24** (DB normalization, Task 4). Was: loaded by camera-translator.html/gesture-training.html/sign-to-text.html; wrapped `php/api/core_api.php` as "unified api router" (comment, `db-local.js:10`) |
 | [js/talk-history.js](../../js/talk-history.js) | 109 | **New 2026-09-25** (saved-conversations phase, Task 4). Loaded by `talk.html`; fire-and-forget save client for `php/api/save_conversation.php` — `window.TalkHistory.saveMessage()`/`.end()` |
-| [js/sign-player.js](../../js/sign-player.js) | 486 | Loaded by `talk.html`; `window.SignPlayer`, the text-to-sign pipeline (port of the archived `js/script.js`). **2026-10-04 (sign-texts phase):** `fetchAndRegisterCustomGestures()` reads `php/api/signs.php` and registers each sign's English text (ESL/Both) and Filipino text (FSL/Both) in the matching language map, with and without "?"; an asset-map value starting with `assets/` is used as-is (`:413`). Not previously listed here. |
+| [js/sign-player.js](../../js/sign-player.js) | 337 | Loaded by `talk.html`; `window.SignPlayer`. **Rewritten 2026-10-19 (talk-turns-audio): avatar only** — `plan()` (sign with avatar data, else avatar fingerspelling a-z / number signs), caption with the current word/letter, `registerCustomGestures()` resolves to the signs.php map; no video, no `assets/signs`, no `fallback.png`. Before: the text-to-sign pipeline (port of the archived `js/script.js`). **2026-10-04 (sign-texts phase):** `fetchAndRegisterCustomGestures()` reads `php/api/signs.php` and registers each sign's English text (ESL/Both) and Filipino text (FSL/Both) in the matching language map, with and without "?"; an asset-map value starting with `assets/` is used as-is (`:413`). Not previously listed here. |
 | [js/talk-loader.js](../../js/talk-loader.js) | 163 | Loaded by `talk.html`; the background loading queue (5 items). **2026-10-04 (sign-texts phase):** the `gestures` item runs `autoTrainForTranslate()` and `GestureDataRecorder.loadSigns()` together (`:48-60`, now `:50-62`); a failed `loadSigns()` only warns. Not previously listed here. **2026-10-16 (compact-model phase):** `SIGN_SCRIPTS` (`:10-18`) loads `js/knn-compile.js` and `js/knn-model-store.js` before `js/sign-to-text-ui.js`; the item's error text is "gesture set unavailable (no usable model file and no stored copy)" (`:60`). |
 | [js/knn-compile.js](../../js/knn-compile.js) | 361 | **New 2026-10-15/16** (compact-model phase). `window.KnnCompile` in the browser, `module.exports` under node, no DOM: model membership (`inModel`), the per-sign row budget (`selectSignRows`, `DEFAULT_RULE`), `createBuilder`/`buildModel`, `fingerprintText` + `sha256Hex`, and `encode`/`decode` of `models/knn_<LANG>.bin` (`docs/system/ML.md` "Compact model"). Loaded by `gesture-training.html` and by `js/talk-loader.js` for `talk.html`; also by `tests/compact-model/` |
 | [js/knn-model-store.js](../../js/knn-model-store.js) | 308 | **New 2026-10-15/16.** `window.KnnModelStore.load/remove/info`: HEAD + IndexedDB copy (`sining_kamay_models`), GET when changed, last good copy on failure. Needs `js/knn-compile.js` first. Loaded by `gesture-training.html` and by `js/talk-loader.js` |
@@ -311,8 +311,8 @@ at the end of the phase (`.git/sdd/st-task-8-report.md`, `st-final-fix-report.md
 | `js/bulk-import-core.js` (changed, 439), `js/bulk-import-ui.js` (3,034), `css/bulk-import.css` (236), `bulk-import.html` | `buildMeta` / `slimRun` moved to Core, `candidateSource`; candidate `source`; Source column second line |
 
 Load order in `talk.html`: ... `js/talk-signing.js`, then `avatar-rig`, `avatar-clip`, `avatar-retarget`,
-`avatar-timeline`, `avatar-renderer`, `avatar-store`, `avatar-player`, then `js/sign-player.js`,
-`js/talk-speaking.js`, `js/talk-history.js`. New over-5 MB files: `holistic_solution_packed_assets.data`
+`avatar-timeline`, `avatar-renderer`, `avatar-store`, `avatar-player`, then `js/sign-player.js`, `js/sign-audio.js`
+(since 2026-10-19), `js/talk-speaking.js`, `js/talk-history.js`. New over-5 MB files: `holistic_solution_packed_assets.data`
 (16.1 MB), `holistic_solution_simd_wasm_bin.wasm` (6.2 MB), `pose_landmark_full.tflite` (6.1 MB).
 
 ### Compact recognition model files (new 2026-10-15/16)
@@ -357,11 +357,11 @@ Report: `docs/reports/2026-10-18-accounts-quiz.md`. Details: `docs/system/UI.md`
 | `users.html` | 232 | Manage users (admin): list, Add user, Reset password, Activate/Deactivate |
 | `js/sk-account.js` | 205 | `window.SKAccount`: chip/menu, Log out, `adminPage()` / `loginPage()` guards, `api()`, date formats |
 | `js/quiz-core.js` | 130 | `window.QuizCore` / node module: pool, 10 questions, choices, answer rows, score |
-| `js/quiz-ui.js` | 412 | Quiz screens, clip playback (video or avatar), save |
+| `js/quiz-ui.js` | 391 | Quiz screens, clip playback (avatar only since 2026-10-19), save |
 | `css/sk-pages.css` | 305 | Shared look of the new pages and of the account chip/menu |
 | `php/session.php` | 102 | PHP session helpers: `sk_session_user()`, `sk_require_user()`, `sk_require_admin()` |
 | `php/api/me.php` | 28 | `window.SK_ME` for page `<head>`s |
-| `php/api/quiz.php` | 309 | Quiz pool / save / scores |
+| `php/api/quiz.php` | 261 | Quiz pool (avatar clips only since 2026-10-19) / save / scores |
 | `db-schema/2026-10-accounts-quiz.sql` | 173 | Idempotent migration to the accounts/quiz schema |
 | `tests/accounts-quiz/helper.mjs` | 38 | `zzqa...` test accounts, cleanup |
 | `tests/accounts-quiz/auth.test.mjs`, `admin-api.test.mjs`, `conversations-scope.test.mjs`, `quiz-api.test.mjs` | 87, 87, 96, 124 | php-cgi tests of the endpoints (live DB) |
@@ -539,3 +539,20 @@ Note: several items originally listed here (`js/dist/build.js`, `js/main.js`,
 | `js/lib/mediapipe/hand_landmark_full.tflite` | 5.2 MB |
 
 Sizes from `du -b` via `git ls-files`, rounded to one decimal in MB (1 MB = 1,048,576 bytes).
+
+### Talk turns, sign audio, avatar-only playback (talk-turns-audio phase, 2026-10-19)
+
+Report `docs/reports/2026-10-19-talk-turns-audio.md`.
+
+| File | Lines | Role |
+|---|---|---|
+| `js/sign-audio.js` | 133 | **New.** `window.SignAudio`: speaks a signed message (recording per sign, else browser voice; one at a time); loaded by `talk.html` |
+| `js/sign-audio-admin.js` | 277 | **New.** `window.SignAudioAdmin`: Train Gestures sign details -> Audio section (record / preview / upload / play / delete); loaded by `gesture-training.html` |
+| `php/api/sign_audio.php` | 121 | **New.** POST upload / delete of `saved_gestures/<key>/audio_<lang>.<ext>`, admin only |
+| `php/api/sign_audio_lib.php` | 50 | **New.** Audio file helpers (list, URLs with `?v=<mtime>`, format sniffing), used by `sign_audio.php` and `signs.php` |
+| `js/sign-player.js` (337), `js/talk-signing.js` (406), `talk.html` (2,281) | | Changed: avatar-only playback; Send 🔊, turn shortcuts, kept sentence; confirm card removed, full-area avatar, 🔊 bubbles |
+| `php/api/signs.php` (160), `php/api/quiz.php` (261), `js/quiz-ui.js` (391), `quiz.html` | | Changed: GET `audio`; quiz avatar only |
+| `gesture-training.html`, `js/gesture-training-ui.js` (1,629), `css/gesture-training.css` | | Changed: Audio section in the edit panel, Audio column in the list |
+| `tests/talk-turns-audio/sign-audio.test.mjs`, `sign-audio-endpoint.test.mjs` | | node tests (5 + 4) |
+| `tests/talk-turns-audio/talk-check.mjs`, `train-audio-check.mjs` | | Playwright checks at 1024x600 (38 + 20) |
+

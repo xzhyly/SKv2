@@ -2107,3 +2107,24 @@ to waist).
 - Newest word: `--orange-dark` text on `#fff1e6` (the wireframe's orange highlight; the darker orange is for contrast
   on the light tint). The screen's one orange background stays the main action button.
 
+## Decisions made during the talk-turns-audio phase (2026-10-19)
+
+Spec `docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md`; report `docs/reports/2026-10-19-talk-turns-audio.md`.
+- **Recording starts by itself.** Send replaces Translate, so nothing else would start a recording: the 3 s countdown
+  starts as soon as the camera runs (the "start" sign still works when idle). Send is enabled as soon as the sentence
+  has a word, also during the countdown (a kept sentence can be sent at once).
+- **The kept sentence stores sign keys, not only words**, so it can be shown in the other language after a switch and
+  its audio found on Send. It survives any leave (shortcut or Back); only Send and "+ New conversation" drop it.
+- **Browser voice per group, not per sign:** consecutive signs without a recording are one utterance (reads as a
+  phrase); a recording that fails to play is read by the voice instead.
+- **Number signs:** key `"N"` if such a sign exists, else the English word key (`one` ... `ten`), because the spec writes
+  `<1-10>` and the data uses words. A multi-digit number other than 10 is spelled digit by digit; `0` has no sign.
+- **Caption-only characters** (no clip) are highlighted 700 ms with the avatar at rest; the rest of the sentence stays one
+  continuous avatar movement per run.
+- **Audio format from the bytes, not the file name** (the sniffed format is the stored extension); one file per language.
+- **Audio upload/delete is admin only** (spec), unlike the other training write endpoints (DEBT 157).
+- **The confirm card is removed entirely** (both Sends add directly); `openModal()` keeps `idle` and `error`.
+- **Toasts** ("🔊 Speaking: …", "✓ Sent") are green, not orange, so each screen keeps one orange fill; the turn
+  shortcuts are dashed orange outlines for the same reason.
+- **Videos kept on disk** (DEBT 169): still referenced by the recorder, reports and tests.
+
