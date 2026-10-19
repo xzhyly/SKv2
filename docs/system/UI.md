@@ -2166,3 +2166,19 @@ Plain HTML/CSS/JS, no library, no build step; inline SVG icons, no images; no sh
 transitions or animations in the new CSS (the shared on-screen keyboard keeps its own existing slide); touch
 targets >= 44 px; built and measured at 1024x600. Colours from `css/tokens.css`, font Inter (`css/fonts.css`).
 `:where()` keeps the new pages' font reset at zero specificity so each component's own weight/size wins.
+
+## Part 5: Settings (glove-serial phase, 2026-10-20)
+
+`settings.html`: Admin -> Settings, admin only (`SKAccount.adminPage()`), the last item of the admin menu
+(`js/sk-account.js`). Sections General · Voice · Glove (General and Voice are placeholders). Glove, per
+`docs/design/glove-settings-wireframe.html`:
+- status with the device line from the hello;
+- Connect / Calibrate / Disconnect;
+- live finger bars (0-1 and raw) and the IMU;
+- Use simulator;
+- a full-screen Calibrate (2 steps x 3 s);
+- a collapsible Debug panel (raw console, counters, commands, Download log, min/max, hints).
+
+Only the section's own column scrolls; the page itself does not at 1024x600. Everything goes through
+`window.SKGlove` (`js/glove.js`). The protocol and the API are in `docs/system/GLOVE.md`. No glove UI outside
+Settings; recognition does not use the glove. Check: `node tests/glove/settings-check.mjs` (simulator, 25 checks).
