@@ -18,7 +18,7 @@
   'use strict';
 
   var VOICE_WAIT_MS = 400;   // getVoices() can be empty until the first voiceschanged
-  var GAP_S = 0.07;          // silence between two scheduled recordings
+  var GAP_S = 0.03;          // silence between two scheduled recordings (owner: 30 ms; was 70 ms)
   var FADE_S = 0.015;        // gain fade in and out at each recording's edges (no clicks)
   var LEAD_S = 0.03;         // a run starts this far ahead of currentTime, so its first clip is not late
   var RESUME_WAIT_MS = 300;  // play() waits this long for a suspended context before using <audio>

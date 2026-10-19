@@ -1,10 +1,11 @@
 // Gapless sign audio (talk-turns-audio, 2026-10-19 owner ask): js/sign-audio.js plays a signed message's
 // recordings as one sentence. Playwright Chromium at 1024x600 on talk.html, js/sign-audio.js driven
 // directly with a 4-word message (hello, thank_you, where, bathroom), each with an mp3 recording:
-//   1  gap between words, BEFORE (the committed js/sign-audio.js, served by interception: one <audio>
+//   1  gap between words, BEFORE (js/sign-audio.js before the gapless change, commit aee82a2^ or
+//      SK_AUDIO_BEFORE_REF, served by interception: one <audio>
 //      per clip, loaded when its turn comes) vs AFTER (the working copy: all clips fetched + decoded in
 //      parallel, scheduled on one AudioContext timeline) — cold (first play) and warm (5 replays)
-//   2  after: scheduled gaps are 70 ms, every clip has a 15 ms fade in/out, the clips are fetched once
+//   2  after: scheduled gaps are GAP_S (read from js/sign-audio.js), every clip has a 15 ms fade in/out, the clips are fetched once
 //      (decoded buffers cached for the page), decoding starts before the first clip plays
 //   3  a word without a recording in the middle: clips before it, then the voice, then the rest
 //      (same rate for every voice word)
@@ -62,8 +63,11 @@ for (const [key, , hz, dur] of WORDS) {
   CLIP[key] = fs.readFileSync(out);
 }
 const BAD = Buffer.concat([Buffer.from('ID3'), Buffer.alloc(2000, 7)]);   // an "mp3" that does not decode
-const OLD_JS = spawnSync('git', ['show', 'HEAD:js/sign-audio.js'], { cwd: repo }).stdout.toString();
-if (!/new Audio\(url\)/.test(OLD_JS) || /decodeAudioData/.test(OLD_JS)) { console.log('FAIL  HEAD:js/sign-audio.js is not the pre-change version'); process.exit(1); }
+const BEFORE_REF = process.env.SK_AUDIO_BEFORE_REF || 'aee82a2^';
+const OLD_JS = spawnSync('git', ['show', BEFORE_REF + ':js/sign-audio.js'], { cwd: repo }).stdout.toString();
+if (!/new Audio\(url\)/.test(OLD_JS) || /decodeAudioData/.test(OLD_JS)) { console.log(`FAIL  ${BEFORE_REF}:js/sign-audio.js is not the pre-change version`); process.exit(1); }
+// The gap under test: the one constant in the working copy's js/sign-audio.js.
+const GAP_MS = Math.round(Number(/var GAP_S = ([0-9.]+);/.exec(fs.readFileSync(path.join(repo, 'js', 'sign-audio.js'), 'utf8'))[1]) * 1000);
 
 const INIT = `(() => {
   window.__ev = []; window.__utter = []; window.__fetches = [];
@@ -115,6 +119,7 @@ const INIT = `(() => {
     return meterIn;
   }
   window.__meter = meter;
+  window.__meterNow = () => (meterCtx ? meterCtx.currentTime : 0);
   const connect = AudioNode.prototype.connect;
   AudioNode.prototype.connect = function (dest) {
     const r = connect.apply(this, arguments);
@@ -199,10 +204,14 @@ function audible(level) {
 async function playMetered(p) {
   const r = await p.evaluate(async ({ items, audio }) => {
     document.dispatchEvent(new Event('pointerdown'));
+    // Only this play is measured: the previous play's last blocks can still arrive late (a busy or
+    // throttled main thread), so wait for them, then keep only blocks from this play's start on.
+    await new Promise((res) => setTimeout(res, 600));
+    const from = window.__meterNow();
     window.__level.length = 0;
     await window.SignAudio.play(items, 'en', audio);
     await new Promise((res) => setTimeout(res, 300));      // the meter's last blocks
-    return { level: window.__level.slice(), err: window.__meterErr || null };
+    return { level: window.__level.filter((l) => l.t >= from), err: window.__meterErr || null };
   }, { items: ITEMS, audio: AUDIO });
   return { ...audible(r.level), err: r.err };
 }
@@ -236,7 +245,7 @@ try {
   for (let i = 0; i < 5; i++) newAud.push(await playMetered(N.p));
   check('after: the meter hears 4 words', newAud.every((a) => a.words === 4), J(newAud));
   check('after: 4 clips scheduled on the AudioContext, no <audio>', newCold.n === 4 && !r0.ev.some((e) => e.k === 'htmlPlay'), J(r0.ev.map((e) => e.k)));
-  check('after: scheduled gaps are 70 ms', newCold.sched.concat(newWarm.sched).every((g) => Math.abs(g - 70) < 0.5), J(newCold.sched));
+  check(`after: scheduled gaps are ${GAP_MS} ms (GAP_S)`, newCold.sched.concat(newWarm.sched).every((g) => Math.abs(g - GAP_MS) < 0.5), J(newCold.sched));
   const ramps = r0.ev.filter((e) => e.k === 'ramp');
   const starts = r0.ev.filter((e) => e.k === 'srcStart');
   check('after: each clip fades in to 1 and out to 0 over 15 ms', ramps.length === 8 && starts.every((s, i) => Math.abs(ramps[2 * i].at - s.when - 0.015) < 1e-6 && ramps[2 * i].v === 1 && Math.abs(ramps[2 * i + 1].at - s.when - s.dur) < 1e-6 && ramps[2 * i + 1].v === 0), J(ramps.slice(0, 4)));
@@ -249,8 +258,8 @@ try {
   };
   // The audible silence (audio-thread clock) is the measure; the event times (main thread) are reported
   // only, they arrive late when the CPU is busy or throttled.
-  check('after: the audible silence between words is 70-100 ms (70 ms gap + fades + mp3 padding), every run 4 words',
-    newAud.every((a) => a.words === 4) && newAud.flatMap((a) => a.gaps).every((g) => g >= 70 && g <= 100), J(report.gaps.audibleSilenceMs));
+  check(`after: the audible silence between words is ${GAP_MS}-${GAP_MS + 30} ms (the gap + fades + mp3 padding), every run 4 words`,
+    newAud.every((a) => a.words === 4) && newAud.flatMap((a) => a.gaps).every((g) => g >= GAP_MS && g <= GAP_MS + 30), J(report.gaps.audibleSilenceMs));
   report.gaps.before.dropoutRuns = oldDropouts;
 
   // ── 3. a word without a recording in the middle ──
