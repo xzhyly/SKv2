@@ -1840,8 +1840,8 @@ Report `docs/reports/2026-10-21-pi-fixes-final.md`. Changes 3a/3g as follows:
   Send / Undo / Clear / Speak or Type disabled until the first video frame (requestVideoFrameCallback)
   and the first MediaPipe result after resume (10 s fallback); then the countdown and `onLive`.
 - `js/gesture-data.js` `setLoopOptions({ detectEvery, modelComplexity })` / `getLoopStats()`: talk.html
-  sends every 2nd camera frame (`?detectEvery=N`) and asks for the lite model, used only if
-  `js/lib/mediapipe/hand_landmark_lite.tflite` exists (not vendored: full model + console warning).
+  sends every 2nd camera frame (`?detectEvery=N`); full model until
+  `js/lib/mediapipe/hand_landmark_lite.tflite` is vendored and `LITE_MODEL_VENDORED` is set true.
   Other pages keep the old defaults (every animation frame, full model). `?devperf`: fps overlay.
 - `js/talk-speaking.js`: 16 kHz capture, silence gate, Stop = flush (Processing… only if speech was
   heard; final text / "Walang narinig, subukan ulit" / 4 s timeout).

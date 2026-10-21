@@ -122,14 +122,15 @@ thread back to back; the `<video>` itself plays at the camera's rate. talk.html 
 (`talk-loader.js:31`; `?detectEvery=3` to try 3). Other pages keep the defaults (`detectEvery` 1 =
 the old rAF loop, full model).
 
-Lite model: `talk-loader.js:32` asks for `modelComplexity` 0, but MediaPipe loads it from
-`js/lib/mediapipe/hand_landmark_lite.tflite`, which is **not vendored** (only `hand_landmark_full.tflite`
-is). So talk-loader checks the file with a HEAD request and falls back to 1 with a console warning
-("… not found: using the full hand model"); the HEAD shows as one 404 in the console per page load.
-I did not download it (offline rule / your call). To enable it: copy `hand_landmark_lite.tflite` from
-the same MediaPipe Hands package as the other files (`0.4.1675469240`, `docs/system/VENDORED.md`) into
-`js/lib/mediapipe/`. The recognition model was compiled from full-model landmarks; check recognition
-with the lite model before relying on it (`?complexity=1` forces full).
+Lite model: MediaPipe loads `modelComplexity` 0 from `js/lib/mediapipe/hand_landmark_lite.tflite`, which
+is **not vendored** (only `hand_landmark_full.tflite` is). So talk.html uses the full model (1) by default:
+`LITE_MODEL_VENDORED = false` (`talk-loader.js:32`). (Correction, same day: a first version checked the
+file with a HEAD request; its 404 was a console error on every load and broke the "0 console errors"
+checks, so it was removed.) I did not download the file (offline rule / your call). To enable it: copy
+`hand_landmark_lite.tflite` from the same MediaPipe Hands package as the other files (`0.4.1675469240`,
+`docs/system/VENDORED.md`) into `js/lib/mediapipe/`, then set `LITE_MODEL_VENDORED = true`
+(`?complexity=0` / `=1` overrides for a test). The recognition model was compiled from full-model
+landmarks; check recognition with the lite model before relying on it.
 
 Debug overlay `talk.html?devperf`: video fps, detection ms/frame, detection fps, every second over the
 camera and every 5 s in the console (`[perf] …`). Laptop, synthetic 30 fps camera:
@@ -203,12 +204,21 @@ gesture-training.html is admin-only and I had no admin login, so only its defaul
 about, not clicked.
 
 ## Known follow-ups
-- The Playwright checks written for the old Speak flow still look for `#speaking-send` /
-  `#speaking-edit` and "Starting camera…": `tests/talk-turns-audio/talk-check.mjs`,
-  `tests/avatar/talk-avatar-check.mjs`, `tests/accounts-quiz/e2e-check.mjs`,
-  `tests/accounts-quiz/talk-layout-check.mjs`, `tests/sign-texts/verify-e2e.mjs`. They will fail
-  until updated (not run here: no `node_modules`).
+- ~~Old-flow checks~~ updated the same day (Translate = Send → Done instead of Edit / Send), see
+  "Checks updated" below.
 - The lite hand model file (decision above).
+
+## Checks updated (follow-up, 2026-10-21)
+
+| Check | Change | Run here |
+|---|---|---|
+| `tests/talk-turns-audio/talk-check.mjs` | A: the message is in the conversation at Translate, field emptied, no buttons while signing, then Replay / Done; B: Done → thread → Speak or Type instead of Edit, Done instead of Send, message present once; last part: Back while signing keeps the message, drops the preview | not run (Playwright not installed) |
+| `tests/accounts-quiz/e2e-check.mjs`, `tests/accounts-quiz/talk-layout-check.mjs` | Translate, then `#speaking-done` (Playwright waits for it to become visible after the avatar) | not run (Playwright not installed) |
+| `tests/avatar/talk-avatar-check.mjs` | Done + Speak or Type between sentences; `TalkHistory.saveMessage` stubbed (Translate now saves); the "nice" check accepts letter clips, which exist locally now (`saved_gestures/n,i,c,e/avatar.json`) | **26 PASS, 0 FAIL** (screenshots it rewrites in `docs/reports/img/` restored) |
+| `tests/sign-texts/verify-e2e.mjs` | Done + Speak or Type between sentences; save stubbed | Sign turn, the 5 Speak sentences and both "0 console errors" PASS; 6 FAIL on its fixed 2026-10-04 data counts (expects 122 gestures, the DB has 164) and the old migration verify: not this phase |
+
+The `tests/video-capture/*` "Starting camera…" texts are Train Gestures' capture overlay
+(`js/gesture-capture-ui.js`), which this phase did not change.
 
 ---
 
