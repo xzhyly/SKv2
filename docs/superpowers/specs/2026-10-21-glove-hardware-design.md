@@ -51,7 +51,8 @@ Two phases, with a stop between them: **Phase 1** (hardware, laptop) must pass o
 - **Sends raw values only.** The firmware never maps channels to fingers; the page does, from the stored setup.
 - **Setup storage** in ESP32 flash (`Preferences`, survives unplugging): one JSON string, at most 1 KB, written and
   read verbatim. The firmware does not parse it beyond checking it is valid length/UTF-8.
-- Boot: hello. Commands (one line each, `\n`): `hello`, `ping` (unchanged), `cfg-get`, `cfg-set <json>`,
+- Boot: hello (with `hasCfg`, never the setup itself, so a damaged stored setup can never break the hello).
+  The page sends `cfg-get` after a hello with `hasCfg: true`. Commands (one line each, `\n`): `hello`, `ping` (unchanged), `cfg-get`, `cfg-set <json>`,
   `cfg-clear`.
 - A plain **Serial Monitor check** works without the kiosk: the data lines show 16 numbers that change when a
   finger bends.
@@ -59,10 +60,10 @@ Two phases, with a stop between them: **Phase 1** (hardware, laptop) must pass o
 ### 1.2 Protocol v2 (`docs/system/GLOVE.md`, rewritten)
 
 ```json
-{"type":"hello","device":"sk-glove","fw":"2.0","channels":16,"imu":true,"i2c":"21/22","cfg":{...}|null}
+{"type":"hello","device":"sk-glove","fw":"2.0","channels":16,"imu":true,"i2c":"21/22","hasCfg":true}
 {"t":123456,"ch":[1840,3410,...16 values],"imu":{"ax":0.02,"ay":-0.21,"az":0.97,"gx":1.5,"gy":-0.4,"gz":31.0}}
 {"type":"pong","t":123500}
-{"type":"cfg","cfg":{...}|null}
+{"type":"cfg","cfg":{...}|null}          (the answer to cfg-get)
 {"type":"cfg-ok"}  /  {"type":"cfg-error","why":"too long"}
 ```
 
@@ -83,6 +84,7 @@ The stored `cfg` (written by the page, version-tagged):
   kiosk's camera (set by the wizard's camera step).
 - Bad-line rules unchanged (counted, shown red, never throw). A data line must have exactly 16 integers 0-4095.
 - Firmware 1.x lines (`f` with 5 values) are reported as "old firmware: flash sk_glove 2.0".
+- A `cfg` line that is not valid JSON (damaged flash) sets the setup state to "damaged: run Set up glove again".
 
 ### 1.3 `js/glove.js` (`window.SKGlove`, extended, same style)
 
@@ -106,9 +108,11 @@ Same theme, 1024x600, no modals, every control >= 44 px.
   "not set up".
 - **Two hands**: left and right, 5 bars each (thumb -> pinky), shown once a map exists.
 - **Set up glove** (full screen, steps, Back / Skip / Next):
-  1. *Find the fingers* — "Bend your RIGHT thumb", ... "LEFT pinky" (10 steps). For each step the channel with the
-     largest change over 2 s (vs a 1 s rest baseline) is taken. Warnings: no channel moved by more than 150 (offer
-     Retry / Skip finger); the channel is already used by another finger (offer Retry).
+  1. *Find the fingers* — "Bend your RIGHT thumb", ... "LEFT pinky" (10 steps). For each step, per channel:
+     move = the largest distance from its 1 s resting median during 2 s of bending, minus how much it wandered at
+     rest (so a floating, unconnected mux channel's noise never wins). The channel with the largest move is taken
+     if move > 150 **and** move >= 2x the next channel's. Warnings (Retry / Skip finger): no channel moved enough;
+     two channels moved about the same; the channel is already used by another finger.
   2. *Calibrate* — both hands open 3 s, both fists 3 s, median per finger (existing method, now 10 fingers).
   3. *Camera* — "Raise your RIGHT hand in front of the camera": MediaPipe Hands runs on the kiosk camera for up to
      5 s (Settings loads the vendored `js/lib/mediapipe/hands.js`, offline, only for this step); the handedness label it gives (score >= 0.8) sets `cam.mirror`. Skippable (then Phase 2 uses the
@@ -118,14 +122,13 @@ Same theme, 1024x600, no modals, every control >= 44 px.
 - **Debug** (existing panel): adds a **16-channel raw table** (value, min, max, range, "used by: R index") and the
   `cfg` JSON; hints add "channel N never changes" and "old firmware".
 
-### 1.5 Pi preparation (`tools/pi/pi-setup.sh`, `docs/system/PI-SETUP.md`)
+### 1.5 Pi preparation (already in place, pi-setup phase 2026-10-20)
 
-- Add the kiosk user to `dialout`.
-- Chromium managed policy `SerialAllowUsbDevicesForUrls` for `http://localhost` with the ESP32's USB-UART
-  vendor/product IDs, so `getPorts()` returns the glove after boot with no port picker. The IDs are **not
-  assumed**: Settings -> Glove -> Debug shows the connected port's `usbVendorId` / `usbProductId`
-  (`port.getInfo()`), and the owner's Phase 1 checklist records them from the laptop; `pi-setup.sh` takes them
-  as parameters, with CP210x (10c4:ea60) and CH340 (1a86:7523) as the default list.
+Checked while planning: `tools/pi/pi-setup.sh` step 6 already writes the Chromium policy
+`"SerialAllowAllPortsForUrls": ["http://localhost"]` (every serial port allowed for the kiosk, so `getPorts()`
+returns the glove after boot with no picker and no USB IDs needed) and step 9 already adds the kiosk user to
+`dialout`. Phase 1 changes only the glove lines of `docs/system/PI-SETUP.md`'s checklist (setup comes from the
+glove; no Set up needed on the Pi).
 
 ### 1.6 Phase 1 checks
 
@@ -135,8 +138,7 @@ Same theme, 1024x600, no modals, every control >= 44 px.
 - Firmware: compiled with `arduino-cli` (esp32 core) in the workspace if the toolchain can be downloaded there;
   otherwise the report says it was not compiled.
 - **Owner checklist (real glove, laptop)**: driver/COM port, upload, Serial Monitor shows 16 changing numbers,
-  Connect in Settings, wizard (each finger found), calibrate (~0 open / ~1 fist), unplug/replug keeps the setup,
-  note the USB IDs shown in Debug.
+  Connect in Settings, wizard (each finger found), calibrate (~0 open / ~1 fist), unplug/replug keeps the setup.
 
 ---
 
@@ -216,8 +218,8 @@ The MPU6050 is not used in recognition (shown in Settings only).
 | 1 | `tools/glove-firmware/sk_glove/sk_glove.ino`, `tools/glove-firmware/README.md` | rewritten for the mux, 16 channels, setup storage; README wiring = the diagram, Windows driver + first upload steps |
 | 1 | `docs/system/GLOVE.md` | protocol v2 |
 | 1 | `js/glove.js` | v2 parser, config on the glove, two hands, simulator v2 |
-| 1 | `settings.html` | two hands, setup wizard, 16-channel debug, USB IDs |
-| 1 | `tools/pi/pi-setup.sh`, `docs/system/PI-SETUP.md` | dialout, Chromium serial policy |
+| 1 | `settings.html` | two hands, setup wizard, 16-channel debug |
+| 1 | `docs/system/PI-SETUP.md` | glove checklist lines only (policy and dialout already in `pi-setup.sh`) |
 | 1 | `tests/glove/settings-check.mjs` | v2 checks |
 | 2 | `js/glove-bend.js` (new) | bend from rows, re-ranking |
 | 2 | `js/talk-signing.js`, `talk.html`, `js/gesture-training-ui.js`, `gesture-training.html` | toggle + re-rank hook |
