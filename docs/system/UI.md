@@ -1848,14 +1848,23 @@ Report `docs/reports/2026-10-21-pi-fixes-final.md`. Changes 3a/3g as follows:
 - talk.html Speak or Type: Translate adds the message and starts the avatar (no Edit / Send any more);
   no buttons while it signs; then Replay / Done (Done = "Whose turn is it?").
 
-### 3i. 🧤 Gloves on the Sign screen (glove-hw Phase 2, 2026-10-21)
+### 3i. 🧤 Gloves on the Sign screen (glove-hw Phase 2, 2026-10-21; glove-chip phase, 2026-10-22)
 
-With a set-up glove connected (`SKGlove.ready()`), "🧤 Gloves OFF" appears **beside EN | FIL** (132 px, 52 px tall;
-EN | FIL narrows to about 98 px per segment); without one the row is exactly as before. Tap = ON: navy, "ON" and 10
-finger bars inside the button; the camera's top 5 guesses are re-ranked with the glove (`docs/system/GLOVE.md`
-"Glove in recognition"). Starts OFF on every page load; "+ New conversation" with no messages resets it; unplugged
--> hidden and OFF. Nothing else on the screen moves (`tests/glove/talk-glove-check.mjs`). Train Gestures Step 3 has
-the same button under the prediction box.
+With a set-up glove connected (`SKGlove.ready()`), a small **🧤 Gloves chip** sits over the camera's top-right corner,
+the mirror of the "Show your sign" chip (44 px tall, pill, absolutely positioned: it never moves or covers the right
+column, which is exactly as before gloves; `docs/design/glove-chip-wireframe.html`). Without a glove: no chip, the
+screen as before. States (`GloveAssist.chipState()`):
+- **off** (default): faint translucent outline, "🧤 Gloves";
+- **on**: white fill, navy "🧤 ON", green dot; the camera's top 5 guesses are re-ranked with the glove
+  (`docs/system/GLOVE.md` "Glove in recognition");
+- **idle**: ON but `apply()` ignores the glove (no camera step, data older than 1 s, no finger moved for 3 s, unsure
+  hand): amber outline and dot, "Camera only", no popup; back to **on** by itself when the glove is used again.
+Tap toggles ON/OFF in every state. OFF at the start of every Sign turn (`GloveAssist.startTurn()` in
+`onEnterSigning`), on every page load, and on "+ New conversation" with no messages (`reset()`); unplugged -> hidden
+and OFF. The first ON of a conversation shows a hint banner inside the camera, under the chips (FIL by default, EN
+while EN is selected; 3 s, a tap hides it sooner). No finger bars here (Admin -> Settings -> Glove has them).
+The Sign Guide has one line about the optional gloves (FIL, then EN). Train Gestures Step 3 keeps its own
+"🧤 Gloves OFF / ON" button (with finger bars) under the prediction box. Check: `tests/glove/talk-glove-check.mjs`.
 
 ### 3g. Turns, sign audio, avatar-only playback (talk-turns-audio phase, 2026-10-19)
 
@@ -2211,13 +2220,13 @@ targets >= 44 px; built and measured at 1024x600. Colours from `css/tokens.css`,
 - **Set up glove**, full screen: 1 Fingers (10 steps, chips "R thumb C0"), 2 Calibrate (both hands open / two
   fists), 3 Camera (raise the right hand; MediaPipe's handedness -> mirror on/off; Skip), 4 IMU (Left / Right hand,
   only with an IMU), 5 Save on glove (summary). Cancel leaves without saving;
-- once set up: "Glove strength in Let's Talk" (− 0.3 +, saved on the glove) and "Finger bars in Let's Talk" (switch,
-  this kiosk);
+- once set up: "Glove strength in Let's Talk" (− 0.3 +, saved on the glove) and "Finger bars in Train Gestures" (switch,
+  this kiosk; the Step 3 button only, the Let's Talk chip has none since the glove-chip phase);
 - a collapsible Debug panel: raw console, counters, commands, Download log, the 16-channel table (used by, min,
   max, range, now), the setup stored on the glove (JSON) with Clear setup on glove, hints.
 
 Only the section's own column scrolls; the page itself does not at 1024x600 (Set up glove fits without
 scrolling). Everything goes through `window.SKGlove` (`js/glove.js`); the protocol, the setup and the API are in
-`docs/system/GLOVE.md`. Outside Settings the glove appears only as the 🧤 button (3i). Checks:
+`docs/system/GLOVE.md`. Outside Settings the glove appears only as the 🧤 chip in Let's Talk and the 🧤 button in Train Gestures Step 3 (3i). Checks:
 `node tests/glove/glove-core-check.mjs` (no browser) and `node tests/glove/settings-check.mjs` (simulator,
 headless Chrome).

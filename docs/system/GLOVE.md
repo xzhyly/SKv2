@@ -194,16 +194,22 @@ the glove** (JSON) and **Clear setup on glove**.
 
 ## Glove in recognition (glove-hw Phase 2, 2026-10-21)
 
-**The button.** `js/glove-assist.js` (`window.GloveAssist`) fills an empty `<button>` with "🧤 Gloves OFF" and shows it
-**only while `SKGlove.ready()`**:
-- Let's Talk, Sign screen: beside EN | FIL (`.signing-lang-row`; EN | FIL narrows, and is full width as before
-  without a glove). Owner choice: the bottom row has no room (338 px: Speak or Type 218 + Guide 110).
-- Train Gestures, Step 3 panel (Step 4 stays camera only).
-- Tap = ON (navy, `aria-pressed`, "ON"); the ON state is never stored. Every end of a conversation reloads
+**The chip and the button.** `js/glove-assist.js` (`window.GloveAssist`) shows its control **only while
+`SKGlove.ready()`**:
+- Let's Talk, Sign screen (glove-chip phase, 2026-10-22, `docs/design/glove-chip-wireframe.html`):
+  `GloveAssist.initChip(el, { hint, lang })` fills `#glove-chip`, a 44 px pill over the camera's top-right corner
+  (the right column is exactly as before gloves). States `off` / `on` (green dot) / `idle` (amber dot, "Camera
+  only": ON, but `glovesForFrame()` gives a reason other than "no hand in the frame"; the same rules as `apply()`
+  below, not new ones). While ON the state is re-checked every 250 ms; the DOM changes only when the state changes.
+  OFF at every Sign turn (`startTurn()`). The first ON of a conversation shows `#glove-hint` for 3 s (FIL, EN while
+  EN is selected); `reset()` re-arms it. No finger bars. (Before: "🧤 Gloves OFF / ON" beside EN | FIL.)
+- Train Gestures, Step 3 panel (Step 4 stays camera only): `GloveAssist.init(button)`, "🧤 Gloves OFF / ON".
+- Tap = ON (`aria-pressed`); the ON state is never stored. Every end of a conversation reloads
   `talk.html` except "+ New conversation" with an empty thread, which calls `GloveAssist.reset()`; so a new
-  conversation always starts OFF. Unplugged or setup cleared: the button hides and goes OFF.
-- While ON: 10 finger bars inside the button (left 5, right 5), redrawn at most every 100 ms with CSS `transform`
-  only. Settings -> Glove "Finger bars in Let's Talk" (per kiosk, `localStorage` `sk_glove_bars`, `'0'` = off).
+  conversation always starts OFF. Unplugged or setup cleared: the chip / button hides and goes OFF.
+- Train Gestures Step 3 button only, while ON: 10 finger bars inside it (left 5, right 5), redrawn at most every
+  100 ms with CSS `transform` only. Settings -> Glove "Finger bars in Train Gestures" (per kiosk, `localStorage`
+  `sk_glove_bars`, `'0'` = off; it was "Finger bars in Let's Talk" before the glove-chip phase).
 - The simulator runs only with `?glove=sim` on every page, so a kiosk never shows a fake glove (the
   `window.SK_GLOVE_URL_SIM_ONLY` line left in Let's Talk and Train Gestures is now redundant and harmless).
 
