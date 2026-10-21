@@ -925,6 +925,8 @@
   .speaking-caption .ltr.nosign{background:transparent;color:var(--surface);border:2px dashed rgba(255,255,255,0.7)}
   .speaking-caption .ltr.on{background:var(--orange);color:var(--surface)}
   .speaking-preview-actions{flex:none;display:flex;gap:10px}
+  /* While the avatar signs: the avatar has full focus, no buttons (pi-fixes 2026-10-21). */
+  #screen-speaking[data-playing="1"] .speaking-preview-actions{visibility:hidden}
   .speaking-preview-actions .speaking-edit{width:130px;height:56px}
   .speaking-preview-actions .speaking-send{width:150px;height:56px}
   .speaking-edit{
@@ -1275,8 +1277,10 @@ Please stand by</span></div>
     </div>
     <!-- Preview (swaps in for the compose rows, talk-turns-audio): the avatar fills the area under the
          top bar and signs the text (js/sign-player.js: the sign's avatar clip, else avatar
-         fingerspelling); the caption highlights the current word or letter. Send adds the TEXT to the
-         conversation directly; nothing of the preview is stored. -->
+         fingerspelling); the caption highlights the current word or letter. pi-fixes 2026-10-21:
+         Translate already added the TEXT to the conversation (Translate = Send); while the avatar
+         signs no button shows, then Replay / Done (Done = back to "Whose turn is it?"). Editing is
+         only possible before Translate. Nothing of the preview is stored. -->
     <div class="speaking-preview" id="speaking-preview">
       <div class="speaking-sign-frame" id="speaking-sign-frame">
         <canvas class="speaking-avatar" id="speaking-avatar" width="1000" height="486"></canvas>
@@ -1284,8 +1288,7 @@ Please stand by</span></div>
           <div class="speaking-caption" id="speaking-caption" aria-live="polite"></div>
           <div class="speaking-preview-actions">
             <button type="button" class="speaking-edit" id="speaking-replay">&#8635; Replay</button>
-            <button type="button" class="speaking-edit" id="speaking-edit">Edit</button>
-            <button type="button" id="speaking-send" class="speaking-send" disabled>Send</button>
+            <button type="button" id="speaking-done" class="speaking-send">Done</button>
           </div>
         </div>
       </div>
@@ -2048,23 +2051,8 @@ Please stand by</span></div>
     // language chips and the sign preview.
     (function () {
       var speakingInput = document.getElementById('speaking-input');
-      var speakingSend = document.getElementById('speaking-send');
       speakingInput.addEventListener('input', function () {
-        speakingSend.disabled = speakingInput.value.trim() === '';
         if (speakingInput.value.trim() === '') speakingFromMic = false;
-      });
-
-      // Send: REAL typed or spoken text (docs/system/DECISIONS.md — "typed-and-sent messages are
-      // real data"), added to the conversation directly (talk-turns-audio: the "You said … / Add to
-      // Conversation" card is gone; Edit covers "Try again"). The field is cleared, then the app
-      // returns to "Whose turn is it?".
-      speakingSend.addEventListener('click', function () {
-        if (speakingSend.disabled) return;
-        var typedText = speakingInput.value;
-        addMessage({ from: 'hearing', source: speakingFromMic ? 'speech' : 'typed', text: typedText });
-        speakingInput.value = '';
-        speakingSend.disabled = true;
-        speakingFromMic = false;
       });
     })();
 
@@ -2073,9 +2061,9 @@ Please stand by</span></div>
       var screen = document.getElementById('screen-speaking');
       var input = document.getElementById('speaking-input');
       var translateBtn = document.getElementById('speaking-translate');
-      var editBtn = document.getElementById('speaking-edit');
       var replayBtn = document.getElementById('speaking-replay');
-      var sendBtn = document.getElementById('speaking-send');
+      var doneBtn = document.getElementById('speaking-done');
+      var switchBtn = document.getElementById('speak-to-sign-btn');
       var chipEn = document.getElementById('chip-lang-en');
       var chipFil = document.getElementById('chip-lang-fil');
 
@@ -2127,10 +2115,24 @@ Please stand by</span></div>
         chipEn.setAttribute('aria-pressed', fil ? 'false' : 'true');
         chipFil.setAttribute('aria-pressed', fil ? 'true' : 'false');
       }
-      resetSpeakingUi = function () { setState('compose'); refreshTranslate(); syncChips(); };
+      // While Stop is being processed (js/talk-speaking.js) nothing else on the screen works.
+      function syncBusy() {
+        var busy = TalkSpeaking.isProcessing();
+        chipEn.disabled = busy;
+        chipFil.disabled = busy;
+        switchBtn.disabled = busy;
+        input.readOnly = busy;
+      }
+      resetSpeakingUi = function () {
+        setState('compose');
+        screen.setAttribute('data-playing', '0');
+        refreshTranslate();
+        syncChips();
+        syncBusy();
+      };
 
       TalkSpeaking.init({
-        onChange: refreshTranslate,
+        onChange: function () { refreshTranslate(); syncBusy(); },
         onTranscript: function () { speakingFromMic = input.value.trim() !== ''; },
         onMicError: function () {
           openModal('error', {
@@ -2145,6 +2147,23 @@ Please stand by</span></div>
       chipEn.addEventListener('click', function () { TalkSpeaking.setLanguage('en-US'); syncChips(); });
       chipFil.addEventListener('click', function () { TalkSpeaking.setLanguage('fil-PH'); syncChips(); });
 
+      // Plays the signed text; Replay / Done show only once the avatar has finished (data-playing).
+      // play() also resolves when it is cancelled or superseded: only the latest one ends the playing state.
+      var previewText = '';
+      var playId = 0;
+      function playPreview() {
+        var my = ++playId;
+        screen.setAttribute('data-playing', '1');
+        speakingPlayer.play(previewText).catch(function (e) {
+          console.error('[talk] sign preview failed:', e);
+        }).then(function () {
+          if (my === playId) screen.setAttribute('data-playing', '0');
+        });
+      }
+
+      // Translate = Send (pi-fixes 2026-10-21, owner change): the REAL typed or spoken text
+      // (docs/system/DECISIONS.md — "typed-and-sent messages are real data") is added to the
+      // conversation at once, then the avatar signs it. Editing happens before Translate only.
       // Translate is the ONLY trigger (no auto-play on speech end or a typing pause).
       translateBtn.addEventListener('click', function () {
         if (translateBtn.disabled || TalkSpeaking.isBusy() || playableText().trim() === '') return;
@@ -2152,23 +2171,20 @@ Please stand by</span></div>
         // to handleDocClick in js/virtual-keyboard.js, which calls hideKeyboard() (that file has
         // no blur/focusout listener).
         input.blur();
-        setState('preview');
-        sendBtn.disabled = input.value.trim() === '';
+        addMessage({ from: 'hearing', source: speakingFromMic ? 'speech' : 'typed', text: input.value });
         // js/sign-player.js's normalizeSpeechText does not strip '?' (nor does script.js's), so
         // the '?' formatGrammar adds to a spoken sentence would become part of the last token
-        // ("you?") and break matching. Pass the text without '?' — the input keeps it for Send.
-        speakingPlayer.play(playableText()).catch(function (e) { console.error('[talk] sign preview failed:', e); });
+        // ("you?") and break matching. The avatar gets the text without '?'; the message keeps it.
+        previewText = playableText();
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));   // Translate off, mic flag reset
+        setState('preview');
+        playPreview();
       });
-      replayBtn.addEventListener('click', function () {
-        speakingPlayer.play(playableText()).catch(function (e) { console.error('[talk] sign preview failed:', e); });
-      });
-      editBtn.addEventListener('click', function () {
-        speakingPlayer.cancel();
-        resetSpeakingUi();                  // back to compose, text kept
-      });
-      // Registered AFTER the Send handler above, so it runs after it: the message is already in the
-      // conversation; stop the preview and go back to "Whose turn is it?".
-      sendBtn.addEventListener('click', function () {
+      replayBtn.addEventListener('click', playPreview);
+      // Done: the message is already in the conversation; back to "Whose turn is it?".
+      doneBtn.addEventListener('click', function () {
+        playId++;
         speakingPlayer.cancel();
         resetSpeakingUi();
         showScreen('thread');
