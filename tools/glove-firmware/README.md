@@ -28,7 +28,8 @@ the raw value of all 16 mux channels, and the glove's setup stored in its flash.
 - **Which sensor is which finger does not matter here.** The firmware sends all 16 channels; Settings -> Glove ->
   **Set up glove** finds each finger's channel and saves it on the glove.
 - **3.3 V only.** Never connect 5 V to an ESP32 pin, the mux or a sensor.
-- **Bending lowers the reading** (the sensor's resistance rises). The page's calibration handles it.
+- **Direction:** on the owner's glove a finger reads **0 straight and rises when bent** (up to 2846-4095, measured
+  2026-10-22). The page's calibration works in either direction, so this is fine.
 - **Battery: not used.** The diagram's 18650 + TP4056 + switch SW1 are not needed: USB powers everything. Keep
   **SW1 OFF whenever USB is plugged in** (USB 5 V would otherwise push into the battery through VIN without the
   charger's control).
@@ -71,5 +72,5 @@ the raw value of all 16 mux channels, and the glove's setup stored in its flash.
 5. Unplug the cable: "reconnecting…". Plug it back: connected within 3 s with no prompt, and the setup is still
    there (it comes from the glove).
 
-No glove at hand? Turn on **Use simulator** (or open `settings.html?glove=sim`): the same lines, including a bad one
+No glove at hand? Open `settings.html?glove=sim`: the same lines, including a bad one
 about every 5 s.

@@ -4,6 +4,7 @@
 |---|---|
 | `pi-setup.sh` | one-command kiosk setup on the Pi (packages, Apache, DB, display, Chromium policy, the launcher `~/.local/bin/sk-kiosk.sh` and its ONE autostart). Guide: [docs/system/PI-SETUP.md](../../docs/system/PI-SETUP.md) |
 | `sk-audio.sh` | run by the launcher at every kiosk start: sets the default speaker and microphone **by name** and the speaker volume (≤ 0.8) |
+| (installed by `pi-setup.sh`) `/etc/sudoers.d/sk-power`, `/usr/local/bin/sk-volume` | let the admin Shut down / Restart the Pi and set the volume from Settings → System: [below](#admin-power-and-volume-buttons-settings--system) |
 | `export-from-laptop.cmd`, `import-on-pi.sh` | move the laptop's data (DB, `saved_gestures/`, `models/`) to the Pi: [transfer.md](transfer.md) |
 
 ## Pi hardware notes
@@ -44,6 +45,39 @@ SINK_VOLUME="0.6"
 ```
 
 Run it by hand to check: `bash tools/pi/sk-audio.sh`, then `wpctl status` (the `*` marks the defaults).
+
+## Admin power and volume buttons (Settings → System)
+
+The kiosk has no keyboard or mouse, so an admin turns it off from the screen: log in as an admin →
+name chip → Settings → **System**.
+
+- **Shut down** / **Restart** ask first (EN/FIL), then show a full-screen message; the Pi powers off or
+  reboots about 3 s later. **To turn it on again, plug the power back in** (the Pi has no power button).
+- **Unplug only after the green LED stops blinking.** The green ACT LED blinks while the Pi writes to
+  the SD card during shutdown; pulling the power before it stops can corrupt the card.
+- **Speaker volume**: a slider up to 80 % (`MAX_VOLUME` in `sk-audio.sh`; louder browns out the LCDs,
+  note 3 above) and **Test sound**. The value is also saved as `SINK_VOLUME` in
+  `~/.config/sk-audio.conf`, so `sk-audio.sh` restores it at every kiosk start.
+- On the laptop (or any non-Pi) the buttons are disabled with "Raspberry Pi only"; the API
+  (`php/api/system_power.php`) refuses and runs nothing.
+
+`pi-setup.sh` step 10 installs what this needs (re-run it after a `git pull` that changes it; it prints
+`installed` or `unchanged` for each file):
+
+| File | What |
+|---|---|
+| `/etc/sudoers.d/sk-power` (root, 0440, checked with `visudo -cf` before it is installed) | Apache's user (`APACHE_RUN_USER`, normally `www-data`) may run, as root and without a password, only `/usr/bin/systemctl poweroff`, `/usr/bin/systemctl reboot` and `/usr/local/bin/sk-volume` |
+| `/usr/local/bin/sk-volume` (root, 0755) | accepts only `get` or `set 0.00..0.80`, then runs `wpctl` as the kiosk user with `XDG_RUNTIME_DIR=/run/user/<uid>` (Apache cannot reach the kiosk user's PipeWire session) and writes `SINK_VOLUME` |
+
+Checks on the Pi:
+
+```bash
+sudo -u www-data sudo -n -l /usr/bin/systemctl poweroff   # prints the command = allowed
+sudo -u www-data sudo -n /usr/local/bin/sk-volume get     # Volume: 0.75
+grep sk-power /var/log/apache2/error.log                  # one "[sk-power] user=... action=..." line per request
+```
+
+If Settings → System says "Not set up: run tools/pi/pi-setup.sh", one of these checks fails.
 
 ## Restarting the kiosk from SSH
 

@@ -2206,7 +2206,8 @@ targets >= 44 px; built and measured at 1024x600. Colours from `css/tokens.css`,
 - Connect / Set up glove / Disconnect;
 - LEFT HAND and RIGHT HAND, 5 bars each (0-1, name, raw), striped for a finger with no channel; "Not set up yet"
   instead of the bars before Set up glove; the IMU (with its hand);
-- Use simulator;
+- no simulator switch (owner 2026-10-22): the simulator only with `?glove=sim`;
+- System (pi-power phase): Shut down / Restart and speaker volume;
 - **Set up glove**, full screen: 1 Fingers (10 steps, chips "R thumb C0"), 2 Calibrate (both hands open / two
   fists), 3 Camera (raise the right hand; MediaPipe's handedness -> mirror on/off; Skip), 4 IMU (Left / Right hand,
   only with an IMU), 5 Save on glove (summary). Cancel leaves without saving;

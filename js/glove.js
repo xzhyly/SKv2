@@ -20,7 +20,6 @@
   var DEFAULT_W = 0.3;          // glove strength (Phase 2 re-ranking)
   var SIM_MS = 33;              // simulator: ~30 lines/s
   var SIM_BAD_EVERY = 150;      // simulator: one bad line about every 5 s
-  var SIM_KEY = 'sk_glove_sim';
   var SIM_CFG_KEY = 'sk_glove_sim_cfg';   // the simulator's "flash"
   var FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
   var HANDS = ['L', 'R'];
@@ -69,15 +68,11 @@
   function isSupported() { return simOn || serialAvailable(); }
   function status() { return !simOn && !serialAvailable() ? 'unsupported' : state; }
 
-  // The "Use simulator" switch (sk_glove_sim) is Settings' own: a page that sets window.SK_GLOVE_URL_SIM_ONLY before
-  // loading this file (Let's Talk, Train Gestures) uses the simulator only with ?glove=sim, so a switch left on in
-  // Settings never puts a fake glove into a conversation.
+  // The simulator runs only when the page address has ?glove=sim (tests and development). Owner 2026-10-22: no
+  // "Use simulator" switch on any page any more, so a kiosk can never show a fake glove by accident; an old
+  // sk_glove_sim value left in localStorage is ignored.
   function readSimSetting() {
-    try {
-      if (/(?:^|[?&])glove=sim(?:&|$)/.test(location.search)) return true;
-      if (window.SK_GLOVE_URL_SIM_ONLY) return false;
-      return localStorage.getItem(SIM_KEY) === '1';
-    } catch (e) { return false; }
+    try { return /(?:^|[?&])glove=sim(?:&|$)/.test(location.search); } catch (e) { return false; }
   }
 
   // ── the setup (docs/system/GLOVE.md "The setup") ──
@@ -418,7 +413,7 @@
 
   // ── Simulator: firmware 2.0's lines, produced here and fed through feed() ──
   // Wiring it pretends: C0-C4 = right thumb..pinky, C5-C9 = left thumb..pinky, C10-C15 unused
-  // (low noise). A finger reads ~3300 straight and drops toward ~1300 bent, like the real divider.
+  // (low noise, except C10, which copies part of C9 as the owner's real mux does). A finger reads ~3300 straight and drops toward ~1300 bent, like the real divider.
   // Its "flash" is localStorage (sk_glove_sim_cfg), so a saved setup survives a page reload.
   function simLine(obj) { feed(JSON.stringify(obj) + '\n'); }
   function simCfgText() { try { return localStorage.getItem(SIM_CFG_KEY); } catch (e) { return null; } }
@@ -443,6 +438,7 @@
       if (sim.n % SIM_BAD_EVERY === 0) { feed('{"t":' + t + ',"ch":[1200,3400\n'); return; }   // a cut-off line
       var ch = [];
       for (var c = 0; c < CH; c++) ch.push(simChannel(c, t));
+      ch[10] = Math.round(ch[9] * 0.65);   // like the real mux: unconnected C10 copies part of C9 (read just before it)
       var s = t / 1000;
       simLine({ t: t, ch: ch, imu: { ax: +(Math.sin(s * 0.7) * 0.3).toFixed(2), ay: +(Math.cos(s * 0.5) * 0.2).toFixed(2),
         az: 0.95, gx: +(Math.sin(s) * 12).toFixed(2), gy: +(Math.cos(s * 1.3) * 8).toFixed(2), gz: +(Math.sin(s * 0.8) * 35).toFixed(2) } });
@@ -472,10 +468,9 @@
       }
     }, 4);
   }
-  // Switch the source. Stored per kiosk; a running connection is closed first.
+  // Switch the source for this page only (not stored); a running connection is closed first.
   async function simulator(onOff) {
     onOff = !!onOff;
-    try { localStorage.setItem(SIM_KEY, onOff ? '1' : '0'); } catch (e) { /* not stored */ }
     if (onOff === simOn) return;
     await disconnect();
     simOn = onOff;

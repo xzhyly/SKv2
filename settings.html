@@ -7,12 +7,13 @@
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <!-- Admin -> Settings (glove-serial phase 2026-10-20; two gloves + setup on the glove, glove-hw phase
      2026-10-21, docs/superpowers/specs/2026-10-21-glove-hardware-design.md, docs/system/GLOVE.md).
-     Admin only. Sections General · Voice · Glove; General and Voice are placeholders. Glove: status
-     from the hello line, Connect / Set up glove / Disconnect, two hands of live finger bars, IMU, Use
-     simulator, and a collapsible Debug panel (raw console, counters, commands, log download,
+     Admin only. Sections General · Voice · Glove · System; General and Voice are placeholders. Glove: status
+     from the hello line, Connect / Set up glove / Disconnect, two hands of live finger bars, IMU (the
+     simulator only with ?glove=sim, no switch), and a collapsible Debug panel (raw console, counters, commands, log download,
      16-channel table, the setup stored on the glove, hints). Set up glove is a full-screen wizard:
      find the fingers, calibrate, camera handedness, IMU hand, save ON THE GLOVE.
-     Everything goes through window.SKGlove (js/glove.js); nothing here talks to the server. -->
+     The glove goes through window.SKGlove (js/glove.js), not the server. System (pi-power phase): Shut
+     down / Restart the Pi and the speaker volume through php/api/system_power.php (Pi only). -->
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/virtual-keyboard.css">
@@ -120,6 +121,23 @@
   table.sum td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
   table.sum td:first-child { font-weight: 800; color: var(--muted); }
   .su-foot { flex: none; display: flex; gap: 10px; align-items: center; }
+  /* System (pi-power phase): power buttons, volume, confirm dialog, full-screen message */
+  .btn.solid-red { background: var(--red); color: #fff; }
+  .sys-note { font-size: 13px; color: var(--muted); }
+  .sys-note.bad { color: var(--red); font-weight: 700; }
+  .vol { flex: 1; min-width: 0; height: 44px; accent-color: var(--orange); }
+  .vol-val { width: 56px; flex: none; text-align: right; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .sys-ov { position: fixed; inset: 0; z-index: 50; display: none; place-items: center; background: rgba(16, 23, 39, 0.6); padding: 16px; }
+  .sys-ov.on { display: grid; }
+  .sys-dlg { width: 100%; max-width: 520px; background: #fff; border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; }
+  .sys-dlg h2 { margin: 0; font-size: 22px; }
+  .sys-dlg .fil { font-size: 16px; color: var(--muted); font-weight: 700; }
+  .sys-dlg .row { justify-content: flex-end; margin-top: 10px; }
+  .sys-full { position: fixed; inset: 0; z-index: 60; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #101727; color: #fff; text-align: center; padding: 32px; }
+  .sys-full.on { display: flex; }
+  .sys-full .big { font-size: 34px; font-weight: 800; }
+  .sys-full p { margin: 0; max-width: 820px; font-size: 20px; line-height: 1.45; }
+  .sys-full p.fil { color: #b9c3d6; }
 </style>
 <script src="php/api/me.php"></script>
 <script src="js/sk-account.js"></script>
@@ -138,6 +156,7 @@
         <button type="button" data-sec="general">General</button>
         <button type="button" data-sec="voice">Voice</button>
         <button type="button" data-sec="glove" class="on">&#129508; Glove</button>
+        <button type="button" data-sec="system">&#9211; System</button>
       </nav>
       <div class="st-main" id="st-main">
         <section class="st-sec" id="sec-general"><div class="card placeholder">General settings will be here.</div></section>
@@ -155,12 +174,8 @@
               <button type="button" class="btn red" id="g-disconnect" hidden>Disconnect</button>
             </div>
           </div>
-          <div class="warn-box" id="g-unsupported" hidden><b>This browser can't use the glove.</b> Web Serial works in Chromium/Chrome on <b>http://localhost</b> (the kiosk). It does not work over a network address or in Firefox. The simulator still works.</div>
+          <div class="warn-box" id="g-unsupported" hidden><b>This browser can't use the glove.</b> Web Serial works in Chromium/Chrome on <b>http://localhost</b> (the kiosk). It does not work over a network address or in Firefox.</div>
           <div class="warn-box" id="g-oldfw" hidden><b>Old glove firmware.</b> This glove runs firmware 1.x (5 fingers, no mux). Flash <b>tools/glove-firmware/sk_glove</b> 2.0 (see its README).</div>
-          <div class="card row between" id="g-simcard">
-            <div><b>Use simulator</b><div class="cnt">Fake glove data for testing without hardware</div></div>
-            <button type="button" class="sw" role="switch" aria-checked="false" aria-label="Use simulator" data-sim><span></span></button>
-          </div>
           <div class="card placeholder" id="g-placeholder">Live finger view appears here when the glove is connected.</div>
           <div class="card live" id="g-live" hidden>
             <div class="hands" id="g-hands" hidden>
@@ -177,7 +192,6 @@
                 <div class="cnt">Tilt Y <b id="imu-ty">–</b></div>
                 <div class="cnt">Turn <b id="imu-turn">–</b></div>
               </div>
-              <div class="row" style="margin-top:auto"><b style="font-size:14px">Use simulator</b><button type="button" class="sw" role="switch" aria-checked="false" aria-label="Use simulator" data-sim style="margin-left:auto"><span></span></button></div>
             </div>
           </div>
 
@@ -241,8 +255,47 @@
             </div>
           </div>
         </section>
+
+        <!-- System (pi-power phase): php/api/system_power.php; Pi only, buttons disabled elsewhere. -->
+        <section class="st-sec" id="sec-system">
+          <div class="card">
+            <div class="st-title">Power</div>
+            <div class="cnt" style="margin:4px 0 12px">To turn the kiosk on again, plug the power back in.</div>
+            <div class="row" style="flex-wrap:wrap">
+              <button type="button" class="btn red" id="p-shutdown" disabled>&#9211; Shut down</button>
+              <button type="button" class="btn sec" id="p-reboot" disabled>&#8635; Restart</button>
+              <span class="sys-note" id="p-note">Checking…</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="st-title">Speaker volume</div>
+            <div class="cnt" style="margin:4px 0 10px">Max 80% — higher turns off the screens / Hanggang 80% lang — lalakas pa ay namamatay ang screen</div>
+            <div class="row">
+              <input type="range" class="vol" id="v-slider" min="0" max="80" step="1" value="0" disabled aria-label="Speaker volume">
+              <span class="vol-val" id="v-val">–</span>
+              <button type="button" class="btn sec small" id="v-test" disabled>&#128264; Test sound</button>
+            </div>
+            <div class="sys-note" id="v-note" style="margin-top:6px">Checking…</div>
+          </div>
+        </section>
       </div>
     </div>
+  </div>
+
+  <div class="sys-ov" id="sys-confirm" role="dialog" aria-modal="true" aria-labelledby="sc-en">
+    <div class="sys-dlg">
+      <h2 id="sc-en"></h2>
+      <div class="fil" id="sc-fil"></div>
+      <div class="row">
+        <button type="button" class="btn sec" id="sc-cancel">Cancel</button>
+        <button type="button" class="btn solid-red" id="sc-ok"></button>
+      </div>
+    </div>
+  </div>
+  <div class="sys-full" id="sys-full" role="alert">
+    <div class="big" id="sf-big"></div>
+    <p id="sf-en"></p>
+    <p class="fil" id="sf-fil"></p>
   </div>
 
   <!-- Set up glove (full screen): 1 Fingers · 2 Calibrate · 3 Camera · 4 IMU · 5 Save. -->
@@ -378,7 +431,7 @@
       var dot = $('g-dot');
       dot.className = 'dot' + (connected ? ' ok' : s === 'reconnecting' || s === 'connecting' ? ' warn' : s === 'unsupported' ? ' bad' : '');
       var title, sub;
-      if (s === 'unsupported') { title = 'Glove not available in this browser'; sub = 'Turn on the simulator below to test without hardware.'; }
+      if (s === 'unsupported') { title = 'Glove not available in this browser'; sub = 'Open this page in Chrome / Chromium at http://localhost/SKR/settings.html.'; }
       else if (s === 'connecting') { title = 'Connecting…'; sub = 'Opening the glove\'s USB port.'; }
       else if (s === 'reconnecting') { title = 'Glove disconnected — reconnecting…'; sub = 'The cable was unplugged. Plug it back in; it reconnects by itself.'; }
       else if (connected) {
@@ -399,7 +452,6 @@
       $('g-disconnect').hidden = !connected;
       $('g-unsupported').hidden = !(s === 'unsupported' || (!sim && !('serial' in navigator && window.isSecureContext)));
       $('g-oldfw').hidden = !(connected && oldFirmware());
-      $('g-simcard').hidden = connected;
       $('g-placeholder').hidden = connected;
       $('g-live').hidden = !connected;
       var cfg = G.config();
@@ -411,7 +463,6 @@
         });
         $('imu-hand').textContent = cfg.imuHand ? 'On the ' + (cfg.imuHand === 'L' ? 'left' : 'right') + ' hand' : 'Hand not set';
       }
-      document.querySelectorAll('[data-sim]').forEach(function (b) { b.setAttribute('aria-checked', sim ? 'true' : 'false'); });
       $('g-assist').hidden = !(connected && cfg);
       $('g-assist').style.display = $('g-assist').hidden ? 'none' : 'flex';
       if (cfg && !wSaving) $('g-w').textContent = cfg.w.toFixed(1);
@@ -482,12 +533,6 @@
 
     $('g-connect').addEventListener('click', function () { G.connect().then(renderStatus); });
     $('g-disconnect').addEventListener('click', function () { G.disconnect().then(renderStatus); });
-    document.querySelectorAll('[data-sim]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var on = !G.isSimulator();
-        G.simulator(on).then(function () { renderStatus(); if (on) G.connect().then(renderStatus); });
-      });
-    });
 
     // ════════ Set up glove ════════
     var ORDER = [];   // the 10 finger steps: right thumb..pinky, then left thumb..pinky
@@ -633,18 +678,21 @@
       if (rest.length < 5 || bend.length < 10) return fingerProblem('No glove data (' + (rest.length + bend.length) + ' readings). Check the glove is connected, then Retry.');
       // move = the largest distance from the resting median while bending, minus how much the channel
       // already wandered at rest, so an unconnected (floating) mux channel's noise never wins.
-      // The winner must also move at least CLEAR x as much as any other channel (one finger only).
-      var best = -1, bestMove = 0, second = -1, secondMove = 0;
+      // The winner must also move at least CLEAR x as much as any other channel (one finger only), except
+      // the channel right after it: an unconnected mux channel read next copies part of the previous channel's
+      // voltage (measured on the owner's glove 2026-10-22: C9 bent to 3171 -> unconnected C10 up to 2169).
+      var moves = [];
       for (var c = 0; c < G.CHANNELS; c++) {
         var restVals = rest.map(function (r) { return r[c]; });
         var base = median(restVals);
         var noise = Math.max.apply(null, restVals) - Math.min.apply(null, restVals);
         var move = 0;
         bend.forEach(function (r) { move = Math.max(move, Math.abs(r[c] - base)); });
-        move -= noise;
-        if (move > bestMove) { second = best; secondMove = bestMove; bestMove = move; best = c; }
-        else if (move > secondMove) { secondMove = move; second = c; }
+        moves.push(move - noise);
       }
+      var best = -1, bestMove = 0, second = -1, secondMove = 0;
+      moves.forEach(function (m, c) { if (m > bestMove) { bestMove = m; best = c; } });
+      moves.forEach(function (m, c) { if (c !== best && c !== best + 1 && m > secondMove) { secondMove = m; second = c; } });
       if (bestMove <= MOVE_MIN) {
         return fingerProblem('No sensor moved (largest change ' + Math.round(bestMove) + ', needs more than ' + MOVE_MIN + '). Check this finger\'s wire, then Retry, or Skip it.');
       }
@@ -940,7 +988,10 @@
         if (G.configState() === 'damaged') hints.push('The setup stored on the glove is damaged: run Set up glove again.');
         if (s.connectedMs > 3000 && s.linesPerSec < 10) hints.push('Only ' + s.linesPerSec + ' lines/s: check the firmware delay (should be ~33 ms).');
         if (s.recent.length >= 30) {
+          // Only for a channel that never moved: a working sensor rests at 0 when straight (owner's glove) or at
+          // 4095 when held fully bent, and that is not a fault.
           Object.keys(by).forEach(function (ch) {
+            if (s.min[ch] !== null && s.max[ch] - s.min[ch] >= 20) return;
             [0, 4095].forEach(function (v) {
               if (s.recent.every(function (r) { return r[ch] === v; })) hints.push('C' + ch + ' (' + by[ch] + '): always ' + v + ': sensor not connected / check the voltage divider.');
             });
@@ -962,6 +1013,124 @@
 
     renderStatus();
     G.autoReconnect().then(renderStatus);
+  })();
+
+  // ── System: shut down / restart the Pi, speaker volume (php/api/system_power.php) ──
+  (function () {
+    'use strict';
+    var A = window.SKAccount;
+    if (!A.isAdmin()) return;
+    var $ = function (id) { return document.getElementById(id); };
+    var API = 'php/api/system_power.php';
+    var TEXT = {
+      shutdown: {
+        ask: 'Shut down the kiosk?', askFil: 'Papatayin ang kiosk?', ok: 'Shut down',
+        big: 'Shutting down…',
+        en: 'Wait until the green light stops blinking, then unplug. Plug in again to turn on.',
+        fil: 'Pinapatay… Hintaying tumigil ang kumikislap na green light bago hugutin. Isaksak ulit para buksan.'
+      },
+      reboot: {
+        ask: 'Restart the kiosk?', askFil: 'I-restart ang kiosk?', ok: 'Restart',
+        big: 'Restarting…',
+        en: 'The kiosk comes back in about 1 minute.',
+        fil: 'Nagre-restart… Babalik ang kiosk sa loob ng mga 1 minuto.'
+      }
+    };
+    var pending = null;
+
+    function note(id, text, bad) { $(id).textContent = text; $(id).className = 'sys-note' + (bad ? ' bad' : ''); }
+
+    function load() {
+      A.api(API, { action: 'status' }).then(function (s) {
+        if (!s || !s.success) { note('p-note', (s && s.error) || 'Could not check the device.', true); note('v-note', '', false); return; }
+        if (!s.isPi) {
+          note('p-note', 'Raspberry Pi only', false);
+          note('v-note', 'Raspberry Pi only', false);
+          return;
+        }
+        $('p-shutdown').disabled = !s.canPower;
+        $('p-reboot').disabled = !s.canPower;
+        note('p-note', s.canPower ? '' : 'Not set up: run tools/pi/pi-setup.sh on the Pi (sudoers rule missing).', !s.canPower);
+        $('v-slider').max = String(Math.round(s.maxVolume * 100));
+        if (!s.canVolume) { note('v-note', 'Not set up: run tools/pi/pi-setup.sh on the Pi (sk-volume missing).', true); return; }
+        A.api(API, { action: 'get_volume' }).then(function (v) {
+          if (!v || !v.success) { note('v-note', (v && v.error) || 'Could not read the volume.', true); return; }
+          $('v-slider').value = String(Math.round(v.volume * 100));
+          showVol();
+          $('v-slider').disabled = false;
+          $('v-test').disabled = false;
+          note('v-note', v.muted ? 'The speaker is muted.' : '', v.muted);
+        });
+      }).catch(function () { note('p-note', 'Could not reach the server.', true); });
+    }
+
+    // ── power ──
+    function ask(action) {
+      pending = action;
+      var t = TEXT[action];
+      $('sc-en').textContent = t.ask;
+      $('sc-fil').textContent = t.askFil;
+      $('sc-ok').textContent = t.ok;
+      $('sys-confirm').classList.add('on');
+    }
+    function closeAsk() { pending = null; $('sys-confirm').classList.remove('on'); }
+    $('p-shutdown').addEventListener('click', function () { ask('shutdown'); });
+    $('p-reboot').addEventListener('click', function () { ask('reboot'); });
+    $('sc-cancel').addEventListener('click', closeAsk);
+    $('sc-ok').addEventListener('click', function () {
+      var action = pending;
+      if (!action) return;
+      $('sc-ok').disabled = true;
+      A.api(API, { action: action }).then(function (r) {
+        $('sc-ok').disabled = false;
+        closeAsk();
+        if (!r || !r.success) { note('p-note', (r && r.error) || 'The kiosk did not accept the request.', true); return; }
+        var t = TEXT[action];
+        $('sf-big').textContent = t.big;
+        $('sf-en').textContent = t.en;
+        $('sf-fil').textContent = t.fil;
+        $('sys-full').classList.add('on');
+      }).catch(function () {
+        $('sc-ok').disabled = false;
+        closeAsk();
+        note('p-note', 'Could not reach the server.', true);
+      });
+    });
+
+    // ── volume: set on release, Test sound waits for the set ──
+    var setting = Promise.resolve();
+    function showVol() { $('v-val').textContent = $('v-slider').value + '%'; }
+    $('v-slider').addEventListener('input', showVol);
+    $('v-slider').addEventListener('change', function () {
+      var value = Number($('v-slider').value) / 100;
+      setting = A.api(API, { action: 'set_volume', value: value }).then(function (r) {
+        if (!r || !r.success) { note('v-note', (r && r.error) || 'Could not set the volume.', true); return; }
+        $('v-slider').value = String(Math.round(r.volume * 100));
+        showVol();
+        note('v-note', 'Saved: the kiosk starts with ' + $('v-slider').value + '% after a restart.', false);
+      }).catch(function () { note('v-note', 'Could not reach the server.', true); });
+    });
+
+    var ctx = null;
+    function beep() {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = ctx || new AC();
+      ctx.resume();
+      var t = ctx.currentTime;
+      [660, 880].forEach(function (f, i) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0, t + i * 0.25);
+        g.gain.linearRampToValueAtTime(0.5, t + i * 0.25 + 0.02);
+        g.gain.linearRampToValueAtTime(0, t + i * 0.25 + 0.22);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t + i * 0.25); o.stop(t + i * 0.25 + 0.24);
+      });
+    }
+    $('v-test').addEventListener('click', function () { setting.then(beep); });
+
+    load();
   })();
   </script>
 </body>

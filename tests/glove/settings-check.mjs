@@ -65,15 +65,15 @@ try {
   await ev(`['sk_glove_sim','sk_glove_sim_cfg','sk_glove_calibration','sk_glove_bars'].forEach((k) => localStorage.removeItem(k)); true`);
   await c.navigate(BASE + 'settings.html');
   const s1 = await ev(`({ status: SKGlove.status(), title: document.getElementById('g-title').textContent,
-    connectVisible: !document.getElementById('g-connect').hidden, sim: document.querySelector('[data-sim]').getAttribute('aria-checked') })`);
-  check('not connected: status, title, Connect glove, simulator off',
-    ['disconnected', 'unsupported'].includes(s1.status) && /not connected|not available/.test(s1.title) && s1.connectVisible && s1.sim === 'false', J(s1));
+    connectVisible: !document.getElementById('g-connect').hidden, simSwitch: !!document.querySelector('[data-sim], #g-simcard'), sim: SKGlove.isSimulator() })`);
+  check('not connected: status, title, Connect glove; no "Use simulator" switch anywhere (owner 2026-10-22)',
+    ['disconnected', 'unsupported'].includes(s1.status) && /not connected|not available/.test(s1.title) && s1.connectVisible && !s1.simSwitch && !s1.sim, J(s1));
   const l1 = await layout();
   check('1024x600: no page scroll, controls >= 44 px', layoutOk(l1), J(l1));
   await shot('glove-hw-1-not-connected.png');
 
-  // 2. Simulator on -> connected, hello v2, not set up
-  await click('#g-simcard [data-sim]');
+  // 2. Simulator (only with ?glove=sim) -> connected by itself on load, hello v2, not set up
+  await c.navigate(BASE + 'settings.html?glove=sim');
   await sleep(1500);
   const s2 = await ev(`({ status: SKGlove.status(), info: SKGlove.info(), sub: document.getElementById('g-sub').textContent,
     live: !document.getElementById('g-live').hidden, notset: !document.getElementById('g-notset').hidden,
@@ -204,7 +204,7 @@ try {
   await shot('glove-hw-10-assist.png');
 
   // 9. Reload: the setup comes back from the glove (the simulator's flash)
-  await c.navigate(BASE + 'settings.html');
+  await c.navigate(BASE + 'settings.html?glove=sim');
   await waitFor(`SKGlove.configState() === 'ok'`, 5000);
   check('reload: setup read back from the glove, bars shown', await ev(`SKGlove.ready() && !document.getElementById('g-hands').hidden &&
     /setup saved on glove today/.test(document.getElementById('g-sub').textContent)`));

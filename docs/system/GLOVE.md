@@ -22,7 +22,7 @@ Everything that reads or writes glove lines follows this file: the firmware, `js
 |---|---|
 | Mux select | S0 GPIO 14, S1 GPIO 27, S2 GPIO 26, S3 GPIO 25 |
 | Mux output | SIG -> GPIO 34 (ADC1); EN -> GND; VCC 3V3 with 0.1 µF |
-| Sensors | FS1-FS10 on C0-C9 (the diagram; Set up glove finds the real channels). Each: 3V3 - sensor - C-pin - R - GND, so a reading **drops** when the finger bends |
+| Sensors | FS1-FS10 on C0-C9 (the diagram; Set up glove finds the real channels). Each a voltage divider with a resistor. **Measured on the owner's glove (2026-10-22): 0 straight, rising to 2846-4095 fully bent** (C0-C9; the opposite of what the diagram's divider suggested). Calibration works either way |
 | IMU | MPU6050 / GY-521 on I2C SDA 21 / SCL 22 (the firmware also tries 22 / 21) |
 | Power | USB only. The diagram's 18650 + TP4056 + SW1 are not used: SW1 OFF while USB is plugged in |
 
@@ -155,18 +155,19 @@ A line that is not valid JSON, or valid JSON that is none of the lines above:
 retried every 3 s, and the same glove plugged in again goes back to `'connected'` with no prompt (the reconnect
 count goes up); its hello and `cfg-get` bring the setup back.
 
-**Simulator** (the "Use simulator" switch, or `?glove=sim`): produces firmware 2.0's lines (`"fw":"2.0-sim"`):
+**Simulator** (only with `?glove=sim` in the address; owner 2026-10-22: no switch on any page, an old `sk_glove_sim` value is ignored): produces firmware 2.0's lines (`"fw":"2.0-sim"`):
 C0-C4 = right thumb..pinky, C5-C9 = left thumb..pinky (about 3300 straight, about 1300 bent, a small idle wobble),
-C10-C15 low noise, an IMU, one bad line about every 5 s. It answers `hello`, `ping`, `cfg-get`, `cfg-set`,
-`cfg-clear`; its "flash" is `localStorage` `sk_glove_sim_cfg`, so a setup survives a reload. The switch is stored per
-kiosk (`sk_glove_sim`).
+C10 copies 65 % of C9 (like the real mux), C11-C15 low noise, an IMU, one bad line about every 5 s. It answers `hello`, `ping`, `cfg-get`, `cfg-set`,
+`cfg-clear`; its "flash" is `localStorage` `sk_glove_sim_cfg`, so a setup survives a reload.
 
 ## Set up glove (Settings -> Glove)
 
 Full screen, in this order; Cancel leaves without saving:
 1. **Fingers** — right thumb..pinky, then left thumb..pinky. Each: 1 s rest, then 2 s bending. Per channel,
    move = the largest distance from its resting median while bending, minus how much it wandered at rest. The
-   channel with the largest move wins if move > 150 **and** it is at least 2x the next channel's; otherwise
+   channel with the largest move wins if move > 150 **and** it is at least 2x any other channel's except the one
+   right after it (an unconnected mux channel copies part of the channel read before it: on the owner's glove,
+   C9 bent to 3171 put up to 2169 on unconnected C10); otherwise
    "No sensor moved" / "moved about the same" with Retry / Skip. A channel already given to another finger is
    refused ("C0 is already R thumb").
 2. **Calibrate** — both hands open 3 s, both fists 3 s (1 s get-ready before each); median per channel.
@@ -203,8 +204,8 @@ the glove** (JSON) and **Clear setup on glove**.
   conversation always starts OFF. Unplugged or setup cleared: the button hides and goes OFF.
 - While ON: 10 finger bars inside the button (left 5, right 5), redrawn at most every 100 ms with CSS `transform`
   only. Settings -> Glove "Finger bars in Let's Talk" (per kiosk, `localStorage` `sk_glove_bars`, `'0'` = off).
-- Let's Talk and Train Gestures set `window.SK_GLOVE_URL_SIM_ONLY = true` before `js/glove.js`: there the simulator
-  runs only with `?glove=sim`, so Settings' "Use simulator" switch never puts a fake glove into a conversation.
+- The simulator runs only with `?glove=sim` on every page, so a kiosk never shows a fake glove (the
+  `window.SK_GLOVE_URL_SIM_ONLY` line left in Let's Talk and Train Gestures is now redundant and harmless).
 
 **The math.** `js/glove-bend.js` (`window.GloveBend`, also a node module):
 - `bendOfSlot(row, slot)`: per finger 0 (straight) .. 1 (bent) from the sum of the joint angles in a model row's hand

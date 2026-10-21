@@ -145,6 +145,7 @@ const CFG = {
 
 // 8. simulator: setup round trip through its "flash", forced bends, ready()
 {
+  check('no ?glove=sim -> no simulator, even with an old sk_glove_sim = 1 stored', (() => { const x = load(); x.store.set('sk_glove_sim', '1'); return !load().G.isSimulator(); })());
   const { G, store } = load('?glove=sim');
   check('simulator on from ?glove=sim', G.isSimulator());
   await G.connect();
@@ -165,7 +166,9 @@ const CFG = {
   await sleep(150);
   const ch3 = G.latest().ch[3];
   check('simSetBend(3, 1): channel 3 reads ~1300 (bent)', ch3 > 1200 && ch3 < 1400, String(ch3));
-  check('unused channels C10-C15 read low noise', G.latest().ch.slice(10).every((v) => v < 100), J(G.latest().ch));
+  const ch = G.latest().ch;
+  check('unused C11-C15 read low noise; C10 copies part of C9 (like the real mux)', ch.slice(11).every((v) => v < 100) &&
+    Math.abs(ch[10] - Math.round(ch[9] * 0.65)) <= 1, J(ch));
   await G.clearConfig();
   check('clearConfig -> "none", flash empty', G.configState() === 'none' && !store.has('sk_glove_sim_cfg'));
   let rejected = null;

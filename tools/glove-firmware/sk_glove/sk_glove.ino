@@ -7,7 +7,7 @@
 //         EN -> GND (always on)   VCC -> 3V3 (0.1 uF to GND)   GND -> GND
 //   Each sensor:  3V3 --[ flex sensor ]--+--[ R ]-- GND
 //                                        +-- mux C-pin
-//   (bending raises the sensor's resistance, so its reading DROPS when the finger bends)
+//   (measured on the owner's glove 2026-10-22: 0 straight, rising when bent; the page calibrates either way)
 //   MPU6050 (GY-521, optional): VCC 3V3, GND, SDA GPIO 21, SCL GPIO 22 (tried swapped if nothing answers).
 //   Power: USB only. The diagram's 18650 + TP4056 + SW1 are not used: keep SW1 OFF while USB is plugged in.
 //
