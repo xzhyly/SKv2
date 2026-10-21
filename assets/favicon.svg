@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Sining Kamay favicon: the dashboard's orange "SK" badge (css/style.css .sk-badge). -->
+  <rect width="64" height="64" rx="12" fill="#ff6b00"/>
+  <text x="32" y="44" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="32" font-weight="900" fill="#ffffff">SK</text>
+</svg>
