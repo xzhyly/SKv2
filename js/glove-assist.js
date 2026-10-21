@@ -20,7 +20,7 @@
   var HAND_SCORE = 0.8;
   var IDLE_MS = 3000;
   var IDLE_MOVE = 0.05;
-  var BARS_MS = 100;            // finger bars: at most 10 updates per second
+  var BARS_MS = 100;            // finger bars (Train Gestures Step 3 button only): at most 10 updates per second
   var BARS_KEY = 'sk_glove_bars';
 
   var on = false;

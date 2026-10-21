@@ -196,7 +196,8 @@
           </div>
 
           <!-- Let's Talk with the glove (glove-hw Phase 2): how strongly the glove re-ranks the camera's guesses (w, saved
-               on the glove) and the finger bars inside the 🧤 button (per kiosk, localStorage sk_glove_bars). -->
+               on the glove) and the finger bars inside the Train Gestures Step 3 🧤 button (per kiosk, localStorage
+               sk_glove_bars; repurposed in the glove-chip phase: the Let's Talk chip has no bars). -->
           <div class="card" id="g-assist" hidden style="display:flex;flex-direction:column;gap:10px">
             <div class="row between">
               <div><b>Glove strength in Let's Talk</b><div class="cnt" id="g-w-msg">How much the glove can change the camera's guess (0 = not at all). Saved on the glove.</div></div>
@@ -207,8 +208,8 @@
               </div>
             </div>
             <div class="row between">
-              <div><b>Finger bars in Let's Talk</b><div class="cnt">10 small bars inside the &#129508; button while it is ON (this kiosk)</div></div>
-              <button type="button" class="sw" role="switch" aria-checked="true" aria-label="Show finger bars in Let's Talk" id="g-bars"><span></span></button>
+              <div><b>Finger bars in Train Gestures</b><div class="cnt">10 small bars inside the Step 3 &#129508; button while it is ON (this kiosk). Let's Talk never shows them.</div></div>
+              <button type="button" class="sw" role="switch" aria-checked="true" aria-label="Show finger bars in Train Gestures Step 3" id="g-bars"><span></span></button>
             </div>
           </div>
 
@@ -469,7 +470,7 @@
       $('g-bars').setAttribute('aria-checked', barsOn() ? 'true' : 'false');
     }
 
-    // ── Let's Talk with the glove: strength (on the glove) and finger bars (this kiosk) ──
+    // ── Let's Talk with the glove: strength (on the glove); finger bars in Train Gestures Step 3 (this kiosk) ──
     var BARS_KEY = 'sk_glove_bars', wSaving = false;
     function barsOn() { try { return localStorage.getItem(BARS_KEY) !== '0'; } catch (e) { return true; } }
     $('g-bars').addEventListener('click', function () {
