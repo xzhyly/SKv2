@@ -1,39 +1,52 @@
 // js/glove.js
-// The optional wired data glove (glove-serial phase, docs/system/GLOVE.md): an ESP32 with 5 flex
-// sensors (+ optional MPU6050) on USB serial, 115200 baud, one JSON object per line. Web Serial only,
-// no libraries. Attaches window.SKGlove. A simulator source produces the same protocol lines through
-// the same parser, so the whole path runs without hardware. Recognition does not use the glove yet.
+// The optional wired data gloves (glove-serial phase 2026-10-20, protocol v2 glove-hw phase 2026-10-21,
+// docs/system/GLOVE.md): two gloves, 10 flex sensors on a 16-channel mux, one ESP32, optional MPU6050,
+// USB serial 115200 baud, one JSON object per line. Web Serial only, no libraries. Attaches
+// window.SKGlove. The glove sends the raw value of all 16 channels; which channel is which finger
+// (the "map"), the open/fist calibration, the camera's handedness and the IMU's hand are the glove's
+// setup, stored ON THE GLOVE (cfg-get / cfg-set), so a glove set up on the laptop works on the Pi.
+// A simulator source produces the same protocol lines through the same parser.
 (function () {
   'use strict';
 
   var BAUD = 115200;
+  var CH = 16;                  // mux channels in every data line
   var RETRY_MS = 3000;          // unplugged: getPorts() retried this often
   var AVG = 3;                  // moving average over the last 3 readings
   var LOG_MAX = 2000;           // lines kept for Download log
-  var MINSPAN = 50;             // calibration open/fist closer than this -> finger reads 0
+  var MINSPAN = 50;             // open/fist closer than this -> that finger reads null
+  var CFG_MAX = 1000;           // longest setup the firmware stores (characters)
+  var CFG_TIMEOUT_MS = 2000;    // cfg-set / cfg-clear answer timeout
+  var DEFAULT_W = 0.3;          // glove strength (Phase 2 re-ranking)
   var SIM_MS = 33;              // simulator: ~30 lines/s
   var SIM_BAD_EVERY = 150;      // simulator: one bad line about every 5 s
-  var CAL_KEY = 'sk_glove_calibration';
   var SIM_KEY = 'sk_glove_sim';
+  var SIM_CFG_KEY = 'sk_glove_sim_cfg';   // the simulator's "flash"
   var FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+  var HANDS = ['L', 'R'];
 
-  var listeners = { status: [], data: [], hello: [], raw: [], error: [], pong: [] };
+  var listeners = { status: [], data: [], hello: [], raw: [], error: [], pong: [], config: [] };
   var state = 'disconnected';
   var port = null, reader = null, writer = null;
   var userClosed = false, retryTimer = null;
   var hello = null, latestData = null;
-  var history = [];             // last AVG normalized readings
+  var cfg = null;               // validated setup from the glove, or null
+  var cfgState = 'unknown';     // 'unknown' (no answer yet) | 'none' | 'ok' | 'damaged'
+  var pendingCfg = null;        // { resolve, reject, timer, next } while cfg-set / cfg-clear waits
+  var history = [];             // last AVG { L: [5], R: [5] } normalized readings
   var lineBuf = '';
   var pingAt = 0;
   var sim = null;               // { timer, n, t0 } while the simulator runs
   var simOn = readSimSetting();
+  var simBend = {};             // tests / wizard checks: channel -> forced bend 0..1
   var st = freshStats();
 
   function freshStats() {
     return { lines: 0, bad: 0, data: 0, lastDataAt: 0, helloAt: 0, connectedAt: 0, reconnects: 0,
-      lastBadAt: 0, lastBad: null, stamps: [], min: [null, null, null, null, null], max: [null, null, null, null, null],
-      recent: [] };   // recent: last 30 raw finger arrays (debugger hints)
+      lastBadAt: 0, lastBad: null, stamps: [], min: nulls(CH), max: nulls(CH),
+      recent: [] };   // recent: last 30 raw channel arrays (debugger hints)
   }
+  function nulls(n) { var a = []; for (var i = 0; i < n; i++) a.push(null); return a; }
 
   function emit(ev, arg) {
     (listeners[ev] || []).slice().forEach(function (cb) {
@@ -56,32 +69,50 @@
   function isSupported() { return simOn || serialAvailable(); }
   function status() { return !simOn && !serialAvailable() ? 'unsupported' : state; }
 
-  // ── storage (per kiosk, never fatal) ──
   function readSimSetting() {
     try {
       if (/(?:^|[?&])glove=sim(?:&|$)/.test(location.search)) return true;
       return localStorage.getItem(SIM_KEY) === '1';
     } catch (e) { return false; }
   }
-  var calibration = {
-    get: function () {
-      try {
-        var c = JSON.parse(localStorage.getItem(CAL_KEY) || 'null');
-        if (c && Array.isArray(c.open) && Array.isArray(c.fist) && c.open.length === 5 && c.fist.length === 5) return c;
-      } catch (e) { /* no storage or bad value */ }
-      return null;
-    },
-    set: function (c) {
-      var v = { open: c.open.map(Number), fist: c.fist.map(Number), at: c.at || new Date().toISOString() };
-      try { localStorage.setItem(CAL_KEY, JSON.stringify(v)); } catch (e) { emit('error', 'Calibration not saved: storage blocked'); return false; }
-      history = [];
-      return true;
-    },
-    reset: function () {
-      try { localStorage.removeItem(CAL_KEY); } catch (e) { /* nothing stored */ }
-      history = [];
+
+  // ── the setup (docs/system/GLOVE.md "The setup") ──
+  function isInt(v, lo, hi) { return typeof v === 'number' && Math.floor(v) === v && v >= lo && v <= hi; }
+  function five(a, check) { return Array.isArray(a) && a.length === 5 && a.every(check); }
+  // Returns a clean copy of a valid setup, or null. Unknown keys are dropped.
+  function validateConfig(c) {
+    if (!c || typeof c !== 'object' || c.v !== 1) return null;
+    var m = c.map;
+    var chOrNull = function (v) { return v === null || isInt(v, 0, CH - 1); };
+    if (!m || !five(m.L, chOrNull) || !five(m.R, chOrNull)) return null;
+    var out = { v: 1, map: { L: m.L.slice(), R: m.R.slice() }, cal: null, cam: null, imuHand: null, w: DEFAULT_W };
+    if (c.cal != null) {
+      var adc = function (v) { return isInt(v, 0, 4095); };
+      var hand = function (h) { return h && five(h.open, adc) && five(h.fist, adc); };
+      if (!hand(c.cal.L) || !hand(c.cal.R) || typeof c.cal.at !== 'string') return null;
+      out.cal = { L: { open: c.cal.L.open.slice(), fist: c.cal.L.fist.slice() },
+        R: { open: c.cal.R.open.slice(), fist: c.cal.R.fist.slice() }, at: c.cal.at };
     }
-  };
+    if (c.cam != null) {
+      if (typeof c.cam.mirror !== 'boolean') return null;
+      out.cam = { mirror: c.cam.mirror };
+    }
+    if (c.imuHand != null) {
+      if (c.imuHand !== 'L' && c.imuHand !== 'R') return null;
+      out.imuHand = c.imuHand;
+    }
+    if (c.w != null) {
+      if (typeof c.w !== 'number' || !(c.w >= 0 && c.w <= 1)) return null;
+      out.w = c.w;
+    }
+    return out;
+  }
+  function setConfig(c, s) {
+    cfg = c;
+    cfgState = s;
+    history = [];
+    emit('config', { config: cfg, state: cfgState });
+  }
 
   // ── parsing (one line) ──
   var logLines = [];
@@ -92,22 +123,37 @@
     emit('raw', entry);
   }
 
-  function normalize(raw) {
-    var cal = calibration.get();
-    var n = raw.map(function (v, i) {
-      if (!cal) return v / 4095;
-      var span = cal.fist[i] - cal.open[i];
-      if (Math.abs(span) < MINSPAN) return 0;
-      var x = (v - cal.open[i]) / span;
-      return x < 0 ? 0 : x > 1 ? 1 : x;
+  // { L: { raw: [5], norm: [5] }, R: {...} } from the 16 channels, or null without a map.
+  // raw / norm are null for a finger with no channel; norm is null for a finger whose open and fist
+  // are closer than MINSPAN. Without a calibration norm = raw / 4095. Moving average of AVG readings.
+  function handsFrom(ch) {
+    if (!cfg) return null;
+    var now = {};
+    var out = {};
+    HANDS.forEach(function (h) {
+      var cal = cfg.cal ? cfg.cal[h] : null;
+      var raw = cfg.map[h].map(function (c) { return c === null ? null : ch[c]; });
+      now[h] = raw.map(function (v, i) {
+        if (v === null) return null;
+        if (!cal) return v / 4095;
+        var span = cal.fist[i] - cal.open[i];
+        if (Math.abs(span) < MINSPAN) return null;
+        var x = (v - cal.open[i]) / span;
+        return x < 0 ? 0 : x > 1 ? 1 : x;
+      });
+      out[h] = { raw: raw };
     });
-    history.push(n);
+    history.push(now);
     if (history.length > AVG) history.shift();
-    return n.map(function (_, i) {
-      var s = 0;
-      history.forEach(function (h) { s += h[i]; });
-      return s / history.length;
+    HANDS.forEach(function (h) {
+      out[h].norm = now[h].map(function (v, i) {
+        if (v === null) return null;
+        var s = 0, n = 0;
+        history.forEach(function (r) { if (r[h][i] !== null) { s += r[h][i]; n++; } });
+        return s / n;
+      });
     });
+    return out;
   }
 
   function validImu(imu) {
@@ -124,7 +170,10 @@
     st.stamps.push(now);
     while (st.stamps.length && now - st.stamps[0] > 1000) st.stamps.shift();
     var msg;
-    try { msg = JSON.parse(line); } catch (e) { return bad(line, 'not JSON: ' + e.message); }
+    try { msg = JSON.parse(line); } catch (e) {
+      if (/^\{"type":"cfg"/.test(line)) { bad(line, 'setup on the glove is damaged: ' + e.message); setConfig(null, 'damaged'); return; }
+      return bad(line, 'not JSON: ' + e.message);
+    }
     if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return bad(line, 'not a JSON object');
     if (msg.type === 'hello') {
       if (typeof msg.device !== 'string') return bad(line, 'hello without device');
@@ -132,6 +181,8 @@
       st.helloAt = now;
       logLine('in', line, true);
       emit('hello', msg);
+      if (msg.hasCfg === true) send('cfg-get');
+      else if (msg.hasCfg === false) setConfig(null, 'none');
       return;
     }
     if (msg.type === 'pong') {
@@ -139,23 +190,42 @@
       if (pingAt) { var rtt = now - pingAt; pingAt = 0; emit('pong', { rtt: rtt, t: msg.t }); }
       return;
     }
+    if (msg.type === 'cfg') {
+      logLine('in', line, true);
+      if (msg.cfg === null) { setConfig(null, 'none'); return; }
+      var v = validateConfig(msg.cfg);
+      if (v) setConfig(v, 'ok');
+      else { st.lastBad = 'setup on the glove is damaged'; setConfig(null, 'damaged'); }
+      return;
+    }
+    if (msg.type === 'cfg-ok' || msg.type === 'cfg-error') {
+      logLine('in', line, msg.type === 'cfg-ok', msg.type === 'cfg-error' ? String(msg.why) : null);
+      var p = pendingCfg;
+      if (!p) return;
+      pendingCfg = null;
+      clearTimeout(p.timer);
+      if (msg.type === 'cfg-ok') { setConfig(p.next, p.next ? 'ok' : 'none'); p.resolve(p.next); }
+      else p.reject(new Error('The glove did not save the setup: ' + msg.why));
+      return;
+    }
     if (msg.type !== undefined) return bad(line, 'unknown type "' + msg.type + '"');
-    var f = msg.f;
-    if (!Array.isArray(f) || f.length !== 5 || !f.every(function (v) { return typeof v === 'number' && v >= 0 && v <= 4095 && Math.floor(v) === v; })) {
-      return bad(line, 'f must be 5 integers 0-4095');
+    if (Array.isArray(msg.f)) return bad(line, 'old firmware (5 fingers): flash sk_glove 2.0');
+    var ch = msg.ch;
+    if (!Array.isArray(ch) || ch.length !== CH || !ch.every(function (v) { return isInt(v, 0, 4095); })) {
+      return bad(line, 'ch must be 16 integers 0-4095');
     }
     if (typeof msg.t !== 'number') return bad(line, 't must be a number');
     if (!validImu(msg.imu)) return bad(line, 'imu must have numbers ax ay az gx gy gz');
     logLine('in', line, true);
     st.data++;
     st.lastDataAt = now;
-    f.forEach(function (v, i) {
+    ch.forEach(function (v, i) {
       if (st.min[i] === null || v < st.min[i]) st.min[i] = v;
       if (st.max[i] === null || v > st.max[i]) st.max[i] = v;
     });
-    st.recent.push(f.slice());
+    st.recent.push(ch.slice());
     if (st.recent.length > 30) st.recent.shift();
-    latestData = { t: msg.t, raw: f.slice(), norm: normalize(f), imu: msg.imu || null, at: now };
+    latestData = { t: msg.t, ch: ch.slice(), hands: handsFrom(ch), imu: msg.imu || null, at: now };
     emit('data', latestData);
   }
   function bad(line, why) {
@@ -176,7 +246,38 @@
     if (lineBuf.length > 4096) { bad(lineBuf.slice(0, 200) + '…', 'line longer than 4096 characters'); lineBuf = ''; }
   }
 
+  // ── setup on the glove: save / clear ──
+  function cfgCommand(line, next) {
+    return new Promise(function (resolve, reject) {
+      if (state !== 'connected') { reject(new Error('The glove is not connected')); return; }
+      if (pendingCfg) { reject(new Error('Another save is still waiting for the glove')); return; }
+      pendingCfg = { resolve: resolve, reject: reject, next: next, timer: setTimeout(function () {
+        pendingCfg = null;
+        reject(new Error('No answer from the glove (2 s): check the cable and the firmware (sk_glove 2.0)'));
+      }, CFG_TIMEOUT_MS) };
+      if (!send(line)) { clearTimeout(pendingCfg.timer); pendingCfg = null; reject(new Error('Could not send to the glove')); }
+    });
+  }
+  function saveConfig(c) {
+    var v = validateConfig(c);
+    if (!v) return Promise.reject(new Error('The setup is not complete or not valid'));
+    var text = JSON.stringify(v);
+    if (text.length > CFG_MAX) return Promise.reject(new Error('The setup is too long for the glove (' + text.length + ' characters)'));
+    return cfgCommand('cfg-set ' + text, v);
+  }
+  function clearConfig() { return cfgCommand('cfg-clear', null); }
+  function ready() { return status() === 'connected' && !!cfg && !!cfg.cal; }
+
   // ── Web Serial ──
+  function resetLink() {
+    lineBuf = '';
+    hello = null;
+    st.helloAt = 0;
+    cfg = null;
+    cfgState = 'unknown';
+    history = [];
+    if (pendingCfg) { clearTimeout(pendingCfg.timer); pendingCfg.reject(new Error('The glove disconnected')); pendingCfg = null; }
+  }
   async function openPort(p) {
     setStatus(state === 'reconnecting' ? 'reconnecting' : 'connecting');
     try {
@@ -186,9 +287,7 @@
       if (!(e && e.name === 'InvalidStateError')) throw e;
     }
     port = p;
-    lineBuf = '';
-    hello = null;
-    st.helloAt = 0;
+    resetLink();
     var wasReconnect = state === 'reconnecting';
     setStatus('connected');
     if (wasReconnect) st.reconnects++;
@@ -220,7 +319,10 @@
     var p = port;
     port = null;
     if (p) p.close().catch(function () { /* the device is gone */ });
+    resetLink();
+    latestData = null;
     setStatus('reconnecting');
+    emit('config', { config: null, state: cfgState });
     scheduleRetry();
   }
   function releaseWriter() {
@@ -283,10 +385,10 @@
     try { if (reader) await reader.cancel(); } catch (e) { /* already closed */ }
     releaseWriter();
     if (p) { try { await p.close(); } catch (e) { /* already closed */ } }
-    hello = null;
+    resetLink();
     latestData = null;
-    history = [];
     setStatus('disconnected');
+    emit('config', { config: null, state: cfgState });
   }
 
   function send(line) {
@@ -310,14 +412,23 @@
     });
   }
 
-  // ── Simulator: the firmware's lines, produced here and fed through feed() ──
+  // ── Simulator: firmware 2.0's lines, produced here and fed through feed() ──
+  // Wiring it pretends: C0-C4 = right thumb..pinky, C5-C9 = left thumb..pinky, C10-C15 unused
+  // (low noise). A finger reads ~3300 straight and drops toward ~1300 bent, like the real divider.
+  // Its "flash" is localStorage (sk_glove_sim_cfg), so a saved setup survives a page reload.
   function simLine(obj) { feed(JSON.stringify(obj) + '\n'); }
-  function simHello() { simLine({ type: 'hello', device: 'sk-glove', fw: '1.0-sim', fingers: 5, imu: true }); }
+  function simCfgText() { try { return localStorage.getItem(SIM_CFG_KEY); } catch (e) { return null; } }
+  function simHello() {
+    simLine({ type: 'hello', device: 'sk-glove', fw: '2.0-sim', channels: CH, imu: true, i2c: '21/22', hasCfg: !!simCfgText() });
+  }
+  function simChannel(c, t) {
+    if (c >= 10) return Math.round(20 + Math.random() * 30);
+    var bend = simBend[c] !== undefined ? simBend[c] : (Math.sin(t / 900 + c * 0.9) + 1) / 2 * 0.05;   // idle: small wobble (~100)
+    return Math.max(0, Math.min(4095, Math.round(3300 - bend * 2000 + (Math.random() - 0.5) * 30)));
+  }
   function startSim() {
     stopSim();
-    lineBuf = '';
-    hello = null;
-    st.helloAt = 0;
+    resetLink();
     setStatus('connected');
     sim = { n: 0, t0: Date.now() };
     simHello();
@@ -325,13 +436,11 @@
       if (!sim) return;
       sim.n++;
       var t = Date.now() - sim.t0;
-      if (sim.n % SIM_BAD_EVERY === 0) { feed('{"t":' + t + ',"f":[1200,3400\n'); return; }   // a cut-off line
-      var f = FINGERS.map(function (_, i) {
-        var bend = (Math.sin(t / 900 + i * 0.9) + 1) / 2;            // 0..1, each finger out of phase
-        return Math.round(1000 + bend * 2400 + (Math.random() - 0.5) * 40);
-      });
+      if (sim.n % SIM_BAD_EVERY === 0) { feed('{"t":' + t + ',"ch":[1200,3400\n'); return; }   // a cut-off line
+      var ch = [];
+      for (var c = 0; c < CH; c++) ch.push(simChannel(c, t));
       var s = t / 1000;
-      simLine({ t: t, f: f, imu: { ax: +(Math.sin(s * 0.7) * 0.3).toFixed(2), ay: +(Math.cos(s * 0.5) * 0.2).toFixed(2),
+      simLine({ t: t, ch: ch, imu: { ax: +(Math.sin(s * 0.7) * 0.3).toFixed(2), ay: +(Math.cos(s * 0.5) * 0.2).toFixed(2),
         az: 0.95, gx: +(Math.sin(s) * 12).toFixed(2), gy: +(Math.cos(s * 1.3) * 8).toFixed(2), gz: +(Math.sin(s * 0.8) * 35).toFixed(2) } });
     }, SIM_MS);
   }
@@ -345,6 +454,18 @@
       if (!sim) return;
       if (cmd === 'hello') simHello();
       else if (cmd === 'ping') simLine({ type: 'pong', t: Date.now() - sim.t0 });
+      else if (cmd === 'cfg-get') {
+        var stored = simCfgText();
+        feed('{"type":"cfg","cfg":' + (stored || 'null') + '}\n');   // verbatim, like the firmware
+      } else if (cmd.indexOf('cfg-set ') === 0) {
+        var json = cmd.slice(8);
+        if (json.length > CFG_MAX) { simLine({ type: 'cfg-error', why: 'too long' }); return; }
+        try { localStorage.setItem(SIM_CFG_KEY, json); } catch (e) { simLine({ type: 'cfg-error', why: 'flash write failed' }); return; }
+        simLine({ type: 'cfg-ok' });
+      } else if (cmd === 'cfg-clear') {
+        try { localStorage.removeItem(SIM_CFG_KEY); } catch (e) { /* nothing stored */ }
+        simLine({ type: 'cfg-ok' });
+      }
     }, 4);
   }
   // Switch the source. Stored per kiosk; a running connection is closed first.
@@ -355,6 +476,11 @@
     await disconnect();
     simOn = onOff;
     emit('status', status());
+  }
+  // Simulator only: hold channel c at a bend (0 straight .. 1 bent); null releases it.
+  function simSetBend(c, bend) {
+    if (bend === null || bend === undefined) delete simBend[c];
+    else simBend[c] = Math.max(0, Math.min(1, Number(bend)));
   }
 
   function stats() {
@@ -369,11 +495,14 @@
       min: st.min.slice(), max: st.max.slice(), recent: st.recent.slice()
     };
   }
-  function resetMinMax() { st.min = [null, null, null, null, null]; st.max = [null, null, null, null, null]; }
+  function resetMinMax() { st.min = nulls(CH); st.max = nulls(CH); }
   function log() { return logLines.slice(); }
 
   window.SKGlove = {
+    CHANNELS: CH,
     FINGERS: FINGERS.slice(),
+    HANDS: HANDS.slice(),
+    DEFAULT_W: DEFAULT_W,
     isSupported: isSupported,
     status: status,
     connect: connect,
@@ -384,12 +513,18 @@
     on: on,
     latest: function () { return latestData; },
     info: function () { return hello; },
-    calibration: calibration,
+    config: function () { return cfg; },
+    configState: function () { return cfgState; },
+    validateConfig: validateConfig,
+    saveConfig: saveConfig,
+    clearConfig: clearConfig,
+    ready: ready,
     stats: stats,
     resetMinMax: resetMinMax,
     log: log,
     simulator: simulator,
     isSimulator: function () { return simOn; },
+    simSetBend: simSetBend,
     _feed: feed   // tests: push protocol text through the parser
   };
 })();
