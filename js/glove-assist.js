@@ -1,6 +1,8 @@
 // js/glove-assist.js
 // Glove-assisted recognition, the live part (glove-hw Phase 2, docs/superpowers/specs/2026-10-21-glove-hardware-design.md
-// 2.2-2.3): the "🧤 Gloves OFF / ON" button, and apply(scores, model) that the recognizers call on every k-NN result.
+// 2.2-2.3): the "🧤 Gloves OFF / ON" button (Train Gestures Step 3), the 🧤 chip on the Let's Talk camera
+// (glove-chip phase, docs/design/glove-chip-wireframe.html), and apply(scores, model) that the recognizers call on
+// every k-NN result.
 // Needs js/glove.js (window.SKGlove) and js/glove-bend.js (window.GloveBend); uses
 // window.GestureDataRecorder.onHandResults when it exists (the handedness of the frame being classified).
 //
@@ -101,11 +103,12 @@
     return r.scores;
   }
 
-  // ── the button ──
+  // ── the button (Train Gestures Step 3) ──
   function render() {
+    if (!available() && on) on = false;   // unplugged / setup cleared: back to camera only
+    if (chip) renderChip();
     if (!btn) return;
     var show = available();
-    if (!show && on) on = false;          // unplugged / setup cleared: back to camera only
     btn.hidden = !show;
     btn.classList.toggle('on', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -154,8 +157,42 @@
     render();
   }
 
+  // ── the chip on the Let's Talk camera (glove-chip phase) ──
+  // A 44 px pill in the camera's top-right corner, shown only while SKGlove.ready(). The DOM is touched only
+  // when the state changes (renderChip compares first).
+  var chip = null, chipTxt = null, chipState = '';
+  function chipStateNow() {
+    if (!available()) return 'hidden';
+    return on ? 'on' : 'off';
+  }
+  function renderChip() {
+    var s = chipStateNow();
+    if (s === chipState) return;
+    chipState = s;
+    chip.hidden = s === 'hidden';
+    chip.classList.toggle('on', s === 'on');
+    chip.setAttribute('aria-pressed', s === 'on' ? 'true' : 'false');
+    chipTxt.textContent = s === 'on' ? '🧤 ON' : '🧤 Gloves';
+  }
+
+  // el: an empty <button> inside the camera box; it gets a status dot and the label.
+  function initChip(el) {
+    chip = el;
+    chip.innerHTML = '<span class="glove-chip-dot" aria-hidden="true"></span><span class="glove-chip-txt"></span>';
+    chipTxt = chip.querySelector('.glove-chip-txt');
+    chip.addEventListener('click', function () { setOn(!on); });
+    var g = G();
+    if (g) {
+      g.on('status', render);
+      g.on('config', render);
+      g.on('data', track);
+    }
+    render();
+  }
+
   window.GloveAssist = {
     init: init,
+    initChip: initChip,
     apply: apply,
     isOn: function () { return on; },
     setOn: setOn,
