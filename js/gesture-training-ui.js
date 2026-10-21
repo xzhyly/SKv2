@@ -1033,8 +1033,10 @@ function startLivePrediction(forTranslation=false) {
         dbg.innerHTML += `\n• knnResult: ${knnResult ? JSON.stringify(knnResult) : 'null'}`;
       }
       if (!knnResult) return;
+      // Optional gloves (glove-hw Phase 2): Step 3 only, while 🧤 is ON (js/glove-assist.js); Step 4 stays camera only.
+      const kScores = (currentStep === 3 && window.GloveAssist) ? window.GloveAssist.apply(knnResult.scores, knnModel) : knnResult.scores;
       // Build score array indexed by label position for smoothing compatibility
-      const raw = activeLabels.map(l => knnResult.scores[l] !== undefined ? knnResult.scores[l] : 0);
+      const raw = activeLabels.map(l => kScores[l] !== undefined ? kScores[l] : 0);
       predictionHistory.push(raw);
       if(predictionHistory.length>6)predictionHistory.shift();
       const scores=predictionHistory.length>=3?averageScores(predictionHistory):raw;

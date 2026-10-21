@@ -50,6 +50,19 @@
     #leftStep2 .tr-s2-actions { display: flex; gap: 8px; }
     #leftStep2 .tr-s2-actions > button { flex: 1 1 0; min-width: 0; height: 48px; margin: 0; font-size: 15px; }
     #leftStep2 .tr-back-to-instr { min-height: 44px; }
+    /* 🧤 Gloves OFF / ON in Step 3 (glove-hw Phase 2, js/glove-assist.js): shown only while a set-up glove is
+       connected; ON re-ranks the live prediction with the glove so the admin can compare ON vs OFF. */
+    .glove-toggle { width: 100%; height: 48px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px;
+      border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #64748b; font-family: inherit; font-size: 15px;
+      font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .glove-toggle[hidden] { display: none; }
+    .glove-toggle.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .glove-toggle .glove-ico { font-size: 18px; line-height: 1; }
+    .glove-toggle .glove-state { font-weight: 800; }
+    .glove-bars { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
+    .glove-bars[hidden] { display: none; }
+    .glove-bars i { width: 3px; height: 100%; border-radius: 2px; background: var(--orange); transform-origin: 50% 100%; transform: scaleY(0.06); }
+    .glove-bars em { width: 3px; }
     .tr-new-badge { background: #f97316; color: #fff; font-size: 9px; padding: 1px 6px; border-radius: 4px; font-weight: 900; letter-spacing: .5px; }
   </style>
 </head>
@@ -286,6 +299,7 @@
             <div class="tr-pred-result" id="livePredResultAlt">—</div>
             <div class="tr-conf-bar"><div class="tr-conf-fill" id="confBarAlt" style="width:0%"></div></div>
           </div>
+          <button type="button" class="glove-toggle" id="glove-toggle-btn" aria-pressed="false" hidden></button>
         </div>
         <!-- Debug Console for tracking Predict Loop state -->
         <div id="predictDebugConsole" style="margin-top: 8px; font-family: monospace; font-size: 10px; color: #a7f3d0; background: #064e3b; padding: 8px; border-radius: 6px; border: 1px solid #047857; white-space: pre-wrap; line-height: 1.4;">[Debug Console Ready]</div>
@@ -431,7 +445,19 @@
 
 <script src="js/gesture-capture-ui.js" defer></script>
 <script src="js/sign-audio-admin.js" defer></script>
+<script>window.SK_GLOVE_URL_SIM_ONLY = true;   // the glove simulator only with ?glove=sim here (js/glove.js)</script>
+<script src="js/glove.js" defer></script>
+<script src="js/glove-bend.js" defer></script>
+<script src="js/glove-assist.js" defer></script>
 <script src="js/gesture-training-ui.js" defer></script>
+<script>
+  // Optional gloves (glove-hw Phase 2): the 🧤 button in Step 3; a glove this browser already allowed opens with no prompt.
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.GloveAssist || !window.SKGlove) return;
+    window.GloveAssist.init(document.getElementById('glove-toggle-btn'));
+    window.SKGlove.autoReconnect();
+  });
+</script>
 <script src="js/virtual-keyboard.js" defer></script>
 
 </body>

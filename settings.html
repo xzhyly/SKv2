@@ -181,6 +181,23 @@
             </div>
           </div>
 
+          <!-- Let's Talk with the glove (glove-hw Phase 2): how strongly the glove re-ranks the camera's guesses (w, saved
+               on the glove) and the finger bars inside the 🧤 button (per kiosk, localStorage sk_glove_bars). -->
+          <div class="card" id="g-assist" hidden style="display:flex;flex-direction:column;gap:10px">
+            <div class="row between">
+              <div><b>Glove strength in Let's Talk</b><div class="cnt" id="g-w-msg">How much the glove can change the camera's guess (0 = not at all). Saved on the glove.</div></div>
+              <div class="row" style="flex:none">
+                <button type="button" class="btn sec small" id="g-w-minus" aria-label="Less" style="width:52px">&minus;</button>
+                <b id="g-w" style="width:40px;text-align:center;font-size:18px">0.3</b>
+                <button type="button" class="btn sec small" id="g-w-plus" aria-label="More" style="width:52px">+</button>
+              </div>
+            </div>
+            <div class="row between">
+              <div><b>Finger bars in Let's Talk</b><div class="cnt">10 small bars inside the &#129508; button while it is ON (this kiosk)</div></div>
+              <button type="button" class="sw" role="switch" aria-checked="true" aria-label="Show finger bars in Let's Talk" id="g-bars"><span></span></button>
+            </div>
+          </div>
+
           <div class="card dbg" id="dbg">
             <button type="button" class="dbg-head" id="dbg-toggle" aria-expanded="false"><span>Debug</span><span id="dbg-caret">&#9656;</span></button>
             <div class="dbg-body">
@@ -395,7 +412,37 @@
         $('imu-hand').textContent = cfg.imuHand ? 'On the ' + (cfg.imuHand === 'L' ? 'left' : 'right') + ' hand' : 'Hand not set';
       }
       document.querySelectorAll('[data-sim]').forEach(function (b) { b.setAttribute('aria-checked', sim ? 'true' : 'false'); });
+      $('g-assist').hidden = !(connected && cfg);
+      $('g-assist').style.display = $('g-assist').hidden ? 'none' : 'flex';
+      if (cfg && !wSaving) $('g-w').textContent = cfg.w.toFixed(1);
+      $('g-bars').setAttribute('aria-checked', barsOn() ? 'true' : 'false');
     }
+
+    // ── Let's Talk with the glove: strength (on the glove) and finger bars (this kiosk) ──
+    var BARS_KEY = 'sk_glove_bars', wSaving = false;
+    function barsOn() { try { return localStorage.getItem(BARS_KEY) !== '0'; } catch (e) { return true; } }
+    $('g-bars').addEventListener('click', function () {
+      try { localStorage.setItem(BARS_KEY, barsOn() ? '0' : '1'); } catch (e) { /* not stored */ }
+      renderStatus();
+    });
+    function stepW(delta) {
+      var cfg = G.config();
+      if (!cfg || wSaving) return;
+      var w = Math.round(Math.min(1, Math.max(0, cfg.w + delta)) * 10) / 10;
+      if (w === cfg.w) return;
+      wSaving = true;
+      $('g-w').textContent = w.toFixed(1);
+      $('g-w-msg').textContent = 'Saving on the glove…';
+      var next = JSON.parse(JSON.stringify(cfg));
+      next.w = w;
+      G.saveConfig(next).then(function () {
+        $('g-w-msg').textContent = 'Saved on the glove.';
+      }).catch(function (e) {
+        $('g-w-msg').textContent = 'Not saved: ' + (e && e.message ? e.message : e);
+      }).then(function () { wSaving = false; renderStatus(); });
+    }
+    $('g-w-minus').addEventListener('click', function () { stepW(-0.1); });
+    $('g-w-plus').addEventListener('click', function () { stepW(0.1); });
 
     function renderData(d) {
       if (!d) return;

@@ -69,9 +69,13 @@
   function isSupported() { return simOn || serialAvailable(); }
   function status() { return !simOn && !serialAvailable() ? 'unsupported' : state; }
 
+  // The "Use simulator" switch (sk_glove_sim) is Settings' own: a page that sets window.SK_GLOVE_URL_SIM_ONLY before
+  // loading this file (Let's Talk, Train Gestures) uses the simulator only with ?glove=sim, so a switch left on in
+  // Settings never puts a fake glove into a conversation.
   function readSimSetting() {
     try {
       if (/(?:^|[?&])glove=sim(?:&|$)/.test(location.search)) return true;
+      if (window.SK_GLOVE_URL_SIM_ONLY) return false;
       return localStorage.getItem(SIM_KEY) === '1';
     } catch (e) { return false; }
   }

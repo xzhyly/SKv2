@@ -725,6 +725,29 @@
   .guide-toggle.active{background:var(--navy);border-color:var(--navy);color:var(--surface)}
   .guide-toggle.active::before{background:var(--green)}
   .guide-toggle:disabled{opacity:0.5;cursor:not-allowed}
+  /* 🧤 Gloves OFF / ON (glove-hw Phase 2, js/glove-assist.js): beside EN | FIL, shown only while a set-up
+     glove is connected (EN | FIL then narrows; without a glove it is full width as before). Fixed width, so
+     switching OFF/ON never moves anything; same height and border as EN | FIL, the active (navy) look of Guide.
+     While ON: 10 finger bars (left 5, right 5) inside the button, drawn with transform only. */
+  .signing-lang-row{flex:none;display:flex;gap:10px}
+  .signing-lang-row .lang-toggle{flex:1 1 auto;width:auto;min-width:0}
+  .glove-toggle{
+    flex:none;width:132px;height:52px;padding:0 8px;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    border:1px solid var(--border);border-radius:12px;
+    background:var(--surface);color:var(--muted);
+    font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;white-space:nowrap;
+  }
+  .glove-toggle[hidden]{display:none}
+  .glove-toggle:active{transform:scale(0.97)}
+  .glove-toggle.on{background:var(--navy);border-color:var(--navy);color:var(--surface)}
+  .glove-toggle .glove-ico{font-size:18px;line-height:1}
+  .glove-toggle .glove-state{font-weight:800}
+  .glove-toggle.bars .glove-word{display:none}
+  .glove-bars{display:flex;align-items:flex-end;gap:2px;height:26px}
+  .glove-bars[hidden]{display:none}
+  .glove-bars i{width:3px;height:100%;border-radius:2px;background:var(--orange);transform-origin:50% 100%;transform:scaleY(0.06)}
+  .glove-bars em{width:3px}
   .mode-chip{
     width:200px;height:60px;
     border:1px solid var(--border);border-radius:12px;
@@ -1226,9 +1249,15 @@ Please stand by</span></div>
           <button type="button" class="signing-edit-btn" id="signing-undo-btn" disabled>&#9003; Undo</button>
           <button type="button" class="signing-edit-btn" id="signing-clear-btn" disabled>Clear</button>
         </div>
-        <div class="lang-toggle" role="group" aria-label="Language">
-          <button type="button" class="lang-seg active" id="chip-esl">EN</button>
-          <button type="button" class="lang-seg" id="chip-fsl">FIL</button>
+        <!-- EN | FIL, and beside it 🧤 Gloves OFF / ON (glove-hw Phase 2, owner choice 2026-10-21: the bottom row has
+             no room at 338 px): filled in and shown by js/glove-assist.js only while a set-up glove is connected;
+             hidden, EN | FIL is full width exactly as before. -->
+        <div class="signing-lang-row">
+          <div class="lang-toggle" role="group" aria-label="Language">
+            <button type="button" class="lang-seg active" id="chip-esl">EN</button>
+            <button type="button" class="lang-seg" id="chip-fsl">FIL</button>
+          </div>
+          <button type="button" class="glove-toggle" id="glove-toggle-btn" aria-pressed="false" hidden></button>
         </div>
         <!-- Real control (js/talk-signing.js): "Send 🔊" (talk-turns-audio phase; it replaced
              Translate / Stop & Add). Recording starts by itself; Send hands the sentence to
@@ -1332,6 +1361,10 @@ Please stand by</span></div>
 
   <script src="js/virtual-keyboard.js" defer></script>
   <script src="js/talk-loader.js"></script>
+  <script>window.SK_GLOVE_URL_SIM_ONLY = true;   // the glove simulator only with ?glove=sim here (js/glove.js)</script>
+  <script src="js/glove.js"></script>
+  <script src="js/glove-bend.js"></script>
+  <script src="js/glove-assist.js"></script>
   <script src="js/talk-signing.js"></script>
   <script src="js/avatar-rig.js"></script>
   <script src="js/avatar-clip.js"></script>
@@ -1442,6 +1475,7 @@ Please stand by</span></div>
     // real teardown").
     function onEndConversation(reason) {
       try { TalkHistory.end(reason); } catch (err) { console.warn('[talk-history] end() threw', err); }
+      GloveAssist.reset();              // the page reloads right after; the glove button starts OFF anyway
       TalkSpeaking.leave();
       TalkSigning.leave();
     }
@@ -2007,6 +2041,11 @@ Please stand by</span></div>
     // Real camera + recognition (js/talk-signing.js). Send (talk-turns-audio): the sentence is added to
     // the conversation at once (no confirm card), the app returns to "Whose turn is it?" and the message
     // is spoken in the signing language (EN/FIL).
+    // Optional gloves (glove-hw Phase 2): the 🧤 button in the Sign row, and the glove that this kiosk
+    // already allowed is opened with no prompt (the Pi's Chromium policy allows it; nothing shows without one).
+    GloveAssist.init(document.getElementById('glove-toggle-btn'));
+    SKGlove.autoReconnect();
+
     TalkSigning.init({
       onText: function (text, meta) {
         meta = meta || {};
@@ -2250,6 +2289,7 @@ Please stand by</span></div>
         closeModal();
         showScreen('who-first');
         TalkSigning.clearDraft();       // nothing unsent survives into the new conversation
+        GloveAssist.reset();            // a new conversation starts with the gloves OFF (no reload here)
         return;
       }
       onEndConversation('ended');

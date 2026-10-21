@@ -239,9 +239,12 @@
       if (!Array.isArray(f) || f.length !== activeFeatureSize) return;
       var pred = knnPredict(f);
       if (!pred) return;
+      // Optional gloves (glove-hw Phase 2, js/glove-assist.js): re-ranks the top 5 only while 🧤 is ON
+      // and every condition holds; otherwise the same scores come back.
+      var scores = window.GloveAssist ? window.GloveAssist.apply(pred.scores, knnModel) : pred.scores;
 
       // 1. rolling temporal filter (newer predictions weigh more)
-      history.push(pred.scores);
+      history.push(scores);
       if (history.length > ROLLING_WINDOW_SIZE) history.shift();
       var weights = {};
       history.forEach(function (scores, idx) {

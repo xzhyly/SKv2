@@ -62,7 +62,7 @@ async function fingerStep(ch) {
 try {
   // 1. Not connected (simulator off, nothing stored)
   await c.navigate(BASE + 'settings.html');
-  await ev(`['sk_glove_sim','sk_glove_sim_cfg','sk_glove_calibration'].forEach((k) => localStorage.removeItem(k)); true`);
+  await ev(`['sk_glove_sim','sk_glove_sim_cfg','sk_glove_calibration','sk_glove_bars'].forEach((k) => localStorage.removeItem(k)); true`);
   await c.navigate(BASE + 'settings.html');
   const s1 = await ev(`({ status: SKGlove.status(), title: document.getElementById('g-title').textContent,
     connectVisible: !document.getElementById('g-connect').hidden, sim: document.querySelector('[data-sim]').getAttribute('aria-checked') })`);
@@ -187,6 +187,21 @@ try {
   await ev(`SKGlove.simSetBend(0, null); true`);
   check('bars: right thumb bent reads ~100 %, right index open reads low', bars.rThumb >= 90 && bars.rIndex <= 25, J(bars));
   await shot('glove-hw-9-two-hands.png');
+
+  // 8b. Let's Talk with the glove (Phase 2): strength saved on the glove, finger-bars switch per kiosk
+  check('"Glove strength" and "Finger bars" shown once set up', await ev(`!document.getElementById('g-assist').hidden &&
+    document.getElementById('g-w').textContent === '0.3' && document.getElementById('g-bars').getAttribute('aria-checked') === 'true'`));
+  await click('#g-w-plus');
+  await waitFor(`/Saved on the glove/.test(document.getElementById('g-w-msg').textContent)`, 3000);
+  check('strength + -> 0.4 saved on the glove', await ev(`SKGlove.config().w === 0.4 && JSON.parse(localStorage.getItem('sk_glove_sim_cfg')).w === 0.4 &&
+    document.getElementById('g-w').textContent === '0.4'`), await ev(`JSON.stringify(SKGlove.config())`));
+  await click('#g-bars');
+  check('finger bars switch -> off for this kiosk (sk_glove_bars = 0)', await ev(`localStorage.getItem('sk_glove_bars') === '0' &&
+    document.getElementById('g-bars').getAttribute('aria-checked') === 'false'`));
+  await click('#g-bars');
+  const l8 = await layout();
+  check('settings with the glove set up: no page scroll, controls >= 44 px', layoutOk(l8), J(l8));
+  await shot('glove-hw-10-assist.png');
 
   // 9. Reload: the setup comes back from the glove (the simulator's flash)
   await c.navigate(BASE + 'settings.html');
