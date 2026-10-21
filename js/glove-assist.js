@@ -139,6 +139,8 @@
     render();
   }
   function reset() { setOn(false); }
+  // Let's Talk: every Sign turn starts with the gloves OFF.
+  function startTurn() { setOn(false); }
 
   // button: an empty <button>; it gets the icon, the ON/OFF label and the bars inside.
   function init(button) {
@@ -158,21 +160,31 @@
   }
 
   // ── the chip on the Let's Talk camera (glove-chip phase) ──
-  // A 44 px pill in the camera's top-right corner, shown only while SKGlove.ready(). The DOM is touched only
-  // when the state changes (renderChip compares first).
-  var chip = null, chipTxt = null, chipState = '';
+  // A 44 px pill in the camera's top-right corner, shown only while SKGlove.ready(). States: 'off'; 'on' (the
+  // glove is used, or would be once a hand is in the frame); 'idle' (ON but apply() ignores the glove: no camera
+  // step, data older than 1 s, not worn, unsure hand) shown as amber "Camera only", no popup. Same rules as apply()
+  // (glovesForFrame), not new ones. While ON the state is re-checked every CHIP_MS; the DOM is touched only when
+  // the state changes (renderChip compares first), never per glove line or per camera frame.
+  var CHIP_MS = 250;
+  var chip = null, chipTxt = null, chipState = '', chipTimer = null;
   function chipStateNow() {
     if (!available()) return 'hidden';
-    return on ? 'on' : 'off';
+    if (!on) return 'off';
+    watchHands();
+    var why = glovesForFrame().why;
+    return !why || why === 'no hand in the frame' ? 'on' : 'idle';
   }
   function renderChip() {
+    if (on && !chipTimer) chipTimer = setInterval(renderChip, CHIP_MS);
+    if (!on && chipTimer) { clearInterval(chipTimer); chipTimer = null; }
     var s = chipStateNow();
     if (s === chipState) return;
     chipState = s;
     chip.hidden = s === 'hidden';
     chip.classList.toggle('on', s === 'on');
-    chip.setAttribute('aria-pressed', s === 'on' ? 'true' : 'false');
-    chipTxt.textContent = s === 'on' ? '🧤 ON' : '🧤 Gloves';
+    chip.classList.toggle('idle', s === 'idle');
+    chip.setAttribute('aria-pressed', s === 'on' || s === 'idle' ? 'true' : 'false');
+    chipTxt.textContent = s === 'idle' ? 'Camera only' : s === 'on' ? '🧤 ON' : '🧤 Gloves';
   }
 
   // el: an empty <button> inside the camera box; it gets a status dot and the label.
@@ -197,6 +209,8 @@
     isOn: function () { return on; },
     setOn: setOn,
     reset: reset,
+    startTurn: startTurn,
+    chipState: function () { return chipState; },
     lastInfo: function () { return lastInfo; },
     barsWanted: barsWanted,
     setBarsWanted: function (v) { setBarsWanted(v); render(); },

@@ -743,6 +743,9 @@
   .glove-chip-dot{display:none;width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
   .glove-chip.on{background:var(--surface);border-color:var(--surface);color:var(--navy)}
   .glove-chip.on .glove-chip-dot{display:block}
+  /* ON but the glove is ignored (not worn, stale, unsure hand): amber outline and dot, "Camera only". */
+  .glove-chip.idle{border-color:var(--orange);background:rgba(0,0,0,0.55);color:#fdba74}
+  .glove-chip.idle .glove-chip-dot{display:block;background:var(--orange)}
   .mode-chip{
     width:200px;height:60px;
     border:1px solid var(--border);border-radius:12px;
@@ -1467,7 +1470,7 @@ Please stand by</span></div>
     // real teardown").
     function onEndConversation(reason) {
       try { TalkHistory.end(reason); } catch (err) { console.warn('[talk-history] end() threw', err); }
-      GloveAssist.reset();              // the page reloads right after; the glove button starts OFF anyway
+      GloveAssist.reset();              // the page reloads right after; the glove chip starts OFF anyway
       TalkSpeaking.leave();
       TalkSigning.leave();
     }
@@ -1816,6 +1819,7 @@ Please stand by</span></div>
     });
 
     function onEnterSigning() {
+      GloveAssist.startTurn();          // every Sign turn starts with the gloves OFF (glove-chip phase)
       if (!signingGuideSeen) {
         setSigningSubstate('guide');
         refreshGates();
