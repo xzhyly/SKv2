@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="fil">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glove Toggle Wireframe</title>
+<style>
+:root{--navy:#1c3560;--navy2:#24426f;--orange:#f47b20;--bg:#eef1f5;--ink:#1c2b44;--muted:#6b778c;--line:#d6dde8;--cam:#151a2c}
+*{box-sizing:border-box}
+body{margin:0;background:#f6f7f9;color:var(--ink);font-family:Inter,system-ui,Segoe UI,sans-serif;padding:24px 16px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(520px,1fr));gap:28px}
+.cap{font-weight:700;margin:0 0 6px;font-size:15px}
+.cap small{font-weight:400;color:var(--muted)}
+.note{font-size:13px;color:#46546b;margin:8px 0 0;line-height:1.5}
+/* scaled 1024x600 screen */
+.wrap{width:100%;aspect-ratio:1024/600;position:relative;overflow:hidden;border-radius:10px;border:1px solid #c9d0db;background:#fff}
+.screen{width:1024px;height:600px;transform-origin:0 0;position:absolute;left:0;top:0;background:var(--bg)}
+.hdr{height:86px;background:var(--navy);display:flex;align-items:center;justify-content:space-between;padding:0 18px;color:#fff}
+.pill{border:2px solid #fff;border-radius:999px;padding:12px 18px;font-weight:700;font-size:15px}
+.back{background:#2e4670;border-radius:999px;padding:14px 20px;font-weight:700}
+.title{font-weight:800;letter-spacing:2px;font-size:20px}
+.body{display:flex;gap:14px;padding:12px}
+.cam{width:620px;height:490px;background:var(--cam);border-radius:14px;position:relative;color:#fff}
+.cam .lbl{position:absolute;left:12px;top:12px;background:rgba(0,0,0,.55);padding:6px 12px;border-radius:999px;font-size:14px;font-weight:700}
+.person{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:230px;height:330px}
+.right{width:338px;display:flex;flex-direction:column;gap:10px}
+.box{background:#fff;border:1px solid var(--line);border-radius:12px;height:176px;padding:12px;color:#9aa6b8;font-size:17px}
+.lab{font-size:12px;font-weight:700;color:#5b6a82;letter-spacing:.5px}
+.row{display:flex;gap:10px}
+.btn{flex:1;height:48px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:15px;background:#fff;border:1px solid var(--line);color:#8892a3}
+.seg{display:flex;height:48px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.seg div{flex:1;display:grid;place-items:center;font-weight:700}
+.seg .on{background:var(--navy);color:#fff}
+.send{height:56px;border-radius:12px;background:#f5b48a;color:#fff;display:grid;place-items:center;font-weight:800;font-size:18px}
+.spk{flex:1.3;height:52px;border:2px dashed var(--orange);color:var(--orange);border-radius:12px;display:grid;place-items:center;font-weight:800}
+.guide{flex:1;height:52px;background:var(--navy);color:#fff;border-radius:12px;display:grid;place-items:center;font-weight:800}
+/* glove chip */
+.glove{position:absolute;right:12px;top:12px;height:44px;min-width:44px;padding:0 12px;border-radius:999px;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700}
+.glove.off{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);color:rgba(255,255,255,.65)}
+.glove.on{background:#fff;color:var(--navy);border:1px solid #fff}
+.glove.idle{background:rgba(255,255,255,.12);border:1px solid rgba(244,123,32,.7);color:#f9b47f}
+.dot{width:8px;height:8px;border-radius:50%;background:#2ecc71}
+.dot.amber{background:var(--orange)}
+.banner{position:absolute;left:12px;right:68px;top:62px;background:rgba(28,53,96,.92);border-radius:10px;padding:10px 14px;font-size:14px;line-height:1.4}
+.banner b{color:#f9b47f}
+.callout{position:absolute;border:3px solid var(--orange);border-radius:14px;pointer-events:none}
+.tag{position:absolute;background:var(--orange);color:#fff;font-size:13px;font-weight:800;padding:3px 9px;border-radius:6px}
+.legend{margin-top:28px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;font-size:14px;line-height:1.6}
+.legend h2{font-size:16px;margin:0 0 6px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>Gloves toggle: Let's Talk → Sign (1024×600)</h1>
+<p class="sub">Auto OFF, optional, hindi lantad. Maliit na chip sa sulok ng camera; hindi ginagalaw ang kanang column.</p>
+
+<div class="grid" id="grid"></div>
+
+<div class="legend">
+  <h2>Rules</h2>
+  • Lumalabas lang ang chip kapag may naka-set up at nakakonektang glove. Walang glove = parehong screen gaya ngayon.<br>
+  • Laging <b>OFF</b> sa simula ng bawat Sign turn at bawat bagong conversation.<br>
+  • Sa camera area, kanang itaas, 44px ang taas (touch-friendly). Hindi nito tinutulak o tinatakpan ang mga button.<br>
+  • ON → maikling hint (3 s, kusang mawawala, walang modal). Lalabas lang ito sa unang ON ng conversation.<br>
+  • Hindi nagagamit ang glove (hindi suot, stale, hindi sigurado ang kamay) → amber dot + "Camera only". Walang popup.<br>
+  • Finger bars: wala sa user screen. Nasa Admin → Glove lang (para sa demo/debug).
+</div>
+
+<template id="screen">
+  <div class="screen">
+    <div class="hdr"><div class="back">‹ Back</div><div class="title">NEW CONVERSATION</div><div style="display:flex;gap:10px"><div class="pill">+ New conversation</div><div class="pill">G&nbsp; Guest</div></div></div>
+    <div class="body">
+      <div class="cam">
+        <div class="lbl">Show your sign</div>
+        <svg class="person" viewBox="0 0 230 330" aria-hidden="true"><circle cx="115" cy="70" r="44" fill="#2b3350"/><path d="M30 330 L38 190 Q44 140 90 132 L140 132 Q186 140 192 190 L200 330Z" fill="#2b3350"/></svg>
+        <div class="slot"></div>
+      </div>
+      <div class="right">
+        <div class="lab">SIGNED SENTENCE</div>
+        <div class="box">The signed sentence appears here</div>
+        <div class="row"><div class="btn">⌫ Undo</div><div class="btn">Clear</div></div>
+        <div class="seg"><div class="on">EN</div><div>FIL</div></div>
+        <div class="send">Send</div>
+        <div class="row"><div class="spk">Speak or Type</div><div class="guide">● Guide</div></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+const frames=[
+ {t:'1 · Walang glove',s:'(gaya ngayon)',slot:'',n:'Walang chip. Walang nagbago sa layout.'},
+ {t:'2 · May glove, OFF',s:'(default)',slot:'<div class="glove off">🧤 Gloves</div>',call:true,n:'Mapusyaw na outline chip sa sulok ng camera. Kita pero hindi agaw-pansin. Tap para i-ON.'},
+ {t:'3 · Bagong ON',s:'(3 s hint)',slot:'<div class="glove on"><span class="dot"></span>🧤 ON</div><div class="banner">Suotin ang dalawang gloves — <b>kaliwa</b> at <b>kanan</b>. Itaas ang mga kamay at mag-sign gaya ng dati.</div>',n:'Puting chip na may green dot = gumagana. Ang hint ay nasa loob ng camera, kusang mawawala, at sa unang ON lang.'},
+ {t:'4 · ON pero hindi nagagamit',s:'',slot:'<div class="glove idle"><span class="dot amber"></span>Camera only</div>',n:'Hindi suot / walang galaw / hindi sigurado ang kamay → amber dot + "Camera only". Gumagana pa rin ang sign detection. Tap = OFF.'}
+];
+const g=document.getElementById('grid'),tpl=document.getElementById('screen');
+frames.forEach(f=>{
+  const d=document.createElement('div');
+  d.innerHTML=`<p class="cap">${f.t} <small>${f.s}</small></p><div class="wrap"></div><p class="note">${f.n}</p>`;
+  const w=d.querySelector('.wrap');w.appendChild(tpl.content.cloneNode(true));
+  w.querySelector('.slot').outerHTML=f.slot||'';
+  if(f.call){const sc=w.querySelector('.screen');sc.insertAdjacentHTML('beforeend','<div class="callout" style="left:'+(12+620-12-128)+'px;top:'+(86+12+4)+'px;width:132px;height:52px"></div><div class="tag" style="left:'+(12+620-12-128)+'px;top:'+(86+12+62)+'px">Glove chip</div>')}
+  g.appendChild(d);
+});
+function fit(){document.querySelectorAll('.wrap').forEach(w=>{w.querySelector('.screen').style.transform='scale('+(w.clientWidth/1024)+')'})}
+addEventListener('resize',fit);fit();
+</script>
+</body>
+</html>
