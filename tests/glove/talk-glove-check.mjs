@@ -1,12 +1,13 @@
-// glove-hw Phase 2: the 🧤 button in Let's Talk (and Train Gestures Step 3) with the glove simulator, Playwright
-// Chromium at 1024x600 with a fake camera:
-//   no glove -> no button (the Sign row exactly as before); a set-up glove -> "🧤 Gloves OFF" between Speak or Type
-//   and Guide, 52 px, nothing overlapping, no scroll; ON -> navy, aria-pressed, 10 finger bars that follow the glove;
-//   apply(): the glove decides a close call ("s" over "b") only with every condition met, and returns the scores
-//   unchanged for the wrong hand, an unsure hand, a glove that is not worn, stale data, OFF; unplugged -> button
-//   gone and OFF; "+ New conversation" (empty thread) and a reload -> OFF; Settings' simulator switch alone never
-//   puts a fake glove into Let's Talk; detection rate with bars on vs off (measured); Train Gestures Step 3 button;
-//   0 console errors.
+// glove-hw Phase 2 / glove-chip phase: the 🧤 chip on the Let's Talk camera (and the Train Gestures Step 3 button)
+// with the glove simulator, Playwright Chromium at 1024x600 with a fake camera:
+//   no glove -> no chip; a set-up glove -> "🧤 Gloves" chip in the camera's top-right corner, 44 px, nothing
+//   overlapping, the right column exactly as without a glove, no scroll; ON -> white, aria-pressed, green dot, no
+//   finger bars, the first-ON hint (3 s, once per conversation); ON but ignored (unsure hand, not worn) -> amber
+//   "Camera only", back to ON when used again; apply(): the glove decides a close call ("s" over "b") only with
+//   every condition met, and returns the scores unchanged for the wrong hand, an unsure hand, a glove that is not
+//   worn, stale data, OFF; unplugged -> chip gone and OFF; a new Sign turn, "+ New conversation" (empty thread) and
+//   a reload -> OFF; Settings' simulator switch alone never puts a fake glove into Let's Talk; detection rate with
+//   the chip ON vs OFF (measured); Train Gestures Step 3 button; 0 console errors.
 // Recognition itself is not driven here (no real hand in the fake camera): apply() is called with the loaded model
 // and MediaPipe's handedness for the frame is set through GloveAssist._setHands.
 // Run (server at SK_BASE, default http://localhost/SKR/): node tests/glove/talk-glove-check.mjs [--shots <dir>]
@@ -75,43 +76,52 @@ const S_BEND = [0.73, 0.75, 0.69, 0.67, 0.68];   // the "s" sign's median bends 
 const SCORES = { b: 0.80, s: 0.78, hello: 0.5, c: 0.4, d: 0.3 };
 
 try {
-  // 1. No glove: no button, the row as before
+  // 1. No glove: no chip, the screen as before
   await toSign(BASE + 'talk.html');
-  const none = await p.evaluate(() => ({ hidden: document.getElementById('glove-toggle-btn').hidden, status: SKGlove.status() }));
-  check('no glove: no 🧤 button (Settings\' simulator switch is ignored here)', none.hidden && none.status !== 'connected', J(none));
-  const before = { lang: await rect('.lang-toggle'), speak: await rect('#sign-to-speak-btn'), guide: await rect('#chip-guide') };
+  const none = await p.evaluate(() => ({ hidden: document.getElementById('glove-chip').hidden, status: SKGlove.status() }));
+  check('no glove: no 🧤 chip (Settings\' simulator switch is ignored here)', none.hidden && none.status !== 'connected', J(none));
+  const SIDE = ['.signing-side-label', '#signing-draft', '#signing-undo-btn', '#signing-clear-btn', '.lang-toggle', '#chip-esl', '#chip-fsl',
+    '#stop-signing-btn', '#sign-to-speak-btn', '#chip-guide', '#camera-box', '.signing-caption-pill'];
+  const rects = async () => { const o = {}; for (const s of SIDE) o[s] = await rect(s); return o; };
+  const before = await rects();
 
-  // 2. Set-up glove (simulator via ?glove=sim): the button beside EN | FIL
+  // 2. Set-up glove (simulator via ?glove=sim): the chip in the camera's top-right corner
   await p.evaluate(() => localStorage.setItem('sk_glove_sim', '1'));   // Settings' switch: still ignored without ?glove=sim
   await toSign(BASE + 'talk.html');
-  check('Settings\' simulator switch alone never puts a fake glove into Let\'s Talk', await p.evaluate(() => document.getElementById('glove-toggle-btn').hidden && !SKGlove.isSimulator()));
+  check('Settings\' simulator switch alone never puts a fake glove into Let\'s Talk', await p.evaluate(() => document.getElementById('glove-chip').hidden && !SKGlove.isSimulator()));
   await toSign(BASE + 'talk.html?glove=sim');
   await p.waitForFunction(() => window.SKGlove.ready(), null, { timeout: 5000 });
-  const r = { lang: await rect('.lang-toggle'), en: await rect('#chip-esl'), fil: await rect('#chip-fsl'), glove: await rect('#glove-toggle-btn'),
-    speak: await rect('#sign-to-speak-btn'), guide: await rect('#chip-guide'), send: await rect('#stop-signing-btn'), side: await rect('.signing-side') };
-  const txt = await p.textContent('#glove-toggle-btn');
-  check('set-up glove: "🧤 Gloves OFF" beside EN | FIL, same row and height', /Gloves\s*OFF/.test(txt) && r.glove.y === r.lang.y && r.glove.h === r.lang.h && r.lang.r <= r.glove.x, J({ txt, r }));
-  check('nothing overlaps, all inside the side column, EN / FIL still >= 44 px wide',
-    !overlap(r.glove, r.lang) && !overlap(r.glove, r.send) && r.glove.r <= r.side.r && r.lang.x >= r.side.x && r.en.w >= 44 && r.fil.w >= 44, J(r));
-  check('the rest of the screen did not move: EN | FIL row height, Send, Speak or Type, Guide as without a glove',
-    r.lang.y === before.lang.y && r.lang.h === before.lang.h && J(r.speak) === J(before.speak) && J(r.guide) === J(before.guide), J({ before, after: r }));
+  const r = { glove: await rect('#glove-chip'), cam: await rect('#camera-box'), pill: await rect('.signing-caption-pill') };
+  const txt = await p.textContent('#glove-chip');
+  check('set-up glove: "🧤 Gloves" chip, top-right of the camera, 44 px tall',
+    /Gloves/.test(txt) && r.glove.h === 44 && r.glove.w >= 44 && r.glove.y === r.pill.y && r.cam.r - r.glove.r === r.pill.x - r.cam.x, J({ txt, r }));
+  check('the chip is inside the camera and overlaps nothing but the video', r.glove.x >= r.cam.x && r.glove.r <= r.cam.r && !overlap(r.glove, r.pill), J(r));
+  const after = await rects();
+  check('the right column and the camera did not move: identical to the screen without a glove', J(after) === J(before), J({ before, after }));
   check('no scroll at 1024x600', await noScroll());
   await shot('glove-talk-1-off.png');
 
-  // 3. ON: navy, aria-pressed, bars follow the glove. MediaPipe paused for sections 3-4 (it takes ~1 s of the page's
-  // only thread per frame in this container, which would starve the glove simulator's 30 lines/s); resumed for 5.
+  // 3. ON: white, aria-pressed, green dot, no bars, the first-ON hint. MediaPipe paused for sections 3-4 (it takes
+  // ~1 s of the page's only thread per frame in this container, which would starve the glove simulator's
+  // 30 lines/s); resumed for 5.
   await p.evaluate(() => window.GestureDataRecorder.pauseHandLoop());
-  await p.click('#glove-toggle-btn');
-  const on = await p.evaluate(() => { const b = document.getElementById('glove-toggle-btn'); return { on: GloveAssist.isOn(), pressed: b.getAttribute('aria-pressed'),
-    bg: getComputedStyle(b).backgroundColor, bars: !b.querySelector('.glove-bars').hidden, n: b.querySelectorAll('.glove-bars i').length, txt: b.textContent }; });
-  check('tap -> ON: navy fill, aria-pressed, 10 finger bars', on.on && on.pressed === 'true' && on.bg === 'rgb(26, 37, 64)' && on.bars && on.n === 10 && /ON/.test(on.txt), J(on));
-  const r2 = await rect('#glove-toggle-btn');
-  check('ON does not move or resize the button', r2.x === r.glove.x && r2.w === r.glove.w && r2.h === r.glove.h, J({ off: r.glove, on: r2 }));
-  await holdRight([1, 0, 0, 0, 0]);
-  await sleep(400);
-  const bars = await p.evaluate(() => [...document.querySelectorAll('#glove-toggle-btn .glove-bars i')].map((i) => i.style.transform));
-  check('bars follow the glove: right thumb (bar 6) bent full, the rest low', /^scaleY\((0\.9\d*|1(\.0+)?)\)$/.test(bars[5]) && /^scaleY\(0\.[01]\d*\)$/.test(bars[6]) && /^scaleY\(0\.[01]\d*\)$/.test(bars[0]), J(bars));
+  await p.click('#glove-chip');
+  const on = await p.evaluate(() => { const b = document.getElementById('glove-chip'); const h = document.getElementById('glove-hint');
+    return { on: GloveAssist.isOn(), state: GloveAssist.chipState(), pressed: b.getAttribute('aria-pressed'), bg: getComputedStyle(b).backgroundColor,
+      dot: getComputedStyle(b.querySelector('.glove-chip-dot')).display, bars: b.querySelectorAll('.glove-bars').length, txt: b.textContent,
+      hint: !h.hidden && h.textContent }; });
+  check('tap -> ON: white fill, aria-pressed, green dot, "🧤 ON", no finger bars',
+    on.on && on.state === 'on' && on.pressed === 'true' && on.bg === 'rgb(255, 255, 255)' && on.dot === 'block' && on.bars === 0 && /ON/.test(on.txt), J(on));
+  check('first ON: the hint, in EN while EN is selected', /^Wear both gloves/.test(on.hint || ''), J(on));
+  const rh = await rect('#glove-hint');
+  check('the hint is inside the camera, under the chips', rh.y > r.glove.b && rh.y > r.pill.b && rh.x >= r.cam.x && rh.r <= r.cam.r, J({ rh, r }));
+  check('ON does not move the right column', J(await rects()) === J(before));
   await shot('glove-talk-2-on.png');
+  await sleep(3200);
+  check('the hint hides by itself after 3 s', await p.evaluate(() => document.getElementById('glove-hint').hidden));
+  await p.click('#glove-chip');
+  await p.click('#glove-chip');
+  check('OFF and ON again in the same conversation: no hint', await p.evaluate(() => GloveAssist.isOn() && document.getElementById('glove-hint').hidden));
 
   // 4. apply(): only with every condition met
   await holdRight(S_BEND);
@@ -123,45 +133,68 @@ try {
   check('apply: the hand on camera is the LEFT one (open glove) -> "b" stays ahead', a2.info.used && a2.out.b > a2.out.s, J(a2));
   const a3 = await p.evaluate((sc) => { GloveAssist._setHands([{ label: 'Right', score: 0.6 }]); const out = GloveAssist.apply(sc, knnModel); return { same: JSON.stringify(out) === JSON.stringify(sc), info: GloveAssist.lastInfo() }; }, SCORES);
   check('apply: unsure which hand (score 0.6) -> scores unchanged', a3.same && a3.info.why === 'unsure which hand', J(a3));
+  await sleep(400);
+  const chipUnsure = await p.evaluate(() => { const b = document.getElementById('glove-chip'); return { state: GloveAssist.chipState(), txt: b.textContent,
+    border: getComputedStyle(b).borderTopColor, dot: getComputedStyle(b.querySelector('.glove-chip-dot')).backgroundColor }; });
+  check('chip: unsure hand -> amber outline and dot, "Camera only"',
+    chipUnsure.state === 'idle' && chipUnsure.txt === 'Camera only' && chipUnsure.border === 'rgb(249, 115, 22)' && chipUnsure.dot === 'rgb(249, 115, 22)', J(chipUnsure));
+  await shot('glove-talk-3-camera-only.png');
   await p.evaluate(() => GloveAssist._setHands([{ label: 'Right', score: 0.95 }]));
+  await sleep(400);
+  check('chip: sure hand again -> back to ON by itself', await p.evaluate(() => GloveAssist.chipState() === 'on'));
   await sleep(3500);   // every channel held still for 3.5 s
   const a4 = await p.evaluate((sc) => { const out = GloveAssist.apply(sc, knnModel); return { same: JSON.stringify(out) === JSON.stringify(sc), info: GloveAssist.lastInfo() }; }, SCORES);
   check('apply: no finger moved for 3 s (not worn) -> scores unchanged', a4.same && a4.info.why === 'not worn', J(a4));
+  check('chip: not worn -> "Camera only"', await p.evaluate(() => GloveAssist.chipState() === 'idle'));
   await holdRight([0.2, 0.2, 0.2, 0.2, 0.2]);
   await sleep(200);
   await holdRight(S_BEND);
   await sleep(200);
   check('apply: fingers move again -> used again', await p.evaluate((sc) => { GloveAssist.apply(sc, knnModel); return GloveAssist.lastInfo().used; }, SCORES));
+  await sleep(300);
+  check('chip: fingers move again -> ON', await p.evaluate(() => GloveAssist.chipState() === 'on'));
 
-  // 5. Detection rate with the bars on vs off (fake camera, this container; the Pi is measured on the Pi)
+  // 5. Detection rate with the chip ON vs OFF (fake camera, this container; the Pi is measured on the Pi)
   await p.evaluate(() => window.GestureDataRecorder.resumeHandLoop());
   const rate = async () => { await p.evaluate(() => window.GestureDataRecorder.getLoopStats()); await sleep(5000); return p.evaluate(() => window.GestureDataRecorder.getLoopStats()); };
-  const withBars = await rate();
-  await p.click('#glove-toggle-btn');   // OFF: no bars
+  const withChip = await rate();
+  await p.click('#glove-chip');   // OFF
   const without = await rate();
-  console.log(`  detection here: bars ON ${withBars.detectFps.toFixed(1)} fps (${withBars.detectMs.toFixed(0)} ms/frame), OFF ${without.detectFps.toFixed(1)} fps (${without.detectMs.toFixed(0)} ms/frame); video ${withBars.videoFps.toFixed(1)} / ${without.videoFps.toFixed(1)} fps`);
-  check('detection rate with bars ON within 10 % of OFF (here)', withBars.detectFps >= without.detectFps * 0.9, J({ withBars, without }));
+  console.log(`  detection here: chip ON ${withChip.detectFps.toFixed(1)} fps (${withChip.detectMs.toFixed(0)} ms/frame), OFF ${without.detectFps.toFixed(1)} fps (${without.detectMs.toFixed(0)} ms/frame); video ${withChip.videoFps.toFixed(1)} / ${without.videoFps.toFixed(1)} fps`);
+  check('detection rate with the chip ON within 10 % of OFF (here)', withChip.detectFps >= without.detectFps * 0.9, J({ withChip, without }));
   const offScores = await p.evaluate((sc) => JSON.stringify(GloveAssist.apply(sc, knnModel)) === JSON.stringify(sc) && GloveAssist.lastInfo().why === 'off', SCORES);
   check('OFF -> scores unchanged', offScores);
 
-  // 6. Unplugged -> no button, OFF; back -> button, still OFF
-  await p.click('#glove-toggle-btn');
+  // 6. Unplugged -> no chip, OFF; back -> chip, still OFF
+  await p.click('#glove-chip');
   await p.evaluate(() => SKGlove.disconnect());
   await sleep(200);
-  check('glove gone: button hidden and OFF', await p.evaluate(() => document.getElementById('glove-toggle-btn').hidden && !GloveAssist.isOn()));
+  check('glove gone: chip hidden and OFF', await p.evaluate(() => document.getElementById('glove-chip').hidden && !GloveAssist.isOn()));
   await p.evaluate(() => SKGlove.connect());
   await p.waitForFunction(() => window.SKGlove.ready(), null, { timeout: 5000 });
   await sleep(200);
-  check('glove back: button shown, OFF', await p.evaluate(() => !document.getElementById('glove-toggle-btn').hidden && !GloveAssist.isOn()));
+  check('glove back: chip shown, OFF', await p.evaluate(() => !document.getElementById('glove-chip').hidden && !GloveAssist.isOn()));
 
-  // 7. "+ New conversation" with an empty thread -> OFF; a reload -> OFF
-  await p.click('#glove-toggle-btn');
+  // 7. A new Sign turn -> OFF; "+ New conversation" with an empty thread -> OFF and the hint again; a reload -> OFF
+  await p.click('#glove-chip');
+  await p.click('#sign-to-speak-btn');
+  await sleep(300);
+  await p.click('#speak-to-sign-btn');
+  await sleep(500);
+  check('a new Sign turn starts OFF', await p.evaluate(() => !GloveAssist.isOn() && GloveAssist.chipState() === 'off'));
+  await p.click('#glove-chip');
   await p.click('#newConversationBtn');
   await sleep(300);
   check('"+ New conversation" (no messages) -> gloves OFF', await p.evaluate(() => !GloveAssist.isOn() && document.body.dataset.screen === 'who-first'));
+  await p.click('#card-sign');
+  await sleep(500);
+  await p.click('#glove-chip');
+  check('the new conversation\'s first ON shows the hint again', await p.evaluate(() => !document.getElementById('glove-hint').hidden));
+  await p.click('#glove-hint');
+  check('a tap hides the hint', await p.evaluate(() => document.getElementById('glove-hint').hidden));
   await toSign(BASE + 'talk.html?glove=sim');
   await p.waitForFunction(() => window.SKGlove.ready(), null, { timeout: 5000 });
-  check('a page load starts OFF', await p.evaluate(() => !GloveAssist.isOn() && !document.getElementById('glove-toggle-btn').hidden));
+  check('a page load starts OFF', await p.evaluate(() => !GloveAssist.isOn() && !document.getElementById('glove-chip').hidden));
 
   check('Let\'s Talk: 0 console errors', errors.length === 0, J(errors));
 
