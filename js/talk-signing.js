@@ -11,6 +11,9 @@
 // to onText. Owner change 2026-10-19: leaving the turn discards what was not sent — leave() empties the
 // sentence and the recognizer buffer, so Sign always starts empty; a language switch inside the turn
 // keeps it. Recognition (tick's prediction, filter and debounce) is unchanged.
+// pi-fixes 2026-10-21: enter() keeps an overlay ("Inihahanda ang camera… / Please stand by") over the camera
+// and Send / Undo / Clear / Speak or Type disabled until the first video frame is on screen and MediaPipe
+// has answered once; then the countdown starts and onLive() is called. ?devperf shows fps / detection time.
 (function () {
   'use strict';
 
@@ -23,6 +26,12 @@
   var TICK_MS = 150;              // :600
   var COUNTDOWN_S = 3;            // :723
   var SKELETON_KEY = 'sining_kamay_show_skeleton'; // :876
+  // pi-fixes 2026-10-21: the camera overlay stays up until the first video frame is on screen AND
+  // MediaPipe has returned its first result; only then do the buttons work and the countdown start.
+  // READY_TIMEOUT_MS: if MediaPipe never answers, carry on anyway (logged) so the turn is never stuck.
+  var READY_TIMEOUT_MS = 10000;
+  var LOADING_TEXT = 'Inihahanda ang camera…\nPlease stand by';
+  var PERF = new URLSearchParams(location.search).has('devperf');   // debug-only fps/detection overlay
 
   var cb = {};
   var active = false;
@@ -32,6 +41,10 @@
   var countdownId = null;
   var uiState = 'idle';           // 'idle' | 'countdown' | 'recording'
   var switching = false;
+  var loading = false;            // camera/MediaPipe not ready yet (overlay up, buttons off)
+  var readyTimer = null;
+  var unsubReady = null;
+  var perfTimer = null;
   var words = [];
   var keys = [];                  // the sign key of each word in `words` (for its audio)
   var history = [];
@@ -78,11 +91,12 @@
   // Send is enabled once there is a word to send (also during the countdown after a language switch).
   function renderButton(countdown) {
     var b = $('stop-signing-btn');
-    b.disabled = !stream || switching || words.length === 0;
+    b.disabled = !stream || loading || switching || words.length === 0;
     if (uiState === 'countdown' && words.length === 0) b.textContent = 'Starting in ' + countdown + '…';
     else b.textContent = 'Send \u{1F50A}';
-    $('signing-undo-btn').disabled = words.length === 0;
-    $('signing-clear-btn').disabled = words.length === 0;
+    $('signing-undo-btn').disabled = loading || words.length === 0;
+    $('signing-clear-btn').disabled = loading || words.length === 0;
+    $('sign-to-speak-btn').disabled = loading;
   }
 
   function syncChips() {
@@ -123,7 +137,7 @@
   }
 
   function beginCountdown() {
-    if (uiState !== 'idle' || !stream) return;
+    if (uiState !== 'idle' || !stream || loading) return;
     uiState = 'countdown';
     var n = COUNTDOWN_S;
     renderButton(n);
@@ -205,7 +219,7 @@
   }
 
   function tick() {
-    if (!stream || !modelTrained || !knnModel || switching) return;
+    if (!stream || loading || !modelTrained || !knnModel || switching) return;
     // Nothing should start or stop behind an open confirm/error card.
     if (document.body.classList.contains('modal-open')) return;
     try {
@@ -356,14 +370,97 @@
     syncChips();
   }
 
+  // console.time markers for the camera start (pi-fixes 2026-10-21); a timer still open when the turn
+  // is left is closed then, so the next entry can start it again.
+  var openTimers = {};
+  function timeStart(label) { if (!openTimers[label]) { openTimers[label] = true; console.time(label); } }
+  function timeEnd(label) { if (openTimers[label]) { delete openTimers[label]; console.timeEnd(label); } }
+  var T_FRAME = '[load] camera: first frame';
+  var T_READY = '[load] camera + MediaPipe ready';
+
+  function stopWaiting() {
+    if (readyTimer) { clearTimeout(readyTimer); readyTimer = null; }
+    if (unsubReady) { unsubReady(); unsubReady = null; }
+  }
+
+  // The camera is live: overlay down, buttons on, countdown. timedOut: MediaPipe never answered.
+  function finishLoading(myGen, timedOut) {
+    stopWaiting();
+    if (!active || myGen !== gen || !loading) return;
+    loading = false;
+    if (timedOut) console.warn('[talk-signing] no MediaPipe result after ' + READY_TIMEOUT_MS + ' ms: starting anyway');
+    timeEnd(T_FRAME);
+    timeEnd(T_READY);
+    setOverlay(false);
+    renderButton();
+    beginCountdown();                 // recording starts by itself (no Translate button any more)
+    if (cb.onLive) cb.onLive();
+  }
+
+  // Waits for the first video frame on screen AND the first MediaPipe result (either order).
+  function waitUntilReady(v, myGen) {
+    var frame = false;
+    var hands = false;
+    function check() { if (frame && hands) finishLoading(myGen, false); }
+    function onFrame() {
+      if (frame || myGen !== gen) return;
+      frame = true;
+      timeEnd(T_FRAME);
+      check();
+    }
+    if (typeof v.requestVideoFrameCallback === 'function') v.requestVideoFrameCallback(onFrame);
+    else v.addEventListener('playing', onFrame, { once: true });
+    var unsub = window.GestureDataRecorder.onHandResults(function () {
+      if (hands || myGen !== gen) return;
+      hands = true;
+      // not inside the subscriber loop (unsubscribing there would skip the next subscriber)
+      setTimeout(function () { if (unsubReady === unsub) { unsub(); unsubReady = null; } }, 0);
+      check();
+    });
+    unsubReady = unsub;
+    readyTimer = setTimeout(function () { finishLoading(myGen, true); }, READY_TIMEOUT_MS);
+  }
+
+  // Debug only (talk.html?devperf): camera fps, MediaPipe ms per frame and detections per second,
+  // over the camera and in the console every 5 s (js/gesture-data.js getLoopStats).
+  function startPerf() {
+    if (!PERF || perfTimer) return;
+    var el = $('dev-perf-overlay');
+    if (!el) {
+      el = document.createElement('pre');
+      el.id = 'dev-perf-overlay';
+      el.style.cssText = 'position:absolute;left:6px;top:6px;z-index:6;margin:0;padding:4px 6px;' +
+        'background:rgba(0,0,0,0.7);color:#fff;font:12px/1.35 Consolas,monospace;border-radius:4px;pointer-events:none';
+      $('camera-box').appendChild(el);
+    }
+    window.GestureDataRecorder.getLoopStats();      // reset the window
+    var n = 0;
+    perfTimer = setInterval(function () {
+      var st = window.GestureDataRecorder.getLoopStats();
+      var text = 'video  ' + st.videoFps.toFixed(1) + ' fps\n' +
+        'detect ' + st.detectMs.toFixed(0) + ' ms/frame\n' +
+        'detect ' + st.detectFps.toFixed(1) + ' fps (1 of ' + st.detectEvery + ', model ' + st.modelComplexity + ')';
+      el.textContent = text;
+      if (++n % 5 === 0) console.log('[perf] ' + text.replace(/\n/g, ' | '));
+    }, 1000);
+  }
+  function stopPerf() {
+    if (perfTimer) { clearInterval(perfTimer); perfTimer = null; }
+    var el = $('dev-perf-overlay');
+    if (el) el.remove();
+  }
+
   function enter() {
     if (active) return;             // idempotent: never a second stream while one is active/starting
     active = true;
     var myGen = ++gen;
     syncChips();
+    loading = true;
     endSession(true);                 // a turn always starts with an empty sentence
-    setOverlay(true, 'Starting camera…');
+    setOverlay(true, LOADING_TEXT);
     renderButton();
+    timeStart(T_FRAME);
+    timeStart(T_READY);
     initCameraWithFallback(320, 240, function (s) {
       try {
         if (!active || myGen !== gen) {   // left the screen while getUserMedia was in flight
@@ -376,12 +473,11 @@
         v.classList.add('active');
         var p = v.play();
         if (p && p.catch) p.catch(function () { /* autoplay attr already set */ });
+        waitUntilReady(v, myGen);
         window.GestureDataRecorder.resumeHandLoop();
         lastHandAt = Date.now();
         tickId = setInterval(tick, TICK_MS);
-        setOverlay(false);
-        renderButton();
-        beginCountdown();               // recording starts by itself (no Translate button any more)
+        startPerf();
       } catch (e) {
         // must not throw: camera-helper would treat it as a getUserMedia failure and re-request
         console.error('[talk-signing] camera start failed:', e);
@@ -391,7 +487,12 @@
       console.error('[talk-signing] camera failed:', err, msg);
       active = false;
       gen++;
+      loading = false;
+      stopWaiting();
+      timeEnd(T_FRAME);
+      timeEnd(T_READY);
       setOverlay(false);
+      renderButton();
       if (cb.onCameraError) cb.onCameraError(msg, err);
     });
   }
@@ -400,6 +501,11 @@
     if (!active) return;
     active = false;
     gen++;
+    loading = false;
+    stopWaiting();
+    stopPerf();
+    timeEnd(T_FRAME);
+    timeEnd(T_READY);
     if (tickId) { clearInterval(tickId); tickId = null; }
     if (countdownId) { clearInterval(countdownId); countdownId = null; }
     if (window.GestureDataRecorder && window.GestureDataRecorder.pauseHandLoop) {
@@ -436,5 +542,6 @@
 
   function getDraft() { return { words: words.slice(), keys: keys.slice() }; }
 
-  window.TalkSigning = { init: init, enter: enter, leave: leave, renderDraft: renderDraft, restart: restart, clearDraft: clearDraft, getDraft: getDraft };
+  window.TalkSigning = { init: init, enter: enter, leave: leave, renderDraft: renderDraft, restart: restart, clearDraft: clearDraft, getDraft: getDraft,
+    isLoading: function () { return active && loading; } };
 })();

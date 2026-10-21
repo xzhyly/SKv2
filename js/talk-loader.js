@@ -1,9 +1,13 @@
 // js/talk-loader.js
 // Background loading queue for talk.html (docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md,
-// "Loading queue"). Starts once, when the page has loaded, and runs the items one after
-// another (queued, not parallel — the Pi 4B should not init both stacks at once). Order is
-// measured, not assumed: sign stack first, speech stack second (median 2737 ms). See the plan's
-// Step 1 table. The k-NN model is the compiled file models/knn_<LANG>.bin (js/knn-model-store.js).
+// "Loading queue"). Items run one after another (queued, not parallel — the Pi 4B should not init
+// both stacks at once). The k-NN model is the compiled file models/knn_<LANG>.bin (js/knn-model-store.js).
+// pi-fixes 2026-10-21: the two stacks are separate queues. The SIGN stack (libraries -> MediaPipe ->
+// k-NN model) starts when the page has loaded and is the only thing the Sign turn waits for (before,
+// "Start Translating" waited for the whole queue, Vosk included, so the camera came after Vosk). The
+// SPEECH stack (Vosk library -> model) starts only when talk.html calls startSpeech(): when Speak or
+// Type opens, or in the background once the camera is live / a turn is over. Everything is loaded
+// once per page load and reused by every turn. Each item is timed with console.time('[load] …').
 (function () {
   'use strict';
 
@@ -18,6 +22,24 @@
   ];
   // Same file index.html's voice screen loads (archive/script.js:201-203), resolved against this page.
   var VOSK_MODEL_URL = new URL('models/vosk-model-small-en-us-0.15.tar.gz.zip', location.href).href;
+
+  // Live hand detection on this page (js/gesture-data.js setLoopOptions). DETECT_EVERY: send every Nth
+  // camera frame to MediaPipe (?detectEvery=N overrides; 1 = every frame, the old behaviour).
+  // MODEL_COMPLEXITY 0 = the lite landmark model (?complexity=1 forces full). It is used only if its
+  // file is there (js/lib/mediapipe/hand_landmark_lite.tflite, not vendored yet), else 1 with a warning.
+  var params = new URLSearchParams(location.search);
+  var DETECT_EVERY = Math.max(1, parseInt(params.get('detectEvery'), 10) || 2);
+  var MODEL_COMPLEXITY = params.get('complexity') === '1' ? 1 : 0;
+  var LITE_MODEL_URL = 'js/lib/mediapipe/hand_landmark_lite.tflite';
+
+  function pickModelComplexity() {
+    if (MODEL_COMPLEXITY !== 0) return Promise.resolve(1);
+    return fetch(LITE_MODEL_URL, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
+      if (r.ok) return 0;
+      console.warn('[TalkLoader] ' + LITE_MODEL_URL + ' not found: using the full hand model (modelComplexity 1)');
+      return 1;
+    }, function () { return 1; });
+  }
 
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
@@ -43,7 +65,11 @@
       run: function () {
         var video = document.getElementById('signing-video');
         if (!video) return Promise.reject(new Error('#signing-video not found'));
-        return window.GestureDataRecorder.preloadMediaPipe(video).then(function (ok) {
+        return pickModelComplexity().then(function (complexity) {
+          var opts = window.GestureDataRecorder.setLoopOptions({ detectEvery: DETECT_EVERY, modelComplexity: complexity });
+          console.log('[TalkLoader] hand detection: every ' + opts.detectEvery + ' camera frame(s), modelComplexity ' + opts.modelComplexity);
+          return window.GestureDataRecorder.preloadMediaPipe(video, { warmUp: true });
+        }).then(function (ok) {
           if (!ok) throw new Error('MediaPipe Hands did not initialise');
         });
       } },
@@ -74,7 +100,7 @@
     return { id: def.id, stack: def.stack, name: def.name, status: 'queued', ms: null, error: null };
   });
   var listeners = [];
-  var startPromise = null;
+  var stackPromises = {};   // stack -> the promise of its one run
 
   function emit() {
     listeners.slice().forEach(function (fn) {
@@ -89,9 +115,12 @@
     emit();
   }
 
-  async function run() {
+  async function run(stack) {
+    // The speech stack waits for the sign stack (never both at once on the Pi).
+    if (stack === 'speech' && stackPromises.sign) await stackPromises.sign;
     for (var i = 0; i < ITEMS.length; i++) {
       var def = ITEMS[i];
+      if (def.stack !== stack) continue;
       if (def.needs) {
         var dep = state.filter(function (s) { return s.id === def.needs; })[0];
         if (dep.status !== 'done') {
@@ -100,6 +129,8 @@
         }
       }
       setStatus(i, 'loading');
+      var label = '[load] ' + def.name;
+      console.time(label);
       var t0 = performance.now();
       try {
         await def.run();
@@ -108,24 +139,35 @@
         console.error('[TalkLoader] ' + def.name + ' failed:', e);
         setStatus(i, 'failed', String((e && e.message) || e), Math.round(performance.now() - t0));
       }
+      console.timeEnd(label);
     }
   }
 
-  function isSettled() {
-    return state.every(function (s) { return s.status === 'done' || s.status === 'failed'; });
+  function itemsOf(stack) {
+    return state.filter(function (s) { return !stack || s.stack === stack; });
+  }
+  function settledItem(s) { return s.status === 'done' || s.status === 'failed'; }
+  // isSettled(stack): every item of that stack ('sign' / 'speech') has finished; no stack = all items.
+  function isSettled(stack) { return itemsOf(stack).every(settledItem); }
+
+  function startStack(stack) {
+    if (!stackPromises[stack]) stackPromises[stack] = run(stack);
+    return stackPromises[stack];
   }
 
   var api = {
     voskModel: null,
-    start: function () {
-      if (!startPromise) startPromise = run();
-      return startPromise;
-    },
+    // start(): the sign stack (page load). startSpeech(): the speech stack, once; later calls return
+    // the same promise.
+    start: function () { return startStack('sign'); },
+    startSpeech: function () { return startStack('speech'); },
+    speechStarted: function () { return !!stackPromises.speech; },
     isSettled: isSettled,
     getItems: function () { return state.map(function (s) { return Object.assign({}, s); }); },
-    getProgress: function () {
-      var finished = state.filter(function (s) { return s.status === 'done' || s.status === 'failed'; }).length;
-      return { total: state.length, finished: finished, settled: isSettled() };
+    getProgress: function (stack) {
+      var list = itemsOf(stack);
+      var finished = list.filter(settledItem).length;
+      return { total: list.length, finished: finished, settled: finished === list.length };
     },
     onChange: function (fn) { listeners.push(fn); }
   };
@@ -152,12 +194,12 @@
     api.onChange(render);
     render();
   }
-  if (new URLSearchParams(location.search).has('devqueue')) {
+  if (params.has('devqueue')) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', buildOverlay);
     else buildOverlay();
   }
 
-  // ── Start once, when the page has loaded ──
+  // ── Start the sign stack once, when the page has loaded ──
   if (document.readyState === 'complete') setTimeout(api.start, 0);
   else window.addEventListener('load', api.start, { once: true });
 })();

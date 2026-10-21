@@ -47,6 +47,12 @@
     detectorFinishReleaseIfReady: null, // set by the active detector's release(); called once
     // detectorSendPending clears, so a release requested mid-send can finish once it's safe.
     handSubscribers: [], // onHandResults() subscribers, called with (results) outside detector mode
+    // Live-loop options (pi-fixes 2026-10-21, setLoopOptions()). Defaults = the behaviour before:
+    // every animation frame is sent, full landmark model. talk.html sets detectEvery 2 and the lite
+    // model so the Pi's main thread is not busy with MediaPipe all the time.
+    loopOpts: { detectEvery: 1, modelComplexity: 1 },
+    frameCounter: 0, // video frames seen by the requestVideoFrameCallback loop (detectEvery > 1)
+    stats: { since: 0, videoFrames: 0, detections: 0, detectMs: 0, lastQualityFrames: null },
   };
 
   // letterboxRect(srcW, srcH, dstW, dstH) -> { x, y, w, h }: fits a srcW x srcH box centered
@@ -195,10 +201,7 @@
     if (state.hands && state.video === targetVideo) {
       return true;
     }
-    if (state.cameraLoop) {
-      cancelAnimationFrame(state.cameraLoop);
-      state.cameraLoop = null;
-    }
+    cancelScheduled();
     state.video = targetVideo;
 
     // Force non-SIMD WebAssembly on Raspberry Pi to prevent "memory access out of bounds" crashes.
@@ -246,7 +249,7 @@
     });
     state.hands.setOptions({
       maxNumHands: 2,
-      modelComplexity: 1,
+      modelComplexity: state.loopOpts.modelComplexity,
       minDetectionConfidence: 0.65,
       minTrackingConfidence: 0.65,
     });
@@ -382,18 +385,53 @@
   offscreenCanvas.height = 240;
   const offscreenCtx = offscreenCanvas.getContext("2d", { willReadFrequently: true });
 
+  // Scheduling (pi-fixes 2026-10-21). detectEvery 1: the next animation frame, as before. detectEvery
+  // N > 1 (and requestVideoFrameCallback available): the loop waits for real camera frames and sends
+  // only every Nth one, so the video keeps playing at the camera's rate while MediaPipe runs at 1/N
+  // of it. state.cameraLoop is { kind, id } while a callback is pending, else null.
+  function useVideoFrames() {
+    return state.loopOpts.detectEvery > 1 && state.video &&
+      typeof state.video.requestVideoFrameCallback === "function";
+  }
+  function scheduleNext() {
+    if (useVideoFrames()) {
+      const video = state.video;
+      state.cameraLoop = { kind: "rvfc", video, id: video.requestVideoFrameCallback(onVideoFrame) };
+    } else {
+      state.cameraLoop = { kind: "raf", id: requestAnimationFrame(runHandLoop) };
+    }
+  }
+  function cancelScheduled() {
+    const c = state.cameraLoop;
+    if (!c) return;
+    if (c.kind === "rvfc") {
+      try { c.video.cancelVideoFrameCallback(c.id); } catch (e) { /* video gone */ }
+    } else {
+      cancelAnimationFrame(c.id);
+    }
+    state.cameraLoop = null;
+  }
+  function onVideoFrame() {
+    state.cameraLoop = null;
+    state.stats.videoFrames++;
+    state.frameCounter++;
+    if (state.loopPaused) return;
+    if (state.frameCounter % state.loopOpts.detectEvery !== 0) { scheduleNext(); return; }
+    runHandLoop();
+  }
+
   async function runHandLoop() {
     if (!state.hands || !state.video) return;
     if (state.loopPaused) {
       state.cameraLoop = null;
       return;
     }
-    // Entered via rAF (or directly): the id left in cameraLoop is stale, so clear it. That keeps
-    // resumeHandLoop()'s "is a rAF pending?" test accurate; this iteration re-sets it before
+    // Entered via a callback (or directly): what is left in cameraLoop is stale, so clear it. That
+    // keeps resumeHandLoop()'s "is a callback pending?" test accurate; this iteration re-sets it before
     // returning to the event loop, except while awaiting a send (sendInFlight covers that).
     state.cameraLoop = null;
     if (state.processingVideo) {
-      state.cameraLoop = requestAnimationFrame(runHandLoop);
+      scheduleNext();
       return;
     }
     if (state.video.readyState >= 2) {
@@ -412,7 +450,10 @@
 
         // Send canvas (rather than raw video) to bypass Chromium mailbox crashes
         state.sendInFlight = true;
+        const t0 = performance.now();
         await state.hands.send({ image: offscreenCanvas });
+        state.stats.detections++;
+        state.stats.detectMs += performance.now() - t0;
       } catch (err) {
         console.warn("[gesture-data] MediaPipe frame skipped:", err);
       } finally {
@@ -425,7 +466,7 @@
       state.cameraLoop = null;
       return;
     }
-    state.cameraLoop = requestAnimationFrame(runHandLoop);
+    scheduleNext();
   }
 
   // Additive (signing-screen merge, docs/superpowers/specs/2026-09-21-signing-screen-merge-design.md):
@@ -435,10 +476,7 @@
   // classified after resume.
   function pauseHandLoop() {
     state.loopPaused = true;
-    if (state.cameraLoop) {
-      cancelAnimationFrame(state.cameraLoop);
-      state.cameraLoop = null;
-    }
+    cancelScheduled();
     state.latestLandmarks = null;
   }
 
@@ -451,15 +489,72 @@
     if (!state.cameraLoop && !state.sendInFlight) runHandLoop();
   }
 
+  // setLoopOptions({ detectEvery, modelComplexity }) (pi-fixes 2026-10-21): detectEvery N sends every
+  // Nth camera frame to MediaPipe (1 = every animation frame, the default); modelComplexity 0 = lite
+  // landmark model (needs js/lib/mediapipe/hand_landmark_lite.tflite), 1 = full (default). Safe before
+  // or after setupMediaPipe(); a running loop picks the new values up at its next frame.
+  function setLoopOptions(opts) {
+    opts = opts || {};
+    if (opts.detectEvery != null) state.loopOpts.detectEvery = Math.max(1, Math.round(Number(opts.detectEvery)) || 1);
+    if (opts.modelComplexity != null && Number(opts.modelComplexity) !== state.loopOpts.modelComplexity) {
+      state.loopOpts.modelComplexity = Number(opts.modelComplexity) === 0 ? 0 : 1;
+      if (state.hands) state.hands.setOptions({ modelComplexity: state.loopOpts.modelComplexity });
+    }
+    return Object.assign({}, state.loopOpts);
+  }
+
+  // getLoopStats() -> { videoFps, detectFps, detectMs, detectEvery, modelComplexity } since the last
+  // call (debug overlay / console, talk.html?devperf). videoFps counts the camera frames the <video>
+  // presented (requestVideoFrameCallback loop, else getVideoPlaybackQuality()).
+  function getLoopStats() {
+    const now = performance.now();
+    const st = state.stats;
+    const secs = st.since ? (now - st.since) / 1000 : 0;
+    let videoFrames = st.videoFrames;
+    if (!useVideoFrames() && state.video && typeof state.video.getVideoPlaybackQuality === "function") {
+      const total = state.video.getVideoPlaybackQuality().totalVideoFrames;
+      videoFrames = st.lastQualityFrames == null ? 0 : total - st.lastQualityFrames;
+      st.lastQualityFrames = total;
+    }
+    const out = {
+      videoFps: secs > 0 ? videoFrames / secs : 0,
+      detectFps: secs > 0 ? st.detections / secs : 0,
+      detectMs: st.detections ? st.detectMs / st.detections : 0,
+      detectEvery: state.loopOpts.detectEvery,
+      modelComplexity: state.loopOpts.modelComplexity,
+    };
+    st.since = now;
+    st.videoFrames = 0;
+    st.detections = 0;
+    st.detectMs = 0;
+    return out;
+  }
+
   // Creates the ONE Hands instance early (talk.html's loading queue) and forces its WASM +
   // model to load now via initialize(), with the frame loop left paused until the camera
   // is actually on. Reuses setupMediaPipe, so it goes through the same non-SIMD patch and
   // is idempotent for the same video element (setupMediaPipe returns early).
-  async function preloadMediaPipe(video) {
+  // opts.warmUp (pi-fixes 2026-10-21, talk.html): also run one blank frame through the graph, so the
+  // first-inference cost (measured ~0.9 s on the laptop) is paid in the loading queue, not while the
+  // camera overlay is up. Its (empty) result only clears latestLandmarks.
+  async function preloadMediaPipe(video, opts) {
     const ok = await setupMediaPipe(video);
     if (!ok || !state.hands) return false;
     pauseHandLoop();
     await state.hands.initialize();
+    if (opts && opts.warmUp) {
+      offscreenCtx.fillStyle = "#000";
+      offscreenCtx.fillRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+      try {
+        state.sendInFlight = true;
+        await state.hands.send({ image: offscreenCanvas });
+      } catch (e) {
+        console.warn("[gesture-data] MediaPipe warm-up frame failed:", e);
+      } finally {
+        state.sendInFlight = false;
+      }
+      state.latestLandmarks = null;
+    }
     return true;
   }
 
@@ -815,6 +910,8 @@
     preloadMediaPipe,
     pauseHandLoop,
     resumeHandLoop,
+    setLoopOptions,
+    getLoopStats,
     createVideoDetector,
     onHandResults,
     letterboxRect,

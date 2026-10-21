@@ -36,6 +36,12 @@
   function modelReady() {
     return !!(window.TalkLoader && window.TalkLoader.voskModel);
   }
+  // pi-fixes 2026-10-21: the Vosk model loads lazily (js/talk-loader.js startSpeech), so "not ready"
+  // is usually "still loading", not "failed".
+  function modelLoading() {
+    var L = window.TalkLoader;
+    return !!(L && !L.voskModel && (!L.speechStarted || !L.speechStarted() || !L.isSettled('speech')));
+  }
 
   function setLabel(text) { if (micLabel) micLabel.textContent = text; }
 
@@ -47,6 +53,7 @@
     micBtn.classList.toggle('listening', capturing);
     micBtn.setAttribute('aria-pressed', capturing ? 'true' : 'false');
     if (fil) setLabel('Voice input disabled in Filipino');       // archive/script.js:479
+    else if (unavailable && modelLoading()) setLabel('Inihahanda ang mikropono… / Getting the mic ready…');
     else if (unavailable) setLabel('Microphone not available');
     else setLabel(capturing ? 'Tap to Stop' : 'Tap to Speak');    // archive/script.js:584-586
     // The visible label is the button's accessible name too: keep the two in step.

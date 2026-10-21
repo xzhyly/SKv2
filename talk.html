@@ -777,11 +777,20 @@
   /* rgba(22,25,42,…) is README's #16192a camera backdrop, translucent. */
   .signing-cam-overlay{
     position:absolute;inset:0;z-index:5;
-    display:none;align-items:center;justify-content:center;
+    display:none;flex-direction:column;gap:14px;align-items:center;justify-content:center;
     background:rgba(22,25,42,0.92);
     color:var(--surface);font-size:18px;font-weight:700;
+    text-align:center;white-space:pre-line;line-height:1.4;
   }
   .signing-cam-overlay.show{display:flex}
+  /* Spinner while the camera / MediaPipe get ready (pi-fixes 2026-10-21). */
+  .cam-spinner{
+    width:44px;height:44px;border-radius:50%;
+    border:5px solid rgba(255,255,255,0.25);border-top-color:var(--surface);
+    animation:cam-spin 0.9s linear infinite;
+  }
+  @keyframes cam-spin{to{transform:rotate(360deg)}}
+  .turn-switch-btn:disabled,.signing-edit-btn:disabled{opacity:0.5;cursor:not-allowed}
   .stop-signing-btn:disabled{opacity:0.5;cursor:not-allowed}
 
   /* Speak screen waiting state (data-wait="1" until the whole queue has settled). */
@@ -1199,7 +1208,8 @@
           <video id="signing-video" class="camera-video" autoplay playsinline muted></video>
           <canvas id="tlCanvas1" style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; transform:scaleX(-1);"></canvas>
           <div class="signing-caption-pill"><span id="signing-caption">Show your sign</span></div>
-          <div class="signing-cam-overlay" id="signing-cam-overlay"><span id="signing-cam-overlay-text">Starting camera…</span></div>
+          <div class="signing-cam-overlay" id="signing-cam-overlay"><div class="cam-spinner" aria-hidden="true"></div><span id="signing-cam-overlay-text" role="status">Inihahanda ang camera…
+Please stand by</span></div>
         </div>
       </div>
       <!-- Right column (docs/design/talk-camera-wireframe.html): the sentence being built
@@ -1461,6 +1471,7 @@
       }
 
       document.body.dataset.screen = name;
+      if (typeof maybeStartSpeech === 'function') maybeStartSpeech();
     }
 
     // Back button (header, top-left): visible on who-first/signing/speaking
@@ -1712,7 +1723,8 @@
     // ── Signing-screen merge: loading gate ──
     // Guide shows on the FIRST entry to Sign this conversation (until "Start Translating" is
     // tapped once); after that Sign goes straight to the live camera. The proceed control is
-    // blocked until the FULL queue (both stacks) has settled.
+    // blocked until the SIGN stack has settled (pi-fixes 2026-10-21: before, the full queue, Vosk
+    // included; Vosk now loads in the background, see maybeStartSpeech()).
     var signingGuideSeen = false;
     var micWarned = false;
 
@@ -1723,7 +1735,7 @@
       return TalkLoader.getItems().some(function (i) { return i.stack === stack && i.status === 'failed'; });
     }
     function maybeWarnMic(entering) {
-      if (micWarned || !TalkLoader.isSettled() || !stackFailed('speech')) return;
+      if (micWarned || !TalkLoader.speechStarted() || !TalkLoader.isSettled('speech') || !stackFailed('speech')) return;
       if (!entering && document.body.dataset.screen !== 'speaking') return;
       // Never overwrite an already-open card (idle / confirm / error). micWarned stays false,
       // so the warning is deferred, not lost: onEnterSpeaking() retries on the next entry.
@@ -1735,8 +1747,16 @@
         buttonLabel: 'Type instead'
       });
     }
+    // The speech stack (Vosk) loads in the background once the sign stack is ready and the camera is
+    // not starting (it would compete with the camera start on the Pi), or at once when Speak or Type
+    // opens (onEnterSpeaking). Loaded once per page load.
+    function maybeStartSpeech() {
+      if (TalkLoader.speechStarted() || !TalkLoader.isSettled('sign')) return;
+      if (window.TalkSigning && TalkSigning.isLoading()) return;
+      TalkLoader.startSpeech();
+    }
     function refreshGates() {
-      var p = TalkLoader.getProgress();
+      var p = TalkLoader.getProgress('sign');
       var text = document.getElementById('guide-loading-text');
       var btn = document.getElementById('guide-start-btn');
       if (!p.settled) {
@@ -1749,14 +1769,17 @@
         text.textContent = 'Ready';
         btn.disabled = false;
       }
-      document.getElementById('screen-speaking').setAttribute('data-wait', p.settled ? '0' : '1');
+      // Speak or Type no longer waits for anything: typing works at once, and the mic button says
+      // "Inihahanda…" until the Vosk model is there (js/talk-speaking.js).
+      document.getElementById('screen-speaking').setAttribute('data-wait', '0');
       maybeWarnMic(false);
+      maybeStartSpeech();
     }
     TalkLoader.onChange(refreshGates);
     refreshGates();
 
     document.getElementById('guide-start-btn').addEventListener('click', function () {
-      if (!TalkLoader.isSettled() || stackFailed('sign')) return;
+      if (!TalkLoader.isSettled('sign') || stackFailed('sign')) return;
       signingGuideSeen = true;
       setSigningSubstate('live');
       TalkSigning.enter();
@@ -1778,6 +1801,7 @@
     // Speak or Type gets no guide (spec: intentional asymmetry) — only the data-wait
     // "Getting ready…" state kept in sync by refreshGates() above.
     function onEnterSpeaking() {
+      TalkLoader.startSpeech();                // no-op once started
       resetSpeakingUi();
       TalkSpeaking.enter();
       SignPlayer.registerCustomGestures();     // idempotent; one DB fetch per page load
@@ -2007,6 +2031,7 @@
           }
         });
       },
+      onLive: function () { maybeStartSpeech(); },
       onModelError: function () {
         openModal('error', {
           heading: 'Sign set not available',
