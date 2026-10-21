@@ -8,7 +8,9 @@
 # saves it to ~/avatar-bench-<date>.json. The bench plays the avatar at the kiosk panel size
 # (560x260): first capped at 30 fps (what Let's Talk does), then uncapped. It uses the signs that
 # have avatar clips, or a built-in synthetic movement when none exist yet.
-# Afterwards, restart the kiosk with the SKR_Kiosk desktop entry (or start_kiosk.sh).
+# Afterwards it starts the kiosk again (~/.local/bin/sk-kiosk.sh from tools/pi/pi-setup.sh), also when
+# run over SSH (pi-fixes 2026-10-21: it sets DISPLAY / WAYLAND_DISPLAY / XDG_RUNTIME_DIR itself and
+# removes the lock file left by the Chromium it closed).
 # Pi timing was NOT measured when this script was written; this script is how to measure it.
 
 SECONDS_EACH="${1:-15}"
@@ -36,6 +38,18 @@ sleep 1
 kill "$PID" 2>/dev/null
 pkill -9 chromium
 rm -rf "$PROFILE"
+
+# Relaunch the kiosk, whatever happens below (result or not).
+relaunch_kiosk() {
+  if [ -f "$HOME/.local/bin/sk-kiosk.sh" ]; then
+    rm -f /tmp/sk-kiosk.lock
+    nohup env DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/$(id -u) bash ~/.local/bin/sk-kiosk.sh >/dev/null 2>&1 &
+    echo "Kiosk relaunched (~/.local/bin/sk-kiosk.sh)."
+  else
+    echo "No ~/.local/bin/sk-kiosk.sh (run tools/pi/pi-setup.sh): start the kiosk yourself."
+  fi
+}
+trap relaunch_kiosk EXIT
 
 LINE="$(grep -o 'AVATAR_BENCH[_A-Z]* .*' "$LOG" | head -1)"
 if [ -z "$LINE" ]; then
