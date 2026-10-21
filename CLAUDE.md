@@ -145,9 +145,12 @@ Pi) unless the git-ignored `config/device.txt` says `pi` or `laptop`. See
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing
 screen is real**: live camera + MediaPipe + the k-NN, output added to the
 conversation on Send (through a confirm card until 2026-10-19). A background loading queue (`js/talk-loader.js`) loads the sign
-stack and then the Vosk speech model once per page load and gates the Guide /
-"Getting ready…" screens on the whole queue; `talk.html?devqueue` shows a
-diagnostic overlay for it (off otherwise). Leaving the signing screen stops the
+stack once per page load and gates the Guide on it; since pi-fixes (2026-10-21,
+`docs/reports/2026-10-21-pi-fixes-final.md`) the Vosk model is a separate queue started in the
+background (sign stack ready, camera not starting) or when Speak or Type opens, the camera shows an
+"Inihahanda ang camera…" overlay until its first frame and first MediaPipe result, and MediaPipe gets
+every 2nd camera frame (`?detectEvery=N`, `?devperf` fps overlay); `talk.html?devqueue` shows a
+diagnostic overlay for the queue (off otherwise). Leaving the signing screen stops the
 camera tracks (hardware released) but keeps the loaded model and the single
 MediaPipe instance. The **speak side is real too** (2026-09-21): Speak or Type has
 a real Vosk microphone (`js/talk-speaking.js`, English-only model; Filipino disables
@@ -155,7 +158,8 @@ the mic) filling the text field, an explicit **Translate** button, and an in-pla
 word-by-word sign preview (`js/sign-player.js`) before Send; the preview is never
 stored in the thread. **Since the talk-turns-audio phase (2026-10-19,
 `docs/reports/2026-10-19-talk-turns-audio.md`):** the preview is avatar only (the
-avatar fills the area under the top bar; Replay / Edit / Send), the confirm card is
+avatar fills the area under the top bar; since pi-fixes Translate = Send, then the avatar signs, then
+Replay / Done; Stop on the mic flushes Vosk's final result), the confirm card is
 gone (both Sends add the message directly and return to "Whose turn is it?"), the
 Sign screen's main button is "Send 🔊" (recording starts by itself) and speaks the
 message (each sign's recorded audio `saved_gestures/<key>/audio_en|audio_fil.<ext>`,

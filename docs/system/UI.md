@@ -1827,6 +1827,27 @@ No `talk.html` markup, CSS or behaviour changed, and `js/talk-signing.js` is unc
   `tests/compact-model/store-check.mjs` for the store and by a unit test with a rejecting store,
   `tests/sign-texts/talk-texts.test.mjs`), and anything on the Pi (`docs/system/DEBT.md` items 129, 138).
 
+### 3h. Pi fixes: load order, camera overlay, Vosk flush, Translate = Send (pi-fixes, 2026-10-21)
+
+Report `docs/reports/2026-10-21-pi-fixes-final.md`. Changes 3a/3g as follows:
+- `js/talk-loader.js`: two queues. Sign stack (libraries -> MediaPipe with one warm-up frame -> k-NN
+  model) at page load; the Guide's Start waits for it only. Speech stack (Vosk) via `startSpeech()`:
+  talk.html's `maybeStartSpeech()` (sign stack settled and the camera not starting) or Speak or Type's
+  entry. `console.time('[load] …')` per item. Speak or Type no longer has a "Getting ready…" state
+  (`data-wait` stays 0): typing works at once; the mic label says "Inihahanda ang mikropono…" until
+  the model is there.
+- `js/talk-signing.js` `enter()`: overlay (spinner, "Inihahanda ang camera… / Please stand by"),
+  Send / Undo / Clear / Speak or Type disabled until the first video frame (requestVideoFrameCallback)
+  and the first MediaPipe result after resume (10 s fallback); then the countdown and `onLive`.
+- `js/gesture-data.js` `setLoopOptions({ detectEvery, modelComplexity })` / `getLoopStats()`: talk.html
+  sends every 2nd camera frame (`?detectEvery=N`) and asks for the lite model, used only if
+  `js/lib/mediapipe/hand_landmark_lite.tflite` exists (not vendored: full model + console warning).
+  Other pages keep the old defaults (every animation frame, full model). `?devperf`: fps overlay.
+- `js/talk-speaking.js`: 16 kHz capture, silence gate, Stop = flush (Processing… only if speech was
+  heard; final text / "Walang narinig, subukan ulit" / 4 s timeout).
+- talk.html Speak or Type: Translate adds the message and starts the avatar (no Edit / Send any more);
+  no buttons while it signs; then Replay / Done (Done = "Whose turn is it?").
+
 ### 3g. Turns, sign audio, avatar-only playback (talk-turns-audio phase, 2026-10-19)
 
 Spec `docs/superpowers/specs/2026-10-19-talk-turns-audio-design.md`; wireframes `docs/design/talk-flow-wireframe.html`,
