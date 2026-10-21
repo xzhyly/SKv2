@@ -145,8 +145,8 @@ try {
   await p.click('#card-speak');
   await p.waitForFunction(() => document.body.dataset.screen === 'speaking' && !document.body.classList.contains('modal-open'), null, { timeout: 60000 });
   await p.fill('#speaking-input', 'Hello');
-  await p.click('#speaking-translate');
-  await p.click('#speaking-send');      // adds the message directly (talk-turns-audio: no confirm card)
+  await p.click('#speaking-translate'); // adds the message directly (pi-fixes: Translate = Send)
+  await p.click('#speaking-done', { timeout: 60000 });   // shown once the avatar has finished
   await p.waitForFunction(() => document.body.dataset.screen === 'thread');
   await p.click('#turn-sign-btn');
   await live();

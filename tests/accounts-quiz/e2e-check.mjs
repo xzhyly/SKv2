@@ -111,8 +111,9 @@ async function apiStatus(page, url, body) {
 }
 const ADMIN_PAGES = ['gesture-training.html', 'reports.html', 'bulk-import.html', 'avatar-clips.html', 'diagnostic.html', 'users.html'];
 
-// Sends one typed message through Let's Talk's real Speak-or-Type -> Translate -> Send (the message is
-// added directly since the talk-turns-audio phase; there is no Add to Conversation card any more).
+// Sends one typed message through Let's Talk's real Speak-or-Type -> Translate (pi-fixes 2026-10-21:
+// Translate = Send, the message is added at once and the avatar signs it; Done, shown once the avatar
+// has finished, returns to "Whose turn is it?").
 async function talkSay(page, text) {
   const screen = await page.evaluate(() => document.body.dataset.screen);
   if (screen === 'who-first') await page.click('#card-speak');
@@ -120,7 +121,7 @@ async function talkSay(page, text) {
   await page.waitForFunction(() => document.body.dataset.screen === 'speaking' && !document.body.classList.contains('modal-open'), null, { timeout: 60000 });
   await page.fill('#speaking-input', text);
   await page.click('#speaking-translate');
-  await page.click('#speaking-send');
+  await page.click('#speaking-done', { timeout: 60000 });    // waits until the avatar has finished
   await page.waitForFunction(() => document.body.dataset.screen === 'thread');
   await sleep(600);    // the save is fire-and-forget
 }

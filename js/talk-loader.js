@@ -25,21 +25,15 @@
 
   // Live hand detection on this page (js/gesture-data.js setLoopOptions). DETECT_EVERY: send every Nth
   // camera frame to MediaPipe (?detectEvery=N overrides; 1 = every frame, the old behaviour).
-  // MODEL_COMPLEXITY 0 = the lite landmark model (?complexity=1 forces full). It is used only if its
-  // file is there (js/lib/mediapipe/hand_landmark_lite.tflite, not vendored yet), else 1 with a warning.
+  // MODEL_COMPLEXITY: 0 = the lite landmark model, 1 = full. MediaPipe loads the lite one from
+  // js/lib/mediapipe/hand_landmark_lite.tflite, which is NOT vendored yet: copy it there (same
+  // MediaPipe Hands package as the other files), then set LITE_MODEL_VENDORED to true. ?complexity=0
+  // or =1 overrides for a test. (No existence check: a 404 would be a console error on every load.)
+  var LITE_MODEL_VENDORED = false;
   var params = new URLSearchParams(location.search);
   var DETECT_EVERY = Math.max(1, parseInt(params.get('detectEvery'), 10) || 2);
-  var MODEL_COMPLEXITY = params.get('complexity') === '1' ? 1 : 0;
-  var LITE_MODEL_URL = 'js/lib/mediapipe/hand_landmark_lite.tflite';
-
-  function pickModelComplexity() {
-    if (MODEL_COMPLEXITY !== 0) return Promise.resolve(1);
-    return fetch(LITE_MODEL_URL, { method: 'HEAD', cache: 'no-store' }).then(function (r) {
-      if (r.ok) return 0;
-      console.warn('[TalkLoader] ' + LITE_MODEL_URL + ' not found: using the full hand model (modelComplexity 1)');
-      return 1;
-    }, function () { return 1; });
-  }
+  var MODEL_COMPLEXITY = params.has('complexity') ? (params.get('complexity') === '0' ? 0 : 1)
+    : (LITE_MODEL_VENDORED ? 0 : 1);
 
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
@@ -65,11 +59,9 @@
       run: function () {
         var video = document.getElementById('signing-video');
         if (!video) return Promise.reject(new Error('#signing-video not found'));
-        return pickModelComplexity().then(function (complexity) {
-          var opts = window.GestureDataRecorder.setLoopOptions({ detectEvery: DETECT_EVERY, modelComplexity: complexity });
-          console.log('[TalkLoader] hand detection: every ' + opts.detectEvery + ' camera frame(s), modelComplexity ' + opts.modelComplexity);
-          return window.GestureDataRecorder.preloadMediaPipe(video, { warmUp: true });
-        }).then(function (ok) {
+        var opts = window.GestureDataRecorder.setLoopOptions({ detectEvery: DETECT_EVERY, modelComplexity: MODEL_COMPLEXITY });
+        console.log('[TalkLoader] hand detection: every ' + opts.detectEvery + ' camera frame(s), modelComplexity ' + opts.modelComplexity);
+        return window.GestureDataRecorder.preloadMediaPipe(video, { warmUp: true }).then(function (ok) {
           if (!ok) throw new Error('MediaPipe Hands did not initialise');
         });
       } },

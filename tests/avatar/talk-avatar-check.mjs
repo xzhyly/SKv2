@@ -152,7 +152,9 @@ try {
   check('hand loop resumes after playback', hl.afterPlay > 3, J(hl));
 
   // 1. Speak or Type: the 3-sign sentence
-  await ev(`showScreen('speaking'); 1`);
+  // pi-fixes 2026-10-21: Translate = Send (adds and saves a message); this check only looks at the avatar,
+  // so the save is stubbed out: nothing is written to conversations / messages.
+  await ev(`TalkHistory.saveMessage = function () {}; showScreen('speaking'); 1`);
   await sleep(1500);
   await ev(`window.__vids = []; window.__words = []; window.__hidden = [];
     (() => { const c = document.getElementById('speaking-sign-frame'); new MutationObserver(() => { c.querySelectorAll('video').forEach((v) => { const s = v.getAttribute('src'); if (s && !window.__vids.some((x) => x.src === s)) window.__vids.push({ src: s, t: performance.now() }); }); }).observe(c, { childList: true, subtree: true, attributes: true });
@@ -163,6 +165,12 @@ try {
       const i = document.getElementById('speaking-input'); i.value = ${J(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); })(); 1`);
     await sleep(200);
     await ev(`document.getElementById('speaking-translate').click(); 1`);
+  };
+  // pi-fixes 2026-10-21: no Edit any more (Translate = Send). Between sentences: wait for the avatar to
+  // finish, Done (back to "Whose turn is it?"), then Speak or Type again.
+  const nextSentence = async () => {
+    await waitFor(`document.getElementById('screen-speaking').dataset.playing === '0'`, 30000);
+    await ev(`document.getElementById('speaking-done').click(); showScreen('speaking'); 1`);
   };
   await translate('zz ava one zz ava two zz ava three');
   await sleep(1800);
@@ -196,7 +204,7 @@ try {
   check('panel: avatar fills the 1000x486 area under the top bar, no page scroll', J(lay.frame) === J(lay.avatar) && lay.frame[2] === 1000 && lay.frame[3] === 486 && lay.sw === 1024, J(lay));
 
   // 2. mixed sentence: avatar run, then fingerspelling (talk-turns-audio: no video)
-  await ev(`document.getElementById('speaking-edit').click(); 1`);
+  await nextSentence();
   await sleep(300);
   await translate('zz ava one nice');
   const done2 = await waitFor(`window.__words.some((x) => x.w === 'NICE') && !document.querySelector('#speaking-caption .on')`, 20000);
@@ -204,18 +212,23 @@ try {
   await shot('avatar-talk-mixed-after.png');
   const r2 = await ev(`(() => { const run = window.__avatarRuns[window.__avatarRuns.length-1]; return { runs: window.__avatarRuns.length - window.__runsAtStart, keys: run.keys, vids: window.__vids.map((v) => v.src), words: window.__words.map((x) => x.w) }; })()`);
   report.mixed = r2;
-  check('mixed sentence: avatar run, then "nice" fingerspelled, no video', done2 && r2.runs === 1 && J(r2.keys) === J(['zz_ava_one']) && r2.vids.length === 0, J(r2));
+  // The letters may have avatar clips in the local data by now (saved_gestures/n|i|c|e/avatar.json):
+  // then they join the same run; without clips the run is zz_ava_one alone. Either way no video.
+  const letterKeys = r2.keys.slice(1);
+  check('mixed sentence: avatar run, then "nice" fingerspelled, no video', done2 && r2.runs === 1 && r2.keys[0] === 'zz_ava_one' &&
+    (letterKeys.length === 0 || J(letterKeys) === J(['n', 'i', 'c', 'e'])) && r2.vids.length === 0, J(r2));
   check('mixed sentence: captions zz ava one then NICE', J(r2.words) === J(['zz ava one', 'NICE']), J(r2.words));
 
   // 3. missing clip at play time -> the word in the caption only (no video)
   fs.rmSync(path.join(dir('zz_ava_four'), 'avatar.json'));
-  await ev(`document.getElementById('speaking-edit').click(); 1`);
+  await nextSentence();
   await sleep(300);
   await translate('zz ava four');
   const done3 = await waitFor(`window.__words.some((x) => x.w === 'zz ava four')`, 15000);
   const r3 = await ev(`({ runs: (window.__avatarRuns||[]).length - window.__runsAtStart, vids: window.__vids.map((v) => v.src) })`);
   check('a clip that fails to load shows its word in the caption only, no video', done3 && r3.runs === 0 && r3.vids.length === 0, J(r3));
-  await ev(`document.getElementById('speaking-edit').click(); 1`);
+  await waitFor(`document.getElementById('screen-speaking').dataset.playing === '0'`, 30000);
+  await ev(`document.getElementById('speaking-done').click(); 1`);
 
   // 5. errors, Holistic, frame rate
   const errors = c2.getConsoleErrors(), exc = c2.getExceptions();

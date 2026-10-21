@@ -4,8 +4,9 @@
 //      the area under the top bar, the conversation strip is hidden, the caption highlights the
 //      current letter; no .webm / .mp4 / fallback.png is requested.
 //   B  "Hello Jose 25 3": hello is a sign, Jose spelled J-O-S-E, 25 spelled 2-5, 3 one number sign,
-//      all one continuous avatar run; Replay plays it again; Edit returns to the text; Send adds the
-//      message directly (no popup) and returns to "Whose turn is it?".
+//      all one continuous avatar run; Replay plays it again. pi-fixes 2026-10-21: Translate = Send —
+//      the message is in the conversation as soon as Translate is tapped, no button shows while the
+//      avatar signs, then Replay / Done; Done returns to "Whose turn is it?" (no popup). No Edit.
 //   C  Sign screen: Send 🔊 (no Translate / Stop & Add). Leaving a turn discards what was not sent
 //      (owner change 2026-10-19), both directions: "🗣 Speak or Type" empties the signed sentence and
 //      the recognizer buffer (Sign starts empty again); "🤟 Sign instead" empties the typed text,
@@ -158,6 +159,14 @@ try {
   await p.dispatchEvent('#speaking-input', 'input');
   const reqFrom = allReqs.length;
   await p.click('#speaking-translate');
+  const atTranslate = await p.evaluate(() => {
+    const r = [...document.querySelectorAll('#thread-list .bubble-row.hearing')].pop();
+    return { text: r ? r.querySelector('.bubble-text').textContent : null, field: document.getElementById('speaking-input').value,
+      playing: document.getElementById('screen-speaking').dataset.playing,
+      actions: getComputedStyle(document.querySelector('.speaking-preview-actions')).visibility };
+  });
+  check('Translate = Send: "hi" is in the conversation at once, field emptied', atTranslate.text === 'hi' && atTranslate.field === '', J(atTranslate));
+  check('while the avatar signs: no buttons (Replay / Done hidden)', atTranslate.playing === '1' && atTranslate.actions === 'hidden', J(atTranslate));
   await p.waitForFunction(() => document.querySelectorAll('#speaking-caption .ltr').length === 2, null, { timeout: 15000 });
   await p.waitForFunction(() => document.querySelector('#speaking-caption .ltr.on'), null, { timeout: 15000 });
   const capA = await p.evaluate(() => ({ text: document.getElementById('speaking-caption').textContent, sub: document.querySelector('#speaking-caption .cap-sub').textContent, on: document.querySelector('#speaking-caption .ltr.on')?.textContent }));
@@ -172,12 +181,18 @@ try {
   check('"hi": one avatar run h, i', J(await p.evaluate(() => window.__runs)) === J([['h', 'i']]), J(await p.evaluate(() => window.__runs)));
   check('"hi": no .webm / .mp4 / fallback.png requested', media.length === 0, J(media));
   console.log('      network log while "hi" played: ' + J(allReqs.slice(reqFrom).map((u) => u.replace(BASE, ''))));
-  check('Replay / Edit / Send in the caption bar', J(await p.$$eval('.speaking-preview-actions button', (b) => b.map((x) => x.textContent.trim()))) === J(['↻ Replay', 'Edit', 'Send']));
+  await p.waitForFunction(() => document.getElementById('screen-speaking').dataset.playing === '0', null, { timeout: 30000 });
+  check('after signing: Replay / Done in the caption bar (no Edit / Send)',
+    J(await p.$$eval('.speaking-preview-actions button', (b) => b.map((x) => x.textContent.trim()))) === J(['↻ Replay', 'Done']) &&
+    (await p.evaluate(() => getComputedStyle(document.querySelector('.speaking-preview-actions')).visibility)) === 'visible');
   await noScroll('avatar preview');
 
   // ── B. sign + spelled name + digits + one number sign ──
-  await p.click('#speaking-edit');
-  check('Edit returns to the text field with the text kept', await p.evaluate(() => document.getElementById('screen-speaking').dataset.speaking === 'compose' && document.getElementById('speaking-input').value === 'hi'));
+  await p.click('#speaking-done');
+  await sleep(300);
+  check('Done: back to "Whose turn is it?"', (await screen()) === 'thread');
+  await p.click('#turn-speak-btn');
+  await sleep(300);
   await p.fill('#speaking-input', 'Hello Jose 25 3');
   await p.dispatchEvent('#speaking-input', 'input');
   await p.click('#speaking-translate');
@@ -192,10 +207,11 @@ try {
   await p.waitForFunction(() => window.__runs.length >= 3, null, { timeout: 15000 });
   check('Replay plays the sentence again', J(await p.evaluate(() => window.__runs[2])) === J(runB));
   await p.waitForFunction(() => !document.querySelector('#speaking-caption .on'), null, { timeout: 90000 });
-  await p.click('#speaking-send');
+  await p.click('#speaking-done', { timeout: 30000 });
   await sleep(300);
-  check('Send: no popup, back to "Whose turn is it?"', (await screen()) === 'thread' && !(await p.evaluate(() => document.body.classList.contains('modal-open'))));
-  check('Send: the message is in the conversation (Typed, right side)', await p.evaluate(() => { const r = [...document.querySelectorAll('#thread-list .bubble-row.hearing')].pop(); return r && r.querySelector('.bubble-text').textContent === 'Hello Jose 25 3' && /^Typed · /.test(r.querySelector('.bubble-label').textContent); }));
+  check('Done: no popup, back to "Whose turn is it?"', (await screen()) === 'thread' && !(await p.evaluate(() => document.body.classList.contains('modal-open'))));
+  check('the message is in the conversation once (Typed, right side)',
+    (await p.$$eval('#thread-list .bubble-row.hearing .bubble-text', (b) => b.filter((x) => x.textContent === 'Hello Jose 25 3').length)) === 1 && await p.evaluate(() => { const r = [...document.querySelectorAll('#thread-list .bubble-row.hearing')].pop(); return r && r.querySelector('.bubble-text').textContent === 'Hello Jose 25 3' && /^Typed · /.test(r.querySelector('.bubble-label').textContent); }));
   check('"✓ Sent" toast', (await p.textContent('#talkToast')).includes('Sent') && (await rect('#talkToast')).visible);
   await shot('5-sent');
   await noScroll('Whose turn is it?');
@@ -314,7 +330,8 @@ try {
   check('switching to FIL inside the turn keeps the sentence, in Filipino', J(fil.keys) === J(['good_morning']) && fil.words[0] !== 'Good Morning', J(fil));
   await p.click('#chip-esl');
   await p.waitForFunction(() => !document.getElementById('signing-cam-overlay').classList.contains('show'), null, { timeout: 60000 });
-  // Speak or Type -> Translate -> Back: the unsent preview and text are dropped.
+  // Speak or Type -> Translate -> Back (pi-fixes: Translate = Send): the message stays in the
+  // conversation, the preview is dropped and Speak or Type opens empty again.
   await p.click('#backBtn');
   await sleep(200);
   await p.click('#turn-speak-btn');
@@ -327,8 +344,9 @@ try {
   await sleep(300);
   await p.click('#turn-speak-btn');
   await sleep(300);
-  const prev = await p.evaluate(() => ({ state: document.getElementById('screen-speaking').dataset.speaking, field: document.getElementById('speaking-input').value, caption: document.getElementById('speaking-caption').textContent }));
-  check('Back from an unsent avatar preview drops it and the text', prev.state === 'compose' && prev.field === '' && prev.caption === '', J(prev));
+  const prev = await p.evaluate(() => ({ state: document.getElementById('screen-speaking').dataset.speaking, field: document.getElementById('speaking-input').value, caption: document.getElementById('speaking-caption').textContent,
+    sent: [...document.querySelectorAll('#thread-list .bubble-row.hearing .bubble-text')].pop()?.textContent }));
+  check('Back while the avatar signs: the message stays sent, the preview is dropped', prev.sent === 'hello' && prev.state === 'compose' && prev.field === '' && prev.caption === '', J(prev));
   check('0 console errors in Let\'s Talk', errors.length === 0, J(errors));
 
   // ── E. Learn Signs and Quiz: no video requests ──

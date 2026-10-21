@@ -361,6 +361,9 @@ async function main() {
     const s = await pageHelpers(chrome3);
     await chrome3.navigate(BASE + 'talk.html');
     await s.waitFor(`!!(window.TalkLoader && TalkLoader.isSettled())`, 120000, 200);
+    // pi-fixes 2026-10-21: Translate = Send (it adds and saves a message). This check only looks at the
+    // avatar, so the save is stubbed out: nothing is written to conversations / messages.
+    await s.ev(`TalkHistory.saveMessage = function () {}; true`);
     await s.ev(`document.getElementById('card-speak').click(); true`);
     await sleep(1500);
     await s.ev(`window.__vids = []; (() => { const c = document.getElementById('speaking-sign-frame'); const mo = new MutationObserver(() => { c.querySelectorAll('video').forEach((v) => { const src = v.getAttribute('src') || v.currentSrc; if (src && !window.__vids.includes(src)) window.__vids.push(src); }); }); mo.observe(c, { childList: true, subtree: true, attributes: true }); })(); true`);
@@ -378,7 +381,9 @@ async function main() {
       const attempts = [...new Set(chrome3.getNetworkRequests().slice(net0).map((q) => q.url.replace(BASE, '')).filter((u) => /^assets\/signs\//.test(u)))];
       const attemptStatus = {};
       for (const u of attempts) { const r = await fetch(BASE + u, { method: 'HEAD' }).catch(() => null); attemptStatus[u] = r ? r.status : -1; }
-      await s.ev(`document.getElementById('speaking-edit').click(); true`);
+      // No Edit any more: Done (shown once the avatar has finished), then Speak or Type again.
+      await s.waitFor(`document.getElementById('screen-speaking').dataset.playing === '0'`, 30000, 100);
+      await s.ev(`document.getElementById('speaking-done').click(); document.getElementById('turn-speak-btn').click(); true`);
       await sleep(300);
       return { lang, text, words, vids, statuses, attemptStatus };
     };
