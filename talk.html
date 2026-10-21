@@ -746,6 +746,15 @@
   /* ON but the glove is ignored (not worn, stale, unsure hand): amber outline and dot, "Camera only". */
   .glove-chip.idle{border-color:var(--orange);background:rgba(0,0,0,0.55);color:#fdba74}
   .glove-chip.idle .glove-chip-dot{display:block;background:var(--orange)}
+  /* First-ON hint (once per conversation, 3 s, tap hides it): inside the camera, under the chips, not a modal. */
+  .glove-hint{
+    position:absolute;left:12px;right:12px;top:64px;z-index:3;
+    padding:10px 14px;border-radius:10px;
+    background:rgba(26,37,64,0.92);color:var(--surface);
+    font-size:15px;font-weight:600;line-height:1.4;cursor:pointer;
+  }
+  .glove-hint[hidden]{display:none}
+  .glove-hint b{color:#fdba74}
   .mode-chip{
     width:200px;height:60px;
     border:1px solid var(--border);border-radius:12px;
@@ -1235,6 +1244,7 @@
           <!-- 🧤 Gloves chip (glove-chip phase, docs/design/glove-chip-wireframe.html): top-right, the mirror of the
                caption chip; filled in and shown by js/glove-assist.js only while a set-up glove is connected. -->
           <button type="button" class="glove-chip" id="glove-chip" aria-pressed="false" hidden></button>
+          <div class="glove-hint" id="glove-hint" role="status" hidden></div>
           <div class="signing-cam-overlay" id="signing-cam-overlay"><div class="cam-spinner" aria-hidden="true"></div><span id="signing-cam-overlay-text" role="status">Inihahanda ang camera…
 Please stand by</span></div>
         </div>
@@ -2039,7 +2049,10 @@ Please stand by</span></div>
     // is spoken in the signing language (EN/FIL).
     // Optional gloves (glove-hw Phase 2; glove-chip phase): the 🧤 chip on the camera, and the glove that this
     // kiosk already allowed is opened with no prompt (the Pi's Chromium policy allows it; nothing shows without one).
-    GloveAssist.initChip(document.getElementById('glove-chip'));
+    GloveAssist.initChip(document.getElementById('glove-chip'), {
+      hint: document.getElementById('glove-hint'),
+      lang: function () { return document.getElementById('chip-esl').classList.contains('active') ? 'en' : 'fil'; }
+    });
     SKGlove.autoReconnect();
 
     TalkSigning.init({

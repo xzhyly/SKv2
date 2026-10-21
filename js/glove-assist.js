@@ -136,9 +136,10 @@
   function setOn(v) {
     on = !!v && available();
     moves = [];
+    if (!on && hintEl) hideHint();
     render();
   }
-  function reset() { setOn(false); }
+  function reset() { setOn(false); hintArmed = true; }   // a new conversation: the first-ON hint shows again
   // Let's Talk: every Sign turn starts with the gloves OFF.
   function startTurn() { setOn(false); }
 
@@ -187,12 +188,41 @@
     chipTxt.textContent = s === 'idle' ? 'Camera only' : s === 'on' ? '🧤 ON' : '🧤 Gloves';
   }
 
+  // First-ON hint: a banner under the chips, on the first ON of a conversation only (reset() re-arms it, a page
+  // load starts armed); hides after HINT_MS or on a tap, and when the gloves go OFF.
+  var HINT_MS = 3000;
+  var HINT = {
+    fil: 'Suotin ang dalawang gloves — <b>kaliwa</b> at <b>kanan</b>. Itaas ang mga kamay at mag-sign gaya ng dati.',
+    en: 'Wear both gloves — <b>left</b> and <b>right</b>. Raise your hands and sign as usual.'
+  };
+  var hintEl = null, hintLang = null, hintArmed = true, hintTimer = null;
+  function showHint() {
+    if (!hintEl) return;
+    hintEl.innerHTML = HINT[hintLang && hintLang() === 'en' ? 'en' : 'fil'];
+    hintEl.hidden = false;
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(hideHint, HINT_MS);
+  }
+  function hideHint() {
+    clearTimeout(hintTimer);
+    hintTimer = null;
+    if (hintEl) hintEl.hidden = true;
+  }
+
   // el: an empty <button> inside the camera box; it gets a status dot and the label.
-  function initChip(el) {
+  // opts.hint: an empty element under the chips for the first-ON hint; opts.lang(): 'en' or 'fil'.
+  function initChip(el, opts) {
+    opts = opts || {};
     chip = el;
     chip.innerHTML = '<span class="glove-chip-dot" aria-hidden="true"></span><span class="glove-chip-txt"></span>';
     chipTxt = chip.querySelector('.glove-chip-txt');
-    chip.addEventListener('click', function () { setOn(!on); });
+    hintEl = opts.hint || null;
+    hintLang = opts.lang || null;
+    if (hintEl) hintEl.addEventListener('click', hideHint);
+    chip.addEventListener('click', function () {
+      setOn(!on);
+      if (on && hintArmed) { hintArmed = false; showHint(); }
+    });
     var g = G();
     if (g) {
       g.on('status', render);
