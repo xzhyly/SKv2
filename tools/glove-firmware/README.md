@@ -1,75 +1,75 @@
-# Glove firmware starter (`sk_glove`)
+# Glove firmware (`sk_glove` 2.0)
 
-The firmware for the optional wired data glove: an ESP32 with 5 flex sensors, an optional MPU6050, and a USB cable to
-the Pi. It speaks the protocol in [`docs/system/GLOVE.md`](../../docs/system/GLOVE.md): 115200 baud, one JSON object
-per line, about 30 lines per second.
+The firmware for the two wired data gloves: 10 flex sensors on a CD74HC4067 16-channel mux, an optional MPU6050
+(GY-521), one ESP32, and a USB cable to the Pi (the laptop while testing). It speaks protocol v2 in
+[`docs/system/GLOVE.md`](../../docs/system/GLOVE.md): 115200 baud, one JSON object per line, ~30 lines per second,
+the raw value of all 16 mux channels, and the glove's setup stored in its flash.
 
-## Wiring
+## Wiring (the owner's circuit diagram)
 
 ```
-                    ESP32 dev board
-                 ┌──────────────────┐
-  thumb  divider─┤ GPIO 32          │
-  index  divider─┤ GPIO 33          │
-  middle divider─┤ GPIO 34          │            MPU6050 (optional)
-  ring   divider─┤ GPIO 35          │           ┌──────────┐
-  pinky  divider─┤ GPIO 36 (VP)     │   3V3 ────┤ VCC      │
-                 │          GPIO 21 ├───────────┤ SDA      │
-                 │          GPIO 22 ├───────────┤ SCL      │
-                 │              GND ├───────────┤ GND, AD0 │
-                 │              USB ├── cable to the Pi   └──────────┘
-                 └──────────────────┘
+   ESP32 dev board                 CD74HC4067 16-channel mux
+   GPIO 14 ───────────────────────  S0
+   GPIO 27 ───────────────────────  S1
+   GPIO 26 ───────────────────────  S2
+   GPIO 25 ───────────────────────  S3
+   GPIO 34 ───────────────────────  SIG
+   GND ───────────────────────────  EN, GND
+   3V3 ───────────────────────────  VCC   (0.1 µF from VCC to GND)
+                                    C0..C9  <- FS1..FS10 (one divider each, below)
 
-  One divider per finger:   3V3 ──[ flex sensor ]──┬──[ R = 47 kΩ ]── GND
-                                                   └── GPIO
+   One divider per flex sensor:   3V3 ──[ flex sensor ]──┬──[ R ]── GND
+                                                         └── mux C-pin
+
+   MPU6050 / GY-521 (optional):   VCC 3V3 · GND · SDA GPIO 21 · SCL GPIO 22 · AD0 GND
+   USB ── cable to the laptop / Pi (power and data)
 ```
 
-- **Pins.** Use **ADC1 pins only** (32-36), as above. GPIO 34-36 are input-only, which is fine for sensors.
-- **3.3 V only.** Never connect 5 V to an ESP32 pin.
-- **Resistor value.** R ≈ the sensor's resistance halfway between straight and bent. For a 2.2" sensor (~25 kΩ
-  straight, ~70 kΩ bent), 47 kΩ is a good start. Too small or too big squeezes all readings toward 0 or 4095: check
-  the min/max table in the debugger.
-- **Direction.** Bending raises the sensor's resistance, so its reading **drops**. That is fine: the page's
-  calibration works in either direction.
+- **Which sensor is which finger does not matter here.** The firmware sends all 16 channels; Settings -> Glove ->
+  **Set up glove** finds each finger's channel and saves it on the glove.
+- **3.3 V only.** Never connect 5 V to an ESP32 pin, the mux or a sensor.
+- **Bending lowers the reading** (the sensor's resistance rises). The page's calibration handles it.
+- **Battery: not used.** The diagram's 18650 + TP4056 + switch SW1 are not needed: USB powers everything. Keep
+  **SW1 OFF whenever USB is plugged in** (USB 5 V would otherwise push into the battery through VIN without the
+  charger's control).
 
-## Arduino IDE
+## First time on a Windows laptop
 
-1. File -> Preferences -> Additional boards manager URLs: add
+1. **Driver / COM port.** Plug the ESP32 in with a **data** USB cable (many cables are power-only). Open Device
+   Manager -> Ports (COM & LPT):
+   - "Silicon Labs CP210x USB to UART Bridge (COMx)" or "USB-SERIAL CH340 (COMx)": good, note COMx.
+   - Nothing, or "Unknown device": install the driver for the chip on the board (the small chip near the USB
+     socket says CP2102 or CH340): Silicon Labs "CP210x VCP driver" or WCH "CH341SER", then unplug / plug.
+2. **Arduino IDE board package** (once, needs internet): File -> Preferences -> Additional boards manager URLs:
    `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, then Tools -> Board -> Boards Manager ->
    install **esp32 by Espressif Systems**.
-   - This is done once on the laptop with internet access. The kiosk itself never needs it.
-2. Tools -> Board -> **ESP32 Dev Module** (or your board). Tools -> Port -> the ESP32's COM port.
-3. No extra libraries: `Wire` comes with the core, and the MPU6050 is read with plain I2C.
-4. Open `tools/glove-firmware/sk_glove/sk_glove.ino` and Upload. On some boards you hold **BOOT** while it says
-   "Connecting…".
+3. Tools -> Board -> **ESP32 Dev Module**. Tools -> Port -> your COMx.
+4. Open `tools/glove-firmware/sk_glove/sk_glove.ino` and press **Upload**. No extra libraries (`Wire` and
+   `Preferences` come with the board package). If it stops at "Connecting…", hold the board's **BOOT** button
+   until the upload starts.
 
-## Check 1: Serial Monitor (laptop)
+## Check 1: Serial Monitor (no kiosk needed)
 
 1. Tools -> Serial Monitor, **115200 baud**, line ending **Newline**.
 2. Press the board's **EN/RST**. The first line is the hello:
-   `{"type":"hello","device":"sk-glove","fw":"1.0","fingers":5,"imu":true}`. It says `"imu":false` without the
-   MPU6050.
-3. Then about 30 lines a second: `{"t":1234,"f":[1840,3410,3502,1205,1010],"imu":{...}}`. Bend each finger: its
-   number must change.
-4. Type `ping` and Enter: `{"type":"pong","t":...}`. Type `hello`: the hello again.
+   `{"type":"hello","device":"sk-glove","fw":"2.0","channels":16,"imu":true,"i2c":"21/22","hasCfg":false}`
+   (`"imu":false` if the MPU6050 did not answer).
+3. Then about 30 lines a second: `{"t":1234,"ch":[3290,3310,...16 numbers...],"imu":{...}}`.
+   - Bend one finger at a time: **one** of the first 10 numbers must drop clearly (by hundreds).
+   - A number that never changes, or sits at 0 or 4095, is a sensor or wire to check. The last 6 (C10-C15) have
+     nothing connected and may read anything.
+4. Type `ping` and Enter: `{"type":"pong","t":...}`. Type `cfg-get`: `{"type":"cfg","cfg":null}` on a new glove.
 5. **Close the Serial Monitor** before the next check: only one program can open the port at a time.
 
-## Check 2: Settings -> Glove -> Debug (kiosk or laptop)
+## Check 2: Settings -> Glove (kiosk page, laptop)
 
-1. Log in as an admin, open the name chip -> **Settings** -> **Glove** -> **Connect glove**, and pick the ESP32's port.
-   This must be in Chrome / Chromium on `http://localhost/SKR/settings.html`: Web Serial does not work on a LAN
-   address or in Firefox.
-2. The status line shows `sk-glove · firmware 1.0 · 5 fingers · IMU yes · 30 readings/s`.
-3. Open **Debug**:
-   - The raw lines scroll by; a bad line is shown in red with the reason.
-   - LINES/S is about 30.
-   - **Send "ping"** shows the round trip in ms.
-   - The **min/max** table shows each finger's range as you bend it. A range under ~300 means R is badly chosen.
-   - Hints appear for common faults: no hello / wrong baud, a finger stuck at 0 or 4095, too few lines per second.
-   - **Download log** saves the last 2,000 lines with timestamps, to attach to a bug report.
-4. **Calibrate**: open hand for 3 s, then a fist for 3 s, then Save. The bars then read 0 open and 1 fist.
-5. **Unplug the cable**: the status shows "reconnecting…". Plug it back in: it reconnects by itself within 3 s, with
-   no prompt.
+1. XAMPP running; Chrome on `http://localhost/SKR/`; log in as an admin -> name chip -> **Settings** -> Glove ->
+   **Connect glove** -> pick the ESP32's port. (Web Serial does not work on a LAN address or in Firefox.)
+2. The status line: `sk-glove · firmware 2.0 · 16 channels · IMU yes (21/22) · 30 readings/s · not set up`.
+3. **Debug**: about 30 lines/s; the 16-channel table's numbers change as you bend fingers.
+4. **Set up glove**: follow the screen (fingers, calibrate, camera, IMU, Save on glove).
+5. Unplug the cable: "reconnecting…". Plug it back: connected within 3 s with no prompt, and the setup is still
+   there (it comes from the glove).
 
-No glove at hand? Turn on **Use simulator** (or open `settings.html?glove=sim`). It produces the same lines,
-including a bad one about every 5 s.
+No glove at hand? Turn on **Use simulator** (or open `settings.html?glove=sim`): the same lines, including a bad one
+about every 5 s.
