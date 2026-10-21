@@ -310,3 +310,22 @@ today's data and pressed Compile (`.git/sdd/cm-task-9-report.md`). Result: ESL 1
 3,127 samples, 5,596,344 bytes; FSL 10,414 / 210 / 3,091, 5,274,244 bytes; every synthetic sign 75 rows
 (25 x 3). Compile took 52.6-100.5 s for ESL and 45.4-77.1 s for FSL over two runs (`docs/system/UI.md`;
 `docs/system/DEBT.md` item 133).
+
+## Glove re-ranking (glove-hw Phase 2, 2026-10-21)
+
+Optional, only while the 🧤 button is ON (`docs/system/GLOVE.md` "Glove in recognition"). `knnPredict`,
+`cosineSimilarity`, the model files and Compile are unchanged. After `knnPredict` returns its normalized scores,
+`GloveAssist.apply(scores, knnModel)` (`js/glove-assist.js`) may lower the top 5 labels' scores by
+`w x distance` between the glove's finger bend and the bend computed from that label's model rows
+(`js/glove-bend.js`); the rolling filter and debounce then run on those scores as before.
+
+| Where | Call |
+|---|---|
+| Let's Talk | `js/talk-signing.js` `tick()`, right after `knnPredict(f)` |
+| Train Gestures Step 3 | `js/gesture-training-ui.js`, right after `knnPredict(f)` (`currentStep === 3` only) |
+
+Measured (node 22, cloud container; the Pi is not measured): first re-rank over 5 labels of 90 rows each 11.0 ms
+(bends computed and cached), then 1.2 ms; `tests/glove/glove-bend-check.mjs` 0.4 ms per call with cached rows. From
+the ESL model's own rows: median finger bends of "s" 0.75 / 0.69 / 0.67 / 0.68 and of "a" 0.76 / 0.69 / 0.68 / 0.70
+(index..pinky) but thumbs 0.73 vs 0.14, which is the kind of difference the camera alone finds hard.
+

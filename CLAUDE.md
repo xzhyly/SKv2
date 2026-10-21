@@ -206,7 +206,7 @@ and archived (`archive/script.js`, `archive/TEXT-TO-SIGN-PANE.md`).
 | MediaPipe/TF.js vendored libraries themselves | [docs/system/VENDORED.md](docs/system/VENDORED.md) |
 | Where inference is actually called from (pointer only) | [docs/system/ML.md](docs/system/ML.md) |
 | What Phase 1 deleted/archived, and why | [docs/system/DEAD_CODE.md](docs/system/DEAD_CODE.md) |
-| Optional data gloves (two, 16-channel mux): serial protocol v2, the setup stored on the glove, `window.SKGlove`, Settings -> Glove + Set up glove, firmware 2.0 | [docs/system/GLOVE.md](docs/system/GLOVE.md) |
+| Optional data gloves (two, 16-channel mux): serial protocol v2, the setup stored on the glove, `window.SKGlove`, Settings -> Glove + Set up glove, firmware 2.0, the 🧤 button and glove re-ranking in recognition | [docs/system/GLOVE.md](docs/system/GLOVE.md) |
 | Known bugs, security issues, inconsistencies, ranked | [docs/system/DEBT.md](docs/system/DEBT.md) |
 | Full file-by-file inventory, load order, entry points | [docs/system/INVENTORY.md](docs/system/INVENTORY.md) |
 | Phase proposals, investigation results, and final reports | docs/reports/ |

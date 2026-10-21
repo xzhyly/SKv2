@@ -11,8 +11,8 @@ What exists:
 - Settings -> Glove with Set up glove and the debugger (`settings.html`);
 - the firmware (`tools/glove-firmware/sk_glove/`).
 
-**Recognition does not use the glove yet** (Phase 2 of the design). Future code reads it through
-`window.SKGlove` (below), and only when `SKGlove.ready()`.
+**Recognition uses the glove only while 🧤 is ON** (Phase 2, section "Glove in recognition" below): it re-ranks the
+camera k-NN's top 5 guesses; it never replaces the camera.
 
 Everything that reads or writes glove lines follows this file: the firmware, `js/glove.js` and its simulator.
 
@@ -191,10 +191,53 @@ Full screen, in this order; Cancel leaves without saving:
 The Debug panel also shows the **16-channel table** (channel, used by, min, max, range, now), the **setup stored on
 the glove** (JSON) and **Clear setup on glove**.
 
+## Glove in recognition (glove-hw Phase 2, 2026-10-21)
+
+**The button.** `js/glove-assist.js` (`window.GloveAssist`) fills an empty `<button>` with "🧤 Gloves OFF" and shows it
+**only while `SKGlove.ready()`**:
+- Let's Talk, Sign screen: beside EN | FIL (`.signing-lang-row`; EN | FIL narrows, and is full width as before
+  without a glove). Owner choice: the bottom row has no room (338 px: Speak or Type 218 + Guide 110).
+- Train Gestures, Step 3 panel (Step 4 stays camera only).
+- Tap = ON (navy, `aria-pressed`, "ON"); the ON state is never stored. Every end of a conversation reloads
+  `talk.html` except "+ New conversation" with an empty thread, which calls `GloveAssist.reset()`; so a new
+  conversation always starts OFF. Unplugged or setup cleared: the button hides and goes OFF.
+- While ON: 10 finger bars inside the button (left 5, right 5), redrawn at most every 100 ms with CSS `transform`
+  only. Settings -> Glove "Finger bars in Let's Talk" (per kiosk, `localStorage` `sk_glove_bars`, `'0'` = off).
+- Let's Talk and Train Gestures set `window.SK_GLOVE_URL_SIM_ONLY = true` before `js/glove.js`: there the simulator
+  runs only with `?glove=sim`, so Settings' "Use simulator" switch never puts a fake glove into a conversation.
+
+**The math.** `js/glove-bend.js` (`window.GloveBend`, also a node module):
+- `bendOfSlot(row, slot)`: per finger 0 (straight) .. 1 (bent) from the sum of the joint angles in a model row's hand
+  slot (fingers: wrist-MCP-PIP, MCP-PIP-DIP, PIP-DIP-tip; thumb: CMC-MCP-IP, MCP-IP-tip), scaled between `RANGES`
+  measured on `models/knn_ESL.bin` (14,492 rows, 10th / 98th percentiles): thumb 14°..96°, index 21°..232°, middle
+  20°..264°, ring 20°..286°, pinky 25°..275°. Cached per row (`WeakMap`) the first time it is needed.
+- `rerank(scores, model, gloves, w)`: for the top 5 labels only, distance = mean |glove - row| over the fingers
+  both have (null glove fingers skipped), the closer of the two slot orders (rows keep MediaPipe's hand order,
+  not left/right), averaged over the label's 5 closest rows; `score - w x distance`, never below 0. Labels outside
+  the top 5 and the input object are untouched.
+
+**When the glove is used** (`GloveAssist.apply(scores, knnModel)`, called right after `knnPredict` in
+`js/talk-signing.js` `tick()` and in `js/gesture-training-ui.js` Step 3): ALL of
+1. 🧤 is ON and `SKGlove.ready()`;
+2. the setup has the camera step (`cam`);
+3. glove data younger than **1 s** (MediaPipe holds the page's only thread while it detects; about 1.1 s per frame was
+   measured in the cloud test container, and glove lines wait behind it);
+4. the gloves are worn: some finger moved by >= 0.05 in the last 3 s;
+5. MediaPipe's last frame has 1 or 2 hands, each with a handedness score >= 0.8. Each hand's label ("Left"/"Right",
+   swapped when `cam.mirror`) picks the glove compared.
+
+Otherwise the scores come back unchanged; `GloveAssist.lastInfo()` says why (`off`, `glove not ready`,
+`no camera setup`, `no fresh glove data`, `not worn`, `no hand in the frame`, `unsure which hand`). `w` is the glove
+strength stored on the glove (Settings -> Glove, 0-1 in 0.1 steps, default 0.3), not tuned: the accuracy test is at
+the end of the project.
+
 ## Files
 
 - `js/glove.js` — the module above (no libraries).
+- `js/glove-bend.js`, `js/glove-assist.js` — glove in recognition (above).
+- `talk.html` (`.signing-lang-row`), `gesture-training.html` (Step 3) — the 🧤 button.
 - `settings.html` — Admin -> Settings (General / Voice / Glove), admin only, linked from the admin menu.
 - `tools/glove-firmware/sk_glove/sk_glove.ino`, `tools/glove-firmware/README.md` — firmware 2.0, wiring, first upload.
-- `tests/glove/glove-core-check.mjs` (node, no browser), `tests/glove/settings-check.mjs` (headless Chrome, simulator),
-  `tests/glove/no-db-router.php` (runs the browser check without MySQL).
+- `tests/glove/glove-core-check.mjs` and `tests/glove/glove-bend-check.mjs` (node, no browser),
+  `tests/glove/settings-check.mjs` and `tests/glove/talk-glove-check.mjs` (headless browser, simulator),
+  `tests/glove/no-db-router.php` (runs the browser checks without MySQL).

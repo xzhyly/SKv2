@@ -150,23 +150,26 @@ Starts only after the owner reports Phase 1 passing on the real glove.
 
 - A model row is 126 numbers: two hand slots of 21 points (x, y, z), wrist-relative and scaled
   (`flattenHand`, `js/gesture-data.js`). A slot of all zeros = no hand.
-- `bend(slot) -> [5]` per finger, 0 = straight, 1 = fully bent, from joint angles (MCP, PIP, DIP; thumb CMC, MCP,
-  IP), scaled by fixed per-finger ranges. Angles are unaffected by the scaling and by the x-mirror `knnPredict`
-  tries, so the same function serves both.
-- Computed **once per loaded model** (all rows) and kept in memory next to `knnModel`; no change to the model file,
-  `knn-compile.js` or Compile. Load time and memory on the Pi are measured in Phase 2 and reported.
+- `bend(slot) -> [5]` per finger, 0 = straight, 1 = fully bent: the sum of the joint angles (fingers: wrist-MCP-PIP,
+  MCP-PIP-DIP, PIP-DIP-tip; thumb: CMC-MCP-IP, MCP-IP-tip), scaled between per-finger "open" and "bent" sums
+  **measured on the ESL model** (14,492 rows, 2026-10-21: 10th and 98th percentiles) — thumb 14°..96°, index
+  21°..232°, middle 20°..264°, ring 20°..286°, pinky 25°..275°. Angles are unaffected by the scaling and by the
+  x-mirror `knnPredict` tries, so the same function serves both.
+- Computed the first time a row is needed and cached with the row (`WeakMap`), so nothing is added to model
+  loading; no change to the model file, `knn-compile.js` or Compile.
 
 ### 2.2 Re-ranking (`js/glove-bend.js`, called from `js/talk-signing.js` and `js/gesture-training-ui.js`)
 
-Runs only when the glove button is ON **and** `SKGlove.ready()` **and** the live glove data is fresher than 200 ms.
+Runs only when the glove button is ON **and** `SKGlove.ready()` **and** the live glove data is fresher than 1 s (measured: MediaPipe holds the page thread ~1.1 s per frame in the cloud test container, and glove lines wait behind it).
 Otherwise `knnPredict`'s result is used unchanged.
 
 For one frame:
 1. `knnPredict(f)` as today -> `scores`.
 2. **Which glove hands count this frame** (from MediaPipe's live result for the same frame):
    - no hand seen -> glove not used;
-   - each seen hand's handedness label (score >= 0.8), swapped if `cam.mirror`, gives L or R; a hand whose label is
-     below 0.8 -> **glove not used this frame** (better no help than wrong help);
+   - each seen hand's handedness label from MediaPipe's `multiHandedness` for the same frame (score >= 0.8), swapped
+     if `cam.mirror`, gives L or R; a hand whose label is below 0.8, or a setup without `cam` (camera step
+     skipped) -> **glove not used this frame** (better no help than wrong help);
    - only the seen hands' gloves are compared.
 3. For each of the **top 5 labels** only: take that label's rows; a row slot of all zeros means the sign uses one
    hand there. Compare the counted glove hands with the row's non-empty slots, trying both slot orders (slots are
@@ -183,11 +186,23 @@ The MPU6050 is not used in recognition (shown in Settings only).
 
 ### 2.3 UI button
 
-- **Let's Talk signing screen** (`talk.html`, `js/talk-signing.js`): a "🧤 Gloves: OFF" toggle near the camera,
-  >= 44 px, same theme, no modal. **Shown only while `SKGlove.ready()`**; it disappears (and the glove stops being
-  used) when the glove disconnects, and reappears when it reconnects. Default OFF; set back to OFF at End
-  Conversation, the idle timeout and "+ New conversation". ON is visibly different (filled colour + label "ON").
-- **Train Gestures Steps 3/4** (`gesture-training.html`): the same toggle, so the admin can compare ON vs OFF.
+- **Let's Talk signing screen** (`talk.html`, `js/talk-signing.js`): a "🧤 Gloves OFF / ON" toggle **beside EN | FIL**
+  (owner choice 2026-10-21, after the check showed the bottom row has no room: the side column is 338 px and
+  "Speak or Type" 218 + Guide 110 already fill it; the first try pushed Guide 92 px off screen). EN | FIL narrows
+  while the glove is there and is full width as before without it; 52 px tall, same theme, no modal; nothing
+  overlaps (checked at 1024x600). **Shown only while
+  `SKGlove.ready()`**; it disappears (and the glove stops being used) when the glove disconnects, and reappears
+  when it reconnects. Default OFF. Every conversation end except one reloads `talk.html` (End Conversation, idle
+  timeout, "+ New conversation" with messages), and the ON state is never stored, so it starts OFF again; the
+  exception, "+ New conversation" with an empty thread, calls the reset itself. ON is visibly different (navy fill
+  like Guide's active state, label "ON").
+- **Finger bars inside the button** (owner choice 2026-10-21): while ON, 10 small bars (left 5, right 5) inside the
+  button, updated at most 10 times per second with CSS `transform` only (no layout). A Settings -> Glove switch
+  "Show finger bars in Let's Talk" (per kiosk, default on) turns them off. The detection rate with bars on vs off is
+  measured and reported.
+- **Train Gestures Step 3** (`gesture-training.html`): the same toggle in the Step 3 panel, so the admin can compare
+  ON vs OFF (Step 4 stays camera only).
+- **Settings -> Glove**: "Glove strength" (`w`, 0-1 in 0.1 steps, saved on the glove) and the finger-bars switch.
 - `talk.html` and `gesture-training.html` load `js/glove.js` and `autoReconnect()` on page load; nothing about
   the glove is shown anywhere when no glove is set up. Learn Signs, Quiz and Speak or Type are unchanged.
 
