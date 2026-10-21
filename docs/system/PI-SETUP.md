@@ -143,9 +143,11 @@ troubleshooting section is at the end; send `~/pi-setup.log` with the problem.
      in a terminal plays "front left / front right".
    - [ ] **Let's Talk, Speak or Type:** type `hello mabuti ako`, Translate: the avatar signs; Send.
    - [ ] **Quiz:** start one, answer 2 questions.
-   - [ ] **Glove simulator:** log in as admin -> name chip -> Settings -> Glove -> Use simulator: the bars move;
-     Debug shows about 30 lines/s.
-   - [ ] **Glove (if plugged):** Connect glove lists the ESP32, or it connects by itself thanks to the policy.
+   - [ ] **Glove simulator:** log in as admin -> name chip -> Settings -> Glove -> Use simulator: "Not set up yet"
+     (the simulator's setup lives in each browser); Debug shows about 30 lines/s.
+   - [ ] **Glove (if plugged):** it connects by itself thanks to the policy (no port picker) and shows
+     "setup saved on glove …": the setup made on the laptop comes from the glove, so **no Set up glove on the
+     Pi** (run it again only if the camera differs: its step 3 is about this kiosk's camera).
      `ls /dev/ttyUSB* /dev/ttyACM*` shows it.
    - [ ] Train Gestures Step 2 says "build the model on the laptop" (Compile disabled on the Pi).
 

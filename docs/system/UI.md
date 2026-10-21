@@ -2188,18 +2188,24 @@ transitions or animations in the new CSS (the shared on-screen keyboard keeps it
 targets >= 44 px; built and measured at 1024x600. Colours from `css/tokens.css`, font Inter (`css/fonts.css`).
 `:where()` keeps the new pages' font reset at zero specificity so each component's own weight/size wins.
 
-## Part 5: Settings (glove-serial phase, 2026-10-20)
+## Part 5: Settings (glove-serial phase 2026-10-20; two gloves and Set up glove, glove-hw phase 2026-10-21)
 
 `settings.html`: Admin -> Settings, admin only (`SKAccount.adminPage()`), the last item of the admin menu
-(`js/sk-account.js`). Sections General · Voice · Glove (General and Voice are placeholders). Glove, per
-`docs/design/glove-settings-wireframe.html`:
-- status with the device line from the hello;
-- Connect / Calibrate / Disconnect;
-- live finger bars (0-1 and raw) and the IMU;
+(`js/sk-account.js`). Sections General · Voice · Glove (General and Voice are placeholders). Glove:
+- status with the device line from the hello (`sk-glove · firmware 2.0 · 16 channels · IMU yes (21/22) · 30
+  readings/s · setup saved on glove today …` / `not set up` / `setup on glove is damaged…` / `old firmware…`);
+- Connect / Set up glove / Disconnect;
+- LEFT HAND and RIGHT HAND, 5 bars each (0-1, name, raw), striped for a finger with no channel; "Not set up yet"
+  instead of the bars before Set up glove; the IMU (with its hand);
 - Use simulator;
-- a full-screen Calibrate (2 steps x 3 s);
-- a collapsible Debug panel (raw console, counters, commands, Download log, min/max, hints).
+- **Set up glove**, full screen: 1 Fingers (10 steps, chips "R thumb C0"), 2 Calibrate (both hands open / two
+  fists), 3 Camera (raise the right hand; MediaPipe's handedness -> mirror on/off; Skip), 4 IMU (Left / Right hand,
+  only with an IMU), 5 Save on glove (summary). Cancel leaves without saving;
+- a collapsible Debug panel: raw console, counters, commands, Download log, the 16-channel table (used by, min,
+  max, range, now), the setup stored on the glove (JSON) with Clear setup on glove, hints.
 
-Only the section's own column scrolls; the page itself does not at 1024x600. Everything goes through
-`window.SKGlove` (`js/glove.js`). The protocol and the API are in `docs/system/GLOVE.md`. No glove UI outside
-Settings; recognition does not use the glove. Check: `node tests/glove/settings-check.mjs` (simulator, 25 checks).
+Only the section's own column scrolls; the page itself does not at 1024x600 (Set up glove fits without
+scrolling). Everything goes through `window.SKGlove` (`js/glove.js`); the protocol, the setup and the API are in
+`docs/system/GLOVE.md`. No glove UI outside Settings; recognition does not use the glove yet. Checks:
+`node tests/glove/glove-core-check.mjs` (no browser) and `node tests/glove/settings-check.mjs` (simulator,
+headless Chrome).
