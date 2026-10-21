@@ -9,6 +9,8 @@
 #
 # Change the names/volume here, or (so a `git pull` does not undo it) in ~/.config/sk-audio.conf,
 # which is sourced after these defaults and may set any of the four variables below.
+# Settings -> System -> Speaker volume writes SINK_VOLUME there too (/usr/local/bin/sk-volume, pi-setup.sh
+# step 10), and php/api/system_power.php reads MAX_VOLUME from this file: keep it on its own line.
 
 SINK_NAME="CD002-AUDIO"                 # speaker: part of the name under Audio -> Sinks
 SOURCE_NAME="AB13X Headset Adapter"     # microphone: part of the name under Audio -> Sources
