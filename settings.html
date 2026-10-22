@@ -52,12 +52,10 @@
   .live { display: flex; gap: 18px; min-height: 250px; }
   .hands { flex: 1; min-width: 0; display: flex; gap: 22px; }
   .hand { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .notset { flex: 1; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 15px; }
   .fingers { flex: 1; display: flex; gap: 8px; align-items: stretch; height: 190px; padding-top: 8px; }
   .fg { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
   .trk { flex: 1; width: 34px; background: #e6ebf3; border-radius: 8px; position: relative; overflow: hidden; }
   .trk i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--orange); border-radius: 8px; }
-  .trk.off { background: repeating-linear-gradient(45deg, #eef1f6, #eef1f6 6px, #e2e7ef 6px, #e2e7ef 12px); }
   .fg b { font-size: 13px; font-variant-numeric: tabular-nums; }
   .fg span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .imu { width: 200px; flex: none; border-left: 1px solid var(--border); padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
@@ -176,13 +174,17 @@
           </div>
           <div class="warn-box" id="g-unsupported" hidden><b>This browser can't use the glove.</b> Web Serial works in Chromium/Chrome on <b>http://localhost</b> (the kiosk). It does not work over a network address or in Firefox.</div>
           <div class="warn-box" id="g-oldfw" hidden><b>Old glove firmware.</b> This glove runs firmware 1.x (5 fingers, no mux). Flash <b>tools/glove-firmware/sk_glove</b> 2.0 (see its README).</div>
+          <!-- Wiring (glove-static phase): fixed, SKGlove.MAP; the calibration date; Check fingers = Set up glove step 1 alone. -->
+          <div class="card row between" id="g-wiring" hidden>
+            <div style="min-width:0"><b>Wiring: fixed (C0–C4 right, C5–C9 left)</b><div class="cnt" id="g-cal" style="margin-top:4px">Calibration: –</div></div>
+            <button type="button" class="btn sec" id="g-check">Check fingers</button>
+          </div>
           <div class="card placeholder" id="g-placeholder">Live finger view appears here when the glove is connected.</div>
           <div class="card live" id="g-live" hidden>
-            <div class="hands" id="g-hands" hidden>
+            <div class="hands" id="g-hands">
               <div class="hand"><div class="lbl">LEFT HAND</div><div class="fingers" id="g-fingers-L"></div></div>
               <div class="hand"><div class="lbl">RIGHT HAND</div><div class="fingers" id="g-fingers-R"></div></div>
             </div>
-            <div class="notset" id="g-notset"><div><b>Not set up yet.</b><br>Tap <b>Set up glove</b>: it finds which sensor is which finger,<br>calibrates both hands and saves it on the glove.</div></div>
             <div class="imu">
               <div class="lbl">HAND MOTION (IMU)</div>
               <div id="g-imu-none" class="cnt">No IMU on this glove.</div>
@@ -382,7 +384,7 @@
     // ── finger bars: two hands ──
     ['L', 'R'].forEach(function (h) {
       $('g-fingers-' + h).innerHTML = NAMES.map(function (n, i) {
-        return '<div class="fg"><div class="trk" id="trk' + h + i + '"><i id="bar' + h + i + '"></i></div><b id="val' + h + i + '">–</b><span>' + n + '</span><span id="raw' + h + i + '">–</span></div>';
+        return '<div class="fg"><div class="trk" id="trk' + h + i + '"><i id="bar' + h + i + '"></i></div><b id="val' + h + i + '">–</b><span>' + n + ' C' + G.MAP[h][i] + '</span><span id="raw' + h + i + '">–</span></div>';
       }).join('');
     });
 
@@ -396,10 +398,20 @@
     function setupText() {
       var s = G.configState(), c = G.config();
       if (oldFirmware()) return 'old firmware: flash sk_glove 2.0';
-      if (s === 'ok' && c) return c.cal ? 'setup saved on glove ' + fmtTime(c.cal.at) : 'fingers found, not calibrated';
+      if (s === 'ok' && c) return c.cal ? 'calibrated, saved on glove ' + fmtTime(c.cal.at) : 'not calibrated';
       if (s === 'damaged') return 'setup on glove is damaged: run Set up glove again';
-      if (s === 'none') return 'not set up';
+      if (s === 'none') return 'not calibrated';
       return 'reading setup…';
+    }
+    // The Wiring card's calibration line. calibrationFrom(): 'moved' / 'dropped' for a setup saved with the old
+    // per-glove finger map (js/glove.js validateConfig).
+    function calText() {
+      var s = G.configState(), c = G.config(), from = G.calibrationFrom();
+      if (s === 'unknown') return 'Calibration: reading…';
+      if (s === 'damaged') return 'Calibration: the setup on the glove is damaged. Run Set up glove.';
+      if (c && c.cal) return 'Calibration: ' + fmtTime(c.cal.at) + (from === 'moved' ? ' (kept from the old setup, re-keyed to the fixed wiring)' : '');
+      if (from === 'dropped') return 'Calibration needed: the old setup used another wiring. Run Set up glove.';
+      return 'Calibration: not calibrated yet. Run Set up glove.';
     }
 
     function renderStatus() {
@@ -432,15 +444,11 @@
       $('g-oldfw').hidden = !(connected && oldFirmware());
       $('g-placeholder').hidden = connected;
       $('g-live').hidden = !connected;
+      $('g-wiring').hidden = !connected;
+      $('g-cal').textContent = calText();
+      $('g-check').disabled = !G.info() || oldFirmware();
       var cfg = G.config();
-      $('g-hands').hidden = !cfg;
-      $('g-notset').hidden = !!cfg;
-      if (cfg) {
-        ['L', 'R'].forEach(function (h) {
-          cfg.map[h].forEach(function (c, i) { $('trk' + h + i).classList.toggle('off', c === null); });
-        });
-        $('imu-hand').textContent = cfg.imuHand ? 'On the ' + (cfg.imuHand === 'L' ? 'left' : 'right') + ' hand' : 'Hand not set';
-      }
+      $('imu-hand').textContent = cfg && cfg.imuHand ? 'On the ' + (cfg.imuHand === 'L' ? 'left' : 'right') + ' hand' : 'Hand not set';
       $('g-assist').hidden = !(connected && cfg);
       $('g-assist').style.display = $('g-assist').hidden ? 'none' : 'flex';
       if (cfg && !wSaving) $('g-w').textContent = cfg.w.toFixed(1);
@@ -602,6 +610,7 @@
       else if (name === 'save') startSave();
     }
     $('g-setup').addEventListener('click', function () { openSetup('setup'); });
+    $('g-check').addEventListener('click', function () { openSetup('check'); });
     $('su-next').addEventListener('click', function () {
       if (su.step === 'check') { if (su.mode === 'check') leaveSetup(); else gotoStep('cal'); }
       else if (su.step === 'cal') gotoStep('save');
