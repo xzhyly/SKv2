@@ -2,9 +2,10 @@
 // The optional wired data gloves (glove-serial phase 2026-10-20, protocol v2 glove-hw phase 2026-10-21,
 // docs/system/GLOVE.md): two gloves, 10 flex sensors on a 16-channel mux, one ESP32, optional MPU6050,
 // USB serial 115200 baud, one JSON object per line. Web Serial only, no libraries. Attaches
-// window.SKGlove. The glove sends the raw value of all 16 channels; which channel is which finger
-// (the "map"), the open/fist calibration, the camera's handedness and the IMU's hand are the glove's
-// setup, stored ON THE GLOVE (cfg-get / cfg-set), so a glove set up on the laptop works on the Pi.
+// window.SKGlove. The glove sends the raw value of all 16 channels. Which channel is which finger is fixed
+// in hardware since the glove-static phase (2026-10-22): MAP below, the one place it is defined. The open/fist
+// calibration, the camera's handedness and the IMU's hand are the glove's setup, stored ON THE GLOVE
+// (cfg-get / cfg-set), so a glove set up on the laptop works on the Pi.
 // A simulator source produces the same protocol lines through the same parser.
 (function () {
   'use strict';
@@ -23,6 +24,12 @@
   var SIM_CFG_KEY = 'sk_glove_sim_cfg';   // the simulator's "flash"
   var FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
   var HANDS = ['L', 'R'];
+  // The fixed wiring (glove-static phase): mux channel per finger, thumb..pinky. Right C0-C4, left C9-C5.
+  var MAP = { R: [0, 1, 2, 3, 4], L: [9, 8, 7, 6, 5] };
+  // MediaPipe labels handedness as if the picture were a mirrored selfie; js/gesture-data.js sends it the camera's
+  // own unmirrored frames (selfieMode not set), so the wearer's right hand reads "Left": mirror on. Used for a setup
+  // with no measured cam (Set up glove has no camera step since the glove-static phase).
+  var DEFAULT_MIRROR = true;
 
   var listeners = { status: [], data: [], hello: [], raw: [], error: [], pong: [], config: [] };
   var state = 'disconnected';
@@ -31,6 +38,7 @@
   var hello = null, latestData = null;
   var cfg = null;               // validated setup from the glove, or null
   var cfgState = 'unknown';     // 'unknown' (no answer yet) | 'none' | 'ok' | 'damaged'
+  var cfgCal = 'none';          // what happened to the stored calibration: 'none' | 'same' | 'moved' | 'dropped'
   var pendingCfg = null;        // { resolve, reject, timer, next } while cfg-set / cfg-clear waits
   var history = [];             // last AVG { L: [5], R: [5] } normalized readings
   var lineBuf = '';
@@ -78,19 +86,39 @@
   // ── the setup (docs/system/GLOVE.md "The setup") ──
   function isInt(v, lo, hi) { return typeof v === 'number' && Math.floor(v) === v && v >= lo && v <= hi; }
   function five(a, check) { return Array.isArray(a) && a.length === 5 && a.every(check); }
-  // Returns a clean copy of a valid setup, or null. Unknown keys are dropped.
-  function validateConfig(c) {
+  function sameMap(m) { return HANDS.every(function (h) { return m[h].every(function (c, i) { return c === MAP[h][i]; }); }); }
+  // Returns a clean copy of a valid setup, or null. Unknown keys are dropped. The map is always MAP: a setup saved
+  // with another (older, per-glove) map keeps its calibration only when every MAP channel has one there, re-keyed
+  // by channel; otherwise the calibration is dropped and the glove needs a new one. info.cal (optional out) says
+  // which: 'none' | 'same' | 'moved' | 'dropped'. No cam -> DEFAULT_MIRROR.
+  function validateConfig(c, info) {
+    info = info || {};
+    info.cal = 'none';
     if (!c || typeof c !== 'object' || c.v !== 1) return null;
     var m = c.map;
     var chOrNull = function (v) { return v === null || isInt(v, 0, CH - 1); };
-    if (!m || !five(m.L, chOrNull) || !five(m.R, chOrNull)) return null;
-    var out = { v: 1, map: { L: m.L.slice(), R: m.R.slice() }, cal: null, cam: null, imuHand: null, w: DEFAULT_W };
+    if (m != null && (!five(m.L, chOrNull) || !five(m.R, chOrNull))) return null;
+    var out = { v: 1, map: { L: MAP.L.slice(), R: MAP.R.slice() }, cal: null, cam: { mirror: DEFAULT_MIRROR }, imuHand: null, w: DEFAULT_W };
     if (c.cal != null) {
       var adc = function (v) { return isInt(v, 0, 4095); };
       var hand = function (h) { return h && five(h.open, adc) && five(h.fist, adc); };
       if (!hand(c.cal.L) || !hand(c.cal.R) || typeof c.cal.at !== 'string') return null;
-      out.cal = { L: { open: c.cal.L.open.slice(), fist: c.cal.L.fist.slice() },
-        R: { open: c.cal.R.open.slice(), fist: c.cal.R.fist.slice() }, at: c.cal.at };
+      if (!m || sameMap(m)) {
+        out.cal = { L: { open: c.cal.L.open.slice(), fist: c.cal.L.fist.slice() },
+          R: { open: c.cal.R.open.slice(), fist: c.cal.R.fist.slice() }, at: c.cal.at };
+        info.cal = 'same';
+      } else {
+        var byCh = {};   // channel -> { open, fist } from the old map
+        HANDS.forEach(function (h) { m[h].forEach(function (ch, i) { if (ch !== null) byCh[ch] = { open: c.cal[h].open[i], fist: c.cal[h].fist[i] }; }); });
+        var all = HANDS.every(function (h) { return MAP[h].every(function (ch) { return !!byCh[ch]; }); });
+        if (all) {
+          var moved = function (h) {
+            return { open: MAP[h].map(function (ch) { return byCh[ch].open; }), fist: MAP[h].map(function (ch) { return byCh[ch].fist; }) };
+          };
+          out.cal = { L: moved('L'), R: moved('R'), at: c.cal.at };
+          info.cal = 'moved';
+        } else info.cal = 'dropped';
+      }
     }
     if (c.cam != null) {
       if (typeof c.cam.mirror !== 'boolean') return null;
@@ -122,16 +150,16 @@
     emit('raw', entry);
   }
 
-  // { L: { raw: [5], norm: [5] }, R: {...} } from the 16 channels, or null without a map.
-  // raw / norm are null for a finger with no channel; norm is null for a finger whose open and fist
-  // are closer than MINSPAN. Without a calibration norm = raw / 4095. Moving average of AVG readings.
+  // { L: { raw: [5], norm: [5] }, R: {...} } from the 16 channels through MAP (with or without a setup).
+  // norm is null for a finger whose open and fist are closer than MINSPAN; a sensor that reads lower when bent
+  // (fist < open) works the same (the span is negative). Without a calibration norm = raw / 4095. Moving average
+  // of AVG readings.
   function handsFrom(ch) {
-    if (!cfg) return null;
     var now = {};
     var out = {};
     HANDS.forEach(function (h) {
-      var cal = cfg.cal ? cfg.cal[h] : null;
-      var raw = cfg.map[h].map(function (c) { return c === null ? null : ch[c]; });
+      var cal = cfg && cfg.cal ? cfg.cal[h] : null;
+      var raw = MAP[h].map(function (c) { return ch[c]; });
       now[h] = raw.map(function (v, i) {
         if (v === null) return null;
         if (!cal) return v / 4095;
@@ -191,8 +219,10 @@
     }
     if (msg.type === 'cfg') {
       logLine('in', line, true);
-      if (msg.cfg === null) { setConfig(null, 'none'); return; }
-      var v = validateConfig(msg.cfg);
+      if (msg.cfg === null) { cfgCal = 'none'; setConfig(null, 'none'); return; }
+      var info = {};
+      var v = validateConfig(msg.cfg, info);
+      cfgCal = info.cal;
       if (v) setConfig(v, 'ok');
       else { st.lastBad = 'setup on the glove is damaged'; setConfig(null, 'damaged'); }
       return;
@@ -260,6 +290,7 @@
   function saveConfig(c) {
     var v = validateConfig(c);
     if (!v) return Promise.reject(new Error('The setup is not complete or not valid'));
+    cfgCal = v.cal ? 'same' : 'none';
     var text = JSON.stringify(v);
     if (text.length > CFG_MAX) return Promise.reject(new Error('The setup is too long for the glove (' + text.length + ' characters)'));
     return cfgCommand('cfg-set ' + text, v);
@@ -274,6 +305,7 @@
     st.helloAt = 0;
     cfg = null;
     cfgState = 'unknown';
+    cfgCal = 'none';
     history = [];
     if (pendingCfg) { clearTimeout(pendingCfg.timer); pendingCfg.reject(new Error('The glove disconnected')); pendingCfg = null; }
   }
@@ -412,7 +444,7 @@
   }
 
   // ── Simulator: firmware 2.0's lines, produced here and fed through feed() ──
-  // Wiring it pretends: C0-C4 = right thumb..pinky, C5-C9 = left thumb..pinky, C10-C15 unused
+  // Wiring it pretends: MAP (C0-C4 = right thumb..pinky, C9-C5 = left thumb..pinky), C10-C15 unused
   // (low noise, except C10, which copies part of C9 as the owner's real mux does). A finger reads ~3300 straight and drops toward ~1300 bent, like the real divider.
   // Its "flash" is localStorage (sk_glove_sim_cfg), so a saved setup survives a page reload.
   function simLine(obj) { feed(JSON.stringify(obj) + '\n'); }
@@ -501,6 +533,8 @@
     CHANNELS: CH,
     FINGERS: FINGERS.slice(),
     HANDS: HANDS.slice(),
+    MAP: { R: MAP.R.slice(), L: MAP.L.slice() },
+    DEFAULT_MIRROR: DEFAULT_MIRROR,
     DEFAULT_W: DEFAULT_W,
     isSupported: isSupported,
     status: status,
@@ -514,6 +548,7 @@
     info: function () { return hello; },
     config: function () { return cfg; },
     configState: function () { return cfgState; },
+    calibrationFrom: function () { return cfgCal; },
     validateConfig: validateConfig,
     saveConfig: saveConfig,
     clearConfig: clearConfig,

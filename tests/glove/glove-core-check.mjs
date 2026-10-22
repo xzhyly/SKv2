@@ -1,6 +1,7 @@
 // glove-hw phase: js/glove.js (protocol v2, docs/system/GLOVE.md) run in node's vm with a stub
-// window - no browser, no server. Parser, the 16 channels, the setup (validate / damaged / hands /
-// normalization), and the simulator's setup round trip (cfg-set, reconnect, cfg-get).
+// window - no browser, no server. Parser, the 16 channels, the fixed wiring (glove-static phase: SKGlove.MAP, old
+// per-glove maps re-keyed or dropped), the setup (validate / damaged / hands / normalization), and the simulator's
+// setup round trip (cfg-set, reconnect, cfg-get).
 // Run: node tests/glove/glove-core-check.mjs
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -37,9 +38,10 @@ function load(search = '') {
 }
 const CH16 = (v) => Array.from({ length: 16 }, (_, i) => (typeof v === 'function' ? v(i) : v));
 const dataLine = (ch, extra = '') => `{"t":1000,"ch":${J(ch)}${extra}}\n`;
+const MAP = { L: [9, 8, 7, 6, 5], R: [0, 1, 2, 3, 4] };   // the fixed wiring (js/glove.js MAP)
 const CFG = {
   v: 1,
-  map: { L: [5, 6, 7, 8, 9], R: [0, 1, 2, 3, 4] },
+  map: MAP,
   cal: { L: { open: [3300, 3300, 3300, 3300, 3300], fist: [1300, 1300, 1300, 1300, 1300] },
          R: { open: [3300, 3300, 3300, 3300, 3300], fist: [1300, 1300, 1300, 1300, 1300] }, at: '2026-10-21T12:00:00.000Z' },
   cam: { mirror: true },
@@ -55,12 +57,15 @@ const CFG = {
     J({ info: G.info(), state: G.configState() }));
 }
 
-// 2. data lines: 16 channels, no setup -> no hands
+// 2. data lines: 16 channels; hands through the fixed wiring even without a setup (raw / 4095)
 {
   const { G } = load();
+  check('SKGlove.MAP is the fixed wiring: right C0-C4, left C9-C5 (thumb..pinky)', J(G.MAP) === J({ R: MAP.R, L: MAP.L }), J(G.MAP));
   G._feed(dataLine(CH16((i) => 100 * i)));
   const d = G.latest();
-  check('data: 16 channels kept, hands null without a setup', d && d.ch.length === 16 && d.ch[15] === 1500 && d.hands === null, J(d));
+  check('data: 16 channels kept; no setup -> hands from MAP, norm = raw / 4095',
+    d && d.ch.length === 16 && d.ch[15] === 1500 && J(d.hands.L.raw) === J([900, 800, 700, 600, 500]) && J(d.hands.R.raw) === J([0, 100, 200, 300, 400]) &&
+    Math.abs(d.hands.L.norm[0] - 900 / 4095) < 1e-9, J(d));
   G._feed(dataLine(CH16(5), ',"imu":{"ax":0.1,"ay":0,"az":1,"gx":0,"gy":0,"gz":3}'));
   check('data with imu', G.latest().imu && G.latest().imu.gz === 3);
   const s = G.stats();
@@ -87,11 +92,12 @@ const CFG = {
 {
   const { G } = load();
   G._feed(`{"type":"cfg","cfg":${J(CFG)}}\n`);
-  check('cfg line: setup state "ok", config kept', G.configState() === 'ok' && J(G.config().map) === J(CFG.map) && G.config().w === 0.3);
+  check('cfg line: setup state "ok", config kept, calibration "same"', G.configState() === 'ok' && J(G.config().map) === J(CFG.map) && G.config().w === 0.3 &&
+    G.calibrationFrom() === 'same');
   G._feed(dataLine(CH16((i) => (i === 0 ? 2300 : i === 9 ? 1300 : 3300))));
   const h = G.latest().hands;
-  check('hands: R thumb = C0 (raw 2300 -> 0.50), L pinky = C9 (fist -> 1), others open (0)',
-    h.R.raw[0] === 2300 && Math.abs(h.R.norm[0] - 0.5) < 1e-9 && h.L.norm[4] === 1 && h.R.norm[1] === 0, J(h));
+  check('hands: R thumb = C0 (raw 2300 -> 0.50), L thumb = C9 (fist -> 1), others open (0)',
+    h.R.raw[0] === 2300 && Math.abs(h.R.norm[0] - 0.5) < 1e-9 && h.L.raw[0] === 1300 && h.L.norm[0] === 1 && h.L.norm[4] === 0 && h.R.norm[1] === 0, J(h));
   G._feed(dataLine(CH16(1300)));
   G._feed(dataLine(CH16(1300)));
   const avg = G.latest().hands.R.norm[0];
@@ -100,16 +106,43 @@ const CFG = {
   check('values beyond the calibration clamp to 0..1', G.latest().hands.R.norm.every((v) => v >= 0 && v <= 1));
 }
 
-// 5. a finger with no channel, a finger with open ~ fist -> null
+// 5. a finger with open ~ fist -> null; a sensor that reads LOWER when bent and one that reads HIGHER both work
 {
   const { G } = load();
   const c = JSON.parse(J(CFG));
-  c.map.R[2] = null;
   c.cal.L.fist[1] = 3280;   // 20 apart: < 50
+  c.cal.R.open[1] = 0; c.cal.R.fist[1] = 3000;   // R index rises when bent (the owner's real glove rests near 0)
   G._feed(`{"type":"cfg","cfg":${J(c)}}\n`);
   G._feed(dataLine(CH16(2000)));
+  G._feed(dataLine(CH16(2000)));
+  G._feed(dataLine(CH16(2000)));
   const h = G.latest().hands;
-  check('no channel -> raw/norm null; open ~ fist -> norm null', h.R.raw[2] === null && h.R.norm[2] === null && h.L.norm[1] === null && h.L.norm[0] !== null, J(h));
+  check('open ~ fist -> norm null', h.L.norm[1] === null && h.L.norm[0] !== null, J(h));
+  check('falling sensor (open 3300, fist 1300) at 2000 -> 0.65; rising sensor (open 0, fist 3000) at 2000 -> 0.67',
+    Math.abs(h.R.norm[0] - 0.65) < 1e-9 && Math.abs(h.R.norm[1] - 2 / 3) < 1e-9, J(h.R));
+}
+
+// 5b. old setups saved with another map (the Fingers step before the glove-static phase)
+{
+  const OLD = JSON.parse(J(CFG));
+  OLD.map = { L: [5, 6, 7, 8, 9], R: [0, 1, 2, 3, 4] };   // the simulator's old wiring: left thumb on C5
+  OLD.cal.L.open = [3301, 3302, 3303, 3304, 3305];          // per old finger: C5..C9
+  const a = load();
+  a.G._feed(`{"type":"cfg","cfg":${J(OLD)}}\n`);
+  const ca = a.G.config();
+  check('old map covering every channel: map replaced by MAP, calibration re-keyed by channel ("moved")',
+    a.G.calibrationFrom() === 'moved' && J(ca.map) === J(CFG.map) && J(ca.cal.L.open) === J([3305, 3304, 3303, 3302, 3301]) && J(ca.cal.R) === J(OLD.cal.R) &&
+    ca.cal.at === OLD.cal.at, J(ca));
+  const MISS = JSON.parse(J(OLD));
+  MISS.map.L[2] = 12;   // C7 was never calibrated (another channel used instead)
+  const b = load();
+  b.G._feed(`{"type":"cfg","cfg":${J(MISS)}}\n`);
+  check('old map missing a MAP channel: calibration dropped ("dropped"), setup kept, ready() false',
+    b.G.calibrationFrom() === 'dropped' && b.G.configState() === 'ok' && b.G.config().cal === null && b.G.config().w === 0.3 && b.G.ready() === false, J(b.G.config()));
+  const c = load();
+  c.G._feed(`{"type":"cfg","cfg":${J({ ...CFG, cam: undefined })}}\n`);
+  check('no cam stored -> DEFAULT_MIRROR (mirror on); a stored cam is kept',
+    c.G.config().cam.mirror === true && c.G.DEFAULT_MIRROR === true && load().G.validateConfig({ ...CFG, cam: { mirror: false } }).cam.mirror === false);
 }
 
 // 6. damaged setups
@@ -128,9 +161,9 @@ const CFG = {
 // 7. validateConfig
 {
   const { G } = load();
-  const v = G.validateConfig({ v: 1, map: CFG.map, extra: 1 });
-  check('validateConfig: minimal setup ok, unknown keys dropped, w defaults to 0.3, cal/cam/imuHand null',
-    v && !('extra' in v) && v.w === 0.3 && v.cal === null && v.cam === null && v.imuHand === null, J(v));
+  const v = G.validateConfig({ v: 1, extra: 1 });
+  check('validateConfig: minimal setup ok (no map needed), unknown keys dropped, map = MAP, w 0.3, cal/imuHand null, cam mirror on',
+    v && !('extra' in v) && J(v.map) === J(CFG.map) && v.w === 0.3 && v.cal === null && v.cam.mirror === true && v.imuHand === null, J(v));
   const bad = [
     { ...CFG, v: 2 },
     { ...CFG, map: { L: [16, 1, 2, 3, 4], R: CFG.map.R } },
@@ -172,8 +205,8 @@ const CFG = {
   await G.clearConfig();
   check('clearConfig -> "none", flash empty', G.configState() === 'none' && !store.has('sk_glove_sim_cfg'));
   let rejected = null;
-  await G.saveConfig({ v: 1 }).catch((e) => { rejected = e.message; });
-  check('saveConfig rejects an incomplete setup', /not complete/.test(rejected || ''), rejected);
+  await G.saveConfig({ v: 2 }).catch((e) => { rejected = e.message; });
+  check('saveConfig rejects a setup that is not valid', /not valid/.test(rejected || ''), rejected);
   await G.disconnect();
   rejected = null;
   await G.saveConfig(CFG).catch((e) => { rejected = e.message; });
