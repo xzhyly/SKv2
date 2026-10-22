@@ -2206,24 +2206,27 @@ transitions or animations in the new CSS (the shared on-screen keyboard keeps it
 targets >= 44 px; built and measured at 1024x600. Colours from `css/tokens.css`, font Inter (`css/fonts.css`).
 `:where()` keeps the new pages' font reset at zero specificity so each component's own weight/size wins.
 
-## Part 5: Settings (glove-serial phase 2026-10-20; two gloves and Set up glove, glove-hw phase 2026-10-21)
+## Part 5: Settings (glove-serial phase 2026-10-20; two gloves and Set up glove, glove-hw phase 2026-10-21; fixed wiring, glove-static phase 2026-10-22)
 
 `settings.html`: Admin -> Settings, admin only (`SKAccount.adminPage()`), the last item of the admin menu
 (`js/sk-account.js`). Sections General · Voice · Glove (General and Voice are placeholders). Glove:
 - status with the device line from the hello (`sk-glove · firmware 2.0 · 16 channels · IMU yes (21/22) · 30
-  readings/s · setup saved on glove today …` / `not set up` / `setup on glove is damaged…` / `old firmware…`);
+  readings/s · calibrated, saved on glove today …` / `not calibrated` / `setup on glove is damaged…` / `old firmware…`);
 - Connect / Set up glove / Disconnect;
-- LEFT HAND and RIGHT HAND, 5 bars each (0-1, name, raw), striped for a finger with no channel; "Not set up yet"
-  instead of the bars before Set up glove; the IMU (with its hand);
+- the Wiring card: "Wiring: fixed (C0–C4 right, C5–C9 left)", the calibration date (or not calibrated / kept from an
+  old setup / needed after an old setup), **Check fingers**;
+- LEFT HAND and RIGHT HAND, 5 bars each (0-1, name with its channel, raw), shown as soon as a glove is connected;
+  the IMU (with its hand);
 - no simulator switch (owner 2026-10-22): the simulator only with `?glove=sim`;
 - System (pi-power phase): Shut down / Restart and speaker volume;
-- **Set up glove**, full screen: 1 Fingers (10 steps, chips "R thumb C0"), 2 Calibrate (both hands open / two
-  fists), 3 Camera (raise the right hand; MediaPipe's handedness -> mirror on/off; Skip), 4 IMU (Left / Right hand,
-  only with an IMU), 5 Save on glove (summary). Cancel leaves without saving;
+- **Set up glove**, full screen (glove-static phase): 1 Check wiring (10 live bars, RIGHT and LEFT rows with
+  channels, ✓ per finger, outline on the moving bar, Skip check), 2 Calibrate (open 3 s / fists 3 s with a countdown,
+  ⚠ weak sensor), 3 Save + Test (0-100 % bars, Save / Redo calibration). Cancel leaves without saving. Check fingers
+  = step 1 alone. Details: `docs/system/GLOVE.md` "Set up glove";
 - once set up: "Glove strength in Let's Talk" (− 0.3 +, saved on the glove) and "Finger bars in Train Gestures" (switch,
   this kiosk; the Step 3 button only, the Let's Talk chip has none since the glove-chip phase);
-- a collapsible Debug panel: raw console, counters, commands, Download log, the 16-channel table (used by, min,
-  max, range, now), the setup stored on the glove (JSON) with Clear setup on glove, hints.
+- a collapsible Debug panel: raw console, counters, commands, Download log, the 16-channel table (finger from the
+  fixed wiring, min, max, range, now), the setup stored on the glove (JSON) with Clear setup on glove, hints.
 
 Only the section's own column scrolls; the page itself does not at 1024x600 (Set up glove fits without
 scrolling). Everything goes through `window.SKGlove` (`js/glove.js`); the protocol, the setup and the API are in

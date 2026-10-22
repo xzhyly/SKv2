@@ -16,7 +16,8 @@ the raw value of all 16 mux channels, and the glove's setup stored in its flash.
    GPIO 34 ───────────────────────  SIG
    GND ───────────────────────────  EN, GND
    3V3 ───────────────────────────  VCC   (0.1 µF from VCC to GND)
-                                    C0..C9  <- FS1..FS10 (one divider each, below)
+                                    C0..C4  <- right thumb, index, middle, ring, pinky
+                                    C9..C5  <- left  thumb, index, middle, ring, pinky (C9 = thumb)
 
    One divider per flex sensor:   3V3 ──[ flex sensor ]──┬──[ R ]── GND
                                                          └── mux C-pin
@@ -25,8 +26,9 @@ the raw value of all 16 mux channels, and the glove's setup stored in its flash.
    USB ── cable to the laptop / Pi (power and data)
 ```
 
-- **Which sensor is which finger does not matter here.** The firmware sends all 16 channels; Settings -> Glove ->
-  **Set up glove** finds each finger's channel and saves it on the glove.
+- **The finger wiring is fixed** (glove-static phase, 2026-10-22; `docs/system/GLOVE.md` "Fixed wiring"): right
+  thumb..pinky on C0..C4, left thumb..pinky on C9..C5. The firmware still sends all 16 channels as they are; the
+  page knows which is which. Settings -> Glove -> **Set up glove** step 1 (Check wiring) shows a wrong wire at once.
 - **3.3 V only.** Never connect 5 V to an ESP32 pin, the mux or a sensor.
 - **Direction:** on the owner's glove a finger reads **0 straight and rises when bent** (up to 2846-4095, measured
   2026-10-22). The page's calibration works in either direction, so this is fine.
@@ -66,9 +68,9 @@ the raw value of all 16 mux channels, and the glove's setup stored in its flash.
 
 1. XAMPP running; Chrome on `http://localhost/SKR/`; log in as an admin -> name chip -> **Settings** -> Glove ->
    **Connect glove** -> pick the ESP32's port. (Web Serial does not work on a LAN address or in Firefox.)
-2. The status line: `sk-glove · firmware 2.0 · 16 channels · IMU yes (21/22) · 30 readings/s · not set up`.
+2. The status line: `sk-glove · firmware 2.0 · 16 channels · IMU yes (21/22) · 30 readings/s · not calibrated`.
 3. **Debug**: about 30 lines/s; the 16-channel table's numbers change as you bend fingers.
-4. **Set up glove**: follow the screen (fingers, calibrate, camera, IMU, Save on glove).
+4. **Set up glove**: follow the screen (check wiring, calibrate, save + test).
 5. Unplug the cable: "reconnecting…". Plug it back: connected within 3 s with no prompt, and the setup is still
    there (it comes from the glove).
 

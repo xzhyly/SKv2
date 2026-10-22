@@ -16,15 +16,38 @@ camera k-NN's top 5 guesses; it never replaces the camera.
 
 Everything that reads or writes glove lines follows this file: the firmware, `js/glove.js` and its simulator.
 
+**Since the glove-static phase (2026-10-22) the finger wiring is fixed in hardware** (section "Fixed wiring"): Set up
+glove no longer searches for the fingers or asks for the camera, it is 1 Check wiring, 2 Calibrate, 3 Save + Test.
+
 ## Hardware (as the owner's diagram)
 
 | | |
 |---|---|
 | Mux select | S0 GPIO 14, S1 GPIO 27, S2 GPIO 26, S3 GPIO 25 |
 | Mux output | SIG -> GPIO 34 (ADC1); EN -> GND; VCC 3V3 with 0.1 µF |
-| Sensors | FS1-FS10 on C0-C9 (the diagram; Set up glove finds the real channels). Each a voltage divider with a resistor. **Measured on the owner's glove (2026-10-22): 0 straight, rising to 2846-4095 fully bent** (C0-C9; the opposite of what the diagram's divider suggested). Calibration works either way |
+| Sensors | FS1-FS10 on C0-C9, in the fixed order below. Each a voltage divider with a resistor. **Measured on the owner's glove (2026-10-22): 0 straight, rising to 2846-4095 fully bent** (C0-C9; the opposite of what the diagram's divider suggested). Calibration works either way |
 | IMU | MPU6050 / GY-521 on I2C SDA 21 / SCL 22 (the firmware also tries 22 / 21) |
 | Power | USB only. The diagram's 18650 + TP4056 + SW1 are not used: SW1 OFF while USB is plugged in |
+
+## Fixed wiring (glove-static phase, 2026-10-22)
+
+One constant, `MAP` in `js/glove.js` (`SKGlove.MAP`); everything else reads it.
+
+| Finger | RIGHT hand | LEFT hand |
+|---|---|---|
+| Thumb | C0 | C9 |
+| Index | C1 | C8 |
+| Middle | C2 | C7 |
+| Ring | C3 | C6 |
+| Pinky | C4 | C5 |
+
+C10-C15 are unused. Left and right come from this table, not from the camera. What the camera step used to measure
+(`cam.mirror`: does MediaPipe call the wearer's right hand "Left"?) is still needed by Let's Talk to pair a hand on
+screen with a glove, but it follows from the code, not the camera: MediaPipe labels handedness as if the picture
+were a mirrored selfie, and `js/gesture-data.js` sends it the camera's own unmirrored frames (`selfieMode` is not
+set, `js/gesture-data.js:250-255`), so the right hand reads "Left". `DEFAULT_MIRROR = true` in `js/glove.js` is used
+for every setup with no `cam`; a `cam` measured by the old camera step is kept. A camera that mirrors its own
+picture in hardware would need `cam.mirror: false` (not handled by any screen now).
 
 ## Link
 
@@ -58,7 +81,7 @@ Everything that reads or writes glove lines follows this file: the firmware, `js
 
 - `t`: the glove's `millis()`, an integer that only grows (it restarts at 0 on reboot).
 - `ch`: **16 integers, raw ADC 0-4095** (12-bit), mux channels C0-C15 in order. The firmware never says which
-  channel is which finger; the setup does. Unused channels read whatever their pin floats to.
+  channel is which finger; the fixed wiring (`SKGlove.MAP`) does. Unused channels read whatever their pin floats to.
 - `imu` (only when the hello said `imu: true`): `ax ay az` in **g**, `gx gy gz` in **degrees per second**, at most
   2 decimals each.
 
@@ -91,7 +114,7 @@ length and the outer `{ }`); the page validates the setup before sending it and 
 
 ```json
 {"v":1,
- "map":{"L":[5,6,7,8,9],"R":[0,1,2,3,4]},
+ "map":{"L":[9,8,7,6,5],"R":[0,1,2,3,4]},
  "cal":{"L":{"open":[3290,3301,3288,3296,3310],"fist":[1300,1302,1298,1299,1301]},
         "R":{"open":[...5],"fist":[...5]},"at":"2026-10-21T12:00:00.000Z"},
  "cam":{"mirror":true},
@@ -102,15 +125,22 @@ length and the outer `{ }`); the page validates the setup before sending it and 
 | Key | |
 |---|---|
 | `v` | 1 |
-| `map.L` / `map.R` | the mux channel (0-15) of each finger, thumb -> pinky; `null` for a finger Set up glove skipped |
-| `cal` | open and fist values per finger (median of 3 s each), and when; `null` before calibration. A skipped finger has 0 / 0 |
-| `cam.mirror` | `true` when MediaPipe labels the wearer's **right** hand "Left" on this kiosk's camera; `null` when the camera step was skipped |
-| `imuHand` | the hand with the MPU6050, or `null` |
+| `map.L` / `map.R` | always the fixed wiring (`SKGlove.MAP`), thumb -> pinky; written so an older kiosk can still read the setup. Optional when reading |
+| `cal` | open and fist values per finger (median of 3 s each), and when; `null` before calibration |
+| `cam.mirror` | `true` when MediaPipe labels the wearer's **right** hand "Left"; `DEFAULT_MIRROR` (`true`) when not stored (section "Fixed wiring") |
+| `imuHand` | the hand with the MPU6050, or `null`. Set up glove no longer asks; a stored value is kept |
 | `w` | glove strength for the Phase 2 re-ranking, 0-1, default 0.3 |
 
 `SKGlove.validateConfig(c)` is the rule: anything else (wrong version, a channel outside 0-15, a 6th finger, a
 value outside 0-4095, `cal` without `at`, `w` outside 0-1, ...) is not valid. A stored setup that is not valid
 JSON or not valid is reported as **damaged** ("run Set up glove again").
+
+**Old setups** (saved before the glove-static phase, with the finger map Set up glove found): the stored map is
+ignored. Its calibration is kept only when every channel of the fixed wiring had one there; it is then re-keyed by
+channel (the calibration of C9 goes to the left thumb, whichever finger it belonged to before) and
+`SKGlove.calibrationFrom()` is `'moved'` (Settings: "kept from the old setup, re-keyed to the fixed wiring"). Otherwise
+the calibration is dropped (`'dropped'`, "Calibration needed: the old setup used another wiring"), `ready()` is false
+and the glove stays hidden in Let's Talk until Set up glove runs again. The next save writes the fixed map.
 
 ## Bad lines
 
@@ -122,12 +152,11 @@ A line that is not valid JSON, or valid JSON that is none of the lines above:
 
 ## Values the page derives (`js/glove.js`)
 
-- **Per finger** (only with a setup): `raw` = the mapped channel's value; `norm` = `(raw - open) / (fist - open)`,
-  clamped to 0..1 (0 = open hand, 1 = fist), then a moving average of the last 3 readings. It works whichever way
-  the divider is wired.
+- **Per finger** (always, through the fixed wiring): `raw` = the finger's channel; `norm` = `(raw - open) / (fist - open)`,
+  clamped to 0..1 (0 = open hand, 1 = fist), then a moving average of the last 3 readings. A sensor that reads
+  lower when bent just has `fist < open` (a negative span), so nothing is inverted by hand.
   - No calibration yet: `raw / 4095`.
-  - A finger with no channel: `raw` and `norm` are `null`.
-  - A finger whose open and fist are less than 50 apart: `norm` is `null` (ignored, not 0).
+  - A finger whose open and fist are less than 50 apart (`MINSPAN`): `norm` is `null` (ignored, not 0).
 - **IMU on the page**: tilt X = `atan2(ay, az)`, tilt Y = `atan2(-ax, hypot(ay, az))` (degrees), turn = `gz`.
 
 ## `window.SKGlove`
@@ -135,6 +164,7 @@ A line that is not valid JSON, or valid JSON that is none of the lines above:
 | Member | |
 |---|---|
 | `CHANNELS`, `FINGERS`, `HANDS`, `DEFAULT_W` | 16, thumb..pinky, `['L','R']`, 0.3 |
+| `MAP`, `DEFAULT_MIRROR`, `MINSPAN` | the fixed wiring `{ R: [0,1,2,3,4], L: [9,8,7,6,5] }`, `true`, 50 |
 | `isSupported()` | Web Serial present (or the simulator is on) |
 | `status()` | `'unsupported'` / `'disconnected'` / `'connecting'` / `'connected'` / `'reconnecting'` |
 | `connect()` | opens the port picker (`requestPort`, needs a tap), then the port. Simulator mode: starts the simulator |
@@ -142,10 +172,11 @@ A line that is not valid JSON, or valid JSON that is none of the lines above:
 | `disconnect()` | closes the port (or stops the simulator); no auto-reconnect afterwards |
 | `send(line)` / `ping()` | writes one line / sends `ping` (the next pong fires `pong` with `{ rtt }`) |
 | `on(event, cb)` | `'status'`, `'data'`, `'hello'`, `'config'`, `'raw'`, `'error'`, `'pong'`; returns an unsubscribe function |
-| `latest()` | `{ t, ch: [16], hands: { L: { raw: [5], norm: [5] }, R: {...} } or null, imu, at }`, or null |
+| `latest()` | `{ t, ch: [16], hands: { L: { raw: [5], norm: [5] }, R: {...} }, imu, at }`, or null |
 | `info()` | the last hello, or null |
 | `config()` / `configState()` | the validated setup or null / `'unknown'`, `'none'`, `'ok'`, `'damaged'` |
-| `validateConfig(c)` | a clean copy of a valid setup, or null |
+| `validateConfig(c, info)` | a clean copy of a valid setup (map = `MAP`), or null; `info.cal` says what happened to the calibration |
+| `calibrationFrom()` | for the setup read from the glove: `'none'`, `'same'`, `'moved'` (old map, re-keyed) or `'dropped'` (old map, calibrate again) |
 | `saveConfig(c)` / `clearConfig()` | `cfg-set` / `cfg-clear`; resolve on `cfg-ok`, reject on `cfg-error`, a 2 s timeout or when not connected |
 | `ready()` | connected **and** a setup with a calibration: the one test other pages use |
 | `stats()` / `resetMinMax()` / `log()` | debugger counters, per-channel min/max (16), the last 2,000 lines |
@@ -156,26 +187,37 @@ retried every 3 s, and the same glove plugged in again goes back to `'connected'
 count goes up); its hello and `cfg-get` bring the setup back.
 
 **Simulator** (only with `?glove=sim` in the address; owner 2026-10-22: no switch on any page, an old `sk_glove_sim` value is ignored): produces firmware 2.0's lines (`"fw":"2.0-sim"`):
-C0-C4 = right thumb..pinky, C5-C9 = left thumb..pinky (about 3300 straight, about 1300 bent, a small idle wobble),
+the fixed wiring (C0-C4 = right thumb..pinky, C9-C5 = left thumb..pinky; about 3300 straight, about 1300 bent, a small idle wobble),
 C10 copies 65 % of C9 (like the real mux), C11-C15 low noise, an IMU, one bad line about every 5 s. It answers `hello`, `ping`, `cfg-get`, `cfg-set`,
 `cfg-clear`; its "flash" is `localStorage` `sk_glove_sim_cfg`, so a setup survives a reload.
 
-## Set up glove (Settings -> Glove)
+## Set up glove (Settings -> Glove, glove-static phase)
 
-Full screen, in this order; Cancel leaves without saving:
-1. **Fingers** — right thumb..pinky, then left thumb..pinky. Each: 1 s rest, then 2 s bending. Per channel,
-   move = the largest distance from its resting median while bending, minus how much it wandered at rest. The
-   channel with the largest move wins if move > 150 **and** it is at least 2x any other channel's except the one
-   right after it (an unconnected mux channel copies part of the channel read before it: on the owner's glove,
-   C9 bent to 3171 put up to 2169 on unconnected C10); otherwise
-   "No sensor moved" / "moved about the same" with Retry / Skip. A channel already given to another finger is
-   refused ("C0 is already R thumb").
-2. **Calibrate** — both hands open 3 s, both fists 3 s (1 s get-ready before each); median per channel.
-3. **Camera** — "Raise your RIGHT hand": the same MediaPipe pipeline as Let's Talk (`js/gesture-data.js`); 5 frames
-   with exactly one hand and a handedness score >= 0.8 decide `cam.mirror`. Skippable (then Phase 2 never uses the
-   glove).
-4. **IMU** (only when the hello says `imu: true`) — which hand has the sensor box.
-5. **Save on glove** — `saveConfig()`; on `cfg-ok` back to Settings.
+Full screen, three steps, EN and FIL text, no modals; Cancel leaves without saving. Every finger is shown with its
+channel ("Thumb C0"), in two rows: RIGHT (C0-C4) and LEFT (C9-C5).
+1. **Check wiring** (live) — "Bend one finger at a time. The matching bar should move." Each bar shows the raw value.
+   A finger gets ✓ (green) once its raw value has spanned **400** since the step opened (chosen: about 10 % of 0-4095;
+   the simulator's idle wobble stays under 150). The bar moving now has an **orange outline** (its value spanned 150
+   within the last 0.4 s), so a finger wired to the wrong channel shows at once: the wrong bar lights up. Next once
+   all 10 have ✓; "Skip check" goes straight to step 2.
+2. **Calibrate** — "Open both hands flat — 3 s", then "Make two fists — 3 s" (1 s "Ready…" before each, a seconds
+   countdown, live bars); median per channel, saved as `open` / `fist` per finger (a sensor that reads lower when
+   bent is handled by the signed span, above). Each finger then shows `open→fist`.
+3. **Save + Test** — 10 bars 0-100 % with the new calibration ("open hand = 0, fist = 100"), before saving.
+   **Save** = `saveConfig()` on the glove (the simulator: its flash), then "Done"; **Redo calibration** goes back to 2.
+   `imuHand`, `cam` and `w` already on the glove are kept.
+
+**Weak sensor.** After step 2, a finger whose open and fist are **less than 150 apart** (the old Fingers step's
+"moved" threshold) is marked ⚠ "weak sensor" and named in the message ("⚠ Weak sensor: Right ring C3"). Save stays
+allowed. Between 50 and 150 the finger is used but its 0-1 value is coarse; under 50 (`MINSPAN`) it is
+**ignored** (`norm` null; the test view says "ignored"), so recognition compares the other fingers only. Usual causes:
+the finger was not fully bent, a loose wire, or a divider resistor that does not suit the sensor.
+
+**Check fingers** (Glove card) opens step 1 alone, titled CHECK FINGERS, with "Done" at any time: a quick wiring
+check that never changes the calibration.
+
+The Glove card shows "Wiring: fixed (C0–C4 right, C5–C9 left)" and the calibration date (or "not calibrated yet",
+or the old-setup notes above). There is no camera step and no IMU step any more (the IMU hand is only shown).
 
 ## Debugger hints (Settings -> Glove -> Debug)
 
@@ -185,11 +227,11 @@ Full screen, in this order; Cancel leaves without saving:
 | hello `fw` 1.x | "Old firmware (1.x): flash sk_glove 2.0 (tools/glove-firmware/README.md)." |
 | setup damaged | "The setup stored on the glove is damaged: run Set up glove again." |
 | connected for 3 s and fewer than 10 lines/s | "Only N lines/s: check the firmware delay (should be ~33 ms)." |
-| a mapped channel at 0 or 4095 for its last 30 readings | "C<n> (<finger>): always <value>: sensor not connected / check the voltage divider." |
-| a mapped channel's min/max range under 20 after 300 data lines | "C<n> (<finger>) never changes: check that finger's sensor and wire." |
+| a finger's channel at 0 or 4095 for its last 30 readings | "C<n> (<finger>): always <value>: sensor not connected / check the voltage divider." |
+| a finger's channel's min/max range under 20 after 300 data lines | "C<n> (<finger>) never changes: check that finger's sensor and wire." |
 | bad lines in the last 5 s | "Bad lines (last: ...): check the firmware prints one JSON object per line." |
 
-The Debug panel also shows the **16-channel table** (channel, used by, min, max, range, now), the **setup stored on
+The Debug panel also shows the **16-channel table** (channel, finger from the fixed wiring, min, max, range, now), the **setup stored on
 the glove** (JSON) and **Clear setup on glove**.
 
 ## Glove in recognition (glove-hw Phase 2, 2026-10-21)
@@ -226,7 +268,7 @@ the glove** (JSON) and **Clear setup on glove**.
 **When the glove is used** (`GloveAssist.apply(scores, knnModel)`, called right after `knnPredict` in
 `js/talk-signing.js` `tick()` and in `js/gesture-training-ui.js` Step 3): ALL of
 1. 🧤 is ON and `SKGlove.ready()`;
-2. the setup has the camera step (`cam`);
+2. the setup has `cam` (always true since the glove-static phase: `DEFAULT_MIRROR` when none is stored);
 3. glove data younger than **1 s** (MediaPipe holds the page's only thread while it detects; about 1.1 s per frame was
    measured in the cloud test container, and glove lines wait behind it);
 4. the gloves are worn: some finger moved by >= 0.05 in the last 3 s;
