@@ -233,7 +233,7 @@
       if (!p) return;
       pendingCfg = null;
       clearTimeout(p.timer);
-      if (msg.type === 'cfg-ok') { setConfig(p.next, p.next ? 'ok' : 'none'); p.resolve(p.next); }
+      if (msg.type === 'cfg-ok') { cfgCal = p.next && p.next.cal ? 'same' : 'none'; setConfig(p.next, p.next ? 'ok' : 'none'); p.resolve(p.next); }
       else p.reject(new Error('The glove did not save the setup: ' + msg.why));
       return;
     }
@@ -290,7 +290,6 @@
   function saveConfig(c) {
     var v = validateConfig(c);
     if (!v) return Promise.reject(new Error('The setup is not complete or not valid'));
-    cfgCal = v.cal ? 'same' : 'none';
     var text = JSON.stringify(v);
     if (text.length > CFG_MAX) return Promise.reject(new Error('The setup is too long for the glove (' + text.length + ' characters)'));
     return cfgCommand('cfg-set ' + text, v);
