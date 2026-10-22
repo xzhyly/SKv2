@@ -249,7 +249,7 @@
                 <span class="lbl">16 MUX CHANNELS (RAW) — CHECK WIRING AND RESISTORS</span>
                 <button type="button" class="btn sec small" id="d-mmreset">Reset min/max</button>
               </div>
-              <table class="mm"><thead><tr><th>Channel</th><th>Used by</th><th>Min</th><th>Max</th><th>Range</th><th>Now</th></tr></thead><tbody id="mm"></tbody></table>
+              <table class="mm"><thead><tr><th>Channel</th><th>Finger (fixed wiring)</th><th>Min</th><th>Max</th><th>Range</th><th>Now</th></tr></thead><tbody id="mm"></tbody></table>
               <div class="row between">
                 <span class="lbl">SETUP STORED ON THE GLOVE</span>
                 <button type="button" class="btn red small" id="d-cfgclear">Clear setup on glove</button>
@@ -820,10 +820,11 @@
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     });
 
+    // channel -> "Right thumb" from the fixed wiring (with or without a setup); the table and the hints print the
+    // channel beside it ("C0 · Right thumb", "C0 (Right thumb)").
     function usedBy() {
-      var by = {}, c = G.config();
-      if (!c) return by;
-      ['L', 'R'].forEach(function (h) { c.map[h].forEach(function (ch, i) { if (ch !== null) by[ch] = fingerLabel(h, i); }); });
+      var by = {};
+      ['L', 'R'].forEach(function (h) { G.MAP[h].forEach(function (ch, i) { by[ch] = (h === 'R' ? 'Right ' : 'Left ') + NAMES[i].toLowerCase(); }); });
       return by;
     }
     function ago(ms) { return ms === null ? '–' : ms < 10000 ? ms + ' ms' : Math.round(ms / 1000) + ' s'; }
