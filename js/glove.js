@@ -536,6 +536,7 @@
     MAP: { R: MAP.R.slice(), L: MAP.L.slice() },
     DEFAULT_MIRROR: DEFAULT_MIRROR,
     DEFAULT_W: DEFAULT_W,
+    MINSPAN: MINSPAN,
     isSupported: isSupported,
     status: status,
     connect: connect,

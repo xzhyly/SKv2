@@ -10,8 +10,9 @@
      Admin only. Sections General · Voice · Glove · System; General and Voice are placeholders. Glove: status
      from the hello line, Connect / Set up glove / Disconnect, two hands of live finger bars, IMU (the
      simulator only with ?glove=sim, no switch), and a collapsible Debug panel (raw console, counters, commands, log download,
-     16-channel table, the setup stored on the glove, hints). Set up glove is a full-screen wizard:
-     find the fingers, calibrate, camera handedness, IMU hand, save ON THE GLOVE.
+     16-channel table, the setup stored on the glove, hints). Set up glove is a full-screen wizard (glove-static
+     phase 2026-10-22: the finger wiring is fixed, SKGlove.MAP): 1 Check wiring, 2 Calibrate, 3 Save + Test, saved
+     ON THE GLOVE; "Check fingers" opens step 1 alone.
      The glove goes through window.SKGlove (js/glove.js), not the server. System (pi-power phase): Shut
      down / Restart the Pi and the speaker volume through php/api/system_power.php (Pi only). -->
 <link rel="stylesheet" href="css/tokens.css">
@@ -83,44 +84,43 @@
   table.mm th:first-child, table.mm td:first-child, table.mm th:nth-child(2), table.mm td:nth-child(2) { text-align: left; }
   table.mm tr.used td { font-weight: 700; color: var(--navy); }
   pre.cfg { margin: 0; background: var(--bg); border-radius: 8px; padding: 8px 10px; font: 12px/1.45 Consolas, 'Courier New', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-  /* Set up glove (full screen) */
+  /* Set up glove (full screen, glove-static phase): 1 Check wiring · 2 Calibrate · 3 Save + Test */
   .su-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 14px; }
   .su-steps { flex: none; display: flex; gap: 8px; }
+  .su-steps[hidden] { display: none; }
   .su-steps span { flex: 1; height: 36px; display: grid; place-items: center; border-radius: 8px; background: #e6ebf3; color: var(--muted); font-size: 13px; font-weight: 800; }
   .su-steps span.on { background: var(--orange); color: #fff; }
   .su-steps span.done { background: #e8f7ef; color: #15603a; }
-  .su-panel { flex: 1; min-height: 0; display: none; gap: 14px; }
+  .su-panel { flex: 1; min-height: 0; display: none; flex-direction: column; gap: 10px; background: #fff; border: 2px solid var(--border); border-radius: 12px; padding: 12px 16px; }
   .su-panel.on { display: flex; }
-  .su-main { flex: 1; min-width: 0; background: #fff; border: 2px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; text-align: center; }
-  .su-main .big { font-size: 26px; font-weight: 800; color: var(--navy); }
-  .su-main .phase { font-size: 13px; font-weight: 800; color: var(--orange); letter-spacing: 0.5px; min-height: 18px; }
-  .su-main .hand { font-size: 60px; line-height: 1; }
-  .su-side { width: 300px; flex: none; background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
-  .chips { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .chip { height: 34px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-radius: 8px; background: var(--bg); font-size: 13px; font-weight: 700; color: var(--muted); }
-  .chip.found { background: #e8f7ef; color: #15603a; }
-  .chip.skip { background: #fdecec; color: #8a1f1f; }
-  .chip.now { box-shadow: inset 0 0 0 2px var(--orange); color: var(--navy); }
-  .prog { height: 10px; width: 100%; max-width: 360px; background: #e6ebf3; border-radius: 5px; overflow: hidden; }
-  .prog i { display: block; height: 100%; width: 0; background: var(--orange); }
-  .prog i.done { background: var(--green); }
-  .su-msg { min-height: 20px; font-size: 15px; font-weight: 700; color: var(--red); }
+  .su-head { flex: none; display: flex; align-items: center; gap: 12px; }
+  .su-head > div:first-child { flex: 1; min-width: 0; }
+  .su-head .big { font-size: 20px; font-weight: 800; color: var(--navy); }
+  .su-head .fil { font-size: 14px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  .su-count { flex: none; min-width: 96px; text-align: right; font-size: 22px; font-weight: 800; color: var(--orange); font-variant-numeric: tabular-nums; }
+  .su-msg { flex: none; min-height: 20px; font-size: 15px; font-weight: 700; color: var(--red); }
   .su-msg.ok { color: #15803d; }
-  .steps2 { flex: 1; display: flex; gap: 14px; min-height: 0; }
-  .step { flex: 1; background: #fff; border: 2px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: center; text-align: center; }
-  .step.on { border-color: var(--orange); background: #fff7f0; }
-  .step .hand { font-size: 56px; line-height: 1; }
-  .step b { font-size: 20px; }
-  .cal-vals { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-height: 32px; }
-  .cam-box { width: 320px; height: 240px; border-radius: 10px; overflow: hidden; background: #101727; flex: none; }
-  .cam-box video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-  .pick { display: flex; gap: 14px; }
-  .pick .btn { height: 72px; min-width: 200px; font-size: 18px; }
-  .pick .btn.on { background: var(--orange); color: #fff; border-color: var(--orange); }
-  table.sum { border-collapse: collapse; font-size: 14px; text-align: left; }
-  table.sum td { padding: 5px 10px; border-bottom: 1px solid var(--border); }
-  table.sum td:first-child { font-weight: 800; color: var(--muted); }
+  /* 10 finger bars: RIGHT row, LEFT row; each with its channel. ok = moved clearly (✓), moving = moving now,
+     weak = weak sensor (⚠) */
+  .g10 { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+  .g10-row { flex: 1; min-height: 0; display: flex; gap: 8px; }
+  .g10-hand { width: 78px; flex: none; display: flex; flex-direction: column; justify-content: center; font-size: 15px; font-weight: 800; color: var(--navy); }
+  .g10-hand small { font-size: 12px; color: var(--muted); }
+  .g10-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; border: 2px solid transparent; border-radius: 10px; background: var(--bg); }
+  .g10-name { font-size: 14px; font-weight: 800; color: var(--navy); white-space: nowrap; }
+  .g10-name small { font-size: 11px; font-weight: 700; color: var(--muted); }
+  .g10-trk { flex: 1; min-height: 30px; width: 30px; background: #dfe5ee; border-radius: 7px; position: relative; overflow: hidden; }
+  .g10-trk i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--orange); border-radius: 7px; }
+  .g10-val { font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .g10-cell.moving { border-color: var(--orange); }
+  .g10-cell.ok { background: #e8f7ef; }
+  .g10-cell.ok .g10-trk i { background: var(--green); }
+  .g10-cell.ok .g10-name::after { content: " \2713"; color: #15803d; }
+  .g10-cell.weak { background: #fff4e0; }
+  .g10-cell.weak .g10-name::after { content: " \26A0"; color: #b45309; }
   .su-foot { flex: none; display: flex; gap: 10px; align-items: center; }
+  .linkbtn { height: 44px; padding: 0 8px; border: 0; background: transparent; color: var(--navy); font-size: 15px; font-weight: 700; text-decoration: underline; cursor: pointer; }
+  .linkbtn[hidden] { display: none; }
   /* System (pi-power phase): power buttons, volume, confirm dialog, full-screen message */
   .btn.solid-red { background: var(--red); color: #fff; }
   .sys-note { font-size: 13px; color: var(--muted); }
@@ -299,74 +299,51 @@
     <p class="fil" id="sf-fil"></p>
   </div>
 
-  <!-- Set up glove (full screen): 1 Fingers · 2 Calibrate · 3 Camera · 4 IMU · 5 Save. -->
+  <!-- Set up glove (full screen, glove-static phase): 1 Check wiring · 2 Calibrate · 3 Save + Test. The finger wiring is
+       fixed (SKGlove.MAP), so there is no finger search and no camera step. "Check fingers" opens step 1 alone. -->
   <div class="sk-screen" id="screen-setup">
     <div class="su-body">
       <div class="su-steps" id="su-steps">
-        <span data-step="fingers">1 · Fingers</span><span data-step="cal">2 · Calibrate</span><span data-step="cam">3 · Camera</span><span data-step="imu">4 · IMU</span><span data-step="save">5 · Save</span>
+        <span data-step="check">1 · Check wiring</span><span data-step="cal">2 · Calibrate</span><span data-step="save">3 · Save + Test</span>
       </div>
 
-      <div class="su-panel" id="su-fingers">
-        <div class="su-main">
-          <div class="phase" id="su-f-phase"></div>
-          <div class="hand" id="su-f-icon">&#128070;</div>
-          <div class="big" id="su-f-title">Bend your RIGHT thumb</div>
-          <div class="cnt">Keep every other finger still and both hands open. First 1 second of rest, then bend and straighten that finger for 2 seconds.</div>
-          <div class="prog"><i id="su-f-prog"></i></div>
-          <div class="su-msg" id="su-f-msg" role="status"></div>
+      <div class="su-panel" id="su-check">
+        <div class="su-head">
+          <div><div class="big">Bend one finger at a time. The matching bar should move.</div>
+            <div class="fil">Ibaluktot ang isang daliri sa bawat pagkakataon. Dapat gumalaw ang katugmang bar.</div></div>
+          <div class="su-count" id="ck-count">0 / 10</div>
         </div>
-        <div class="su-side">
-          <div class="lbl">FINGERS FOUND</div>
-          <div class="chips" id="su-f-chips"></div>
-        </div>
+        <div class="g10" id="ck-grid"></div>
+        <div class="su-msg ok" id="ck-msg" role="status"></div>
       </div>
 
       <div class="su-panel" id="su-cal">
-        <div class="steps2">
-          <div class="step" id="cal-open"><div class="lbl" id="s1-lbl">STEP 1</div><div class="hand">&#128400;&#128400;</div><b>Open both hands</b><div class="cnt">Fingers straight, relaxed</div><div class="prog"><i id="s1-prog"></i></div><div class="cal-vals" id="s1-vals"></div></div>
-          <div class="step" id="cal-fist"><div class="lbl" id="s2-lbl">STEP 2</div><div class="hand">&#9994;&#9994;</div><b>Make two fists</b><div class="cnt">Hold them for 3 seconds</div><div class="prog"><i id="s2-prog"></i></div><div class="cal-vals" id="s2-vals"></div></div>
+        <div class="su-head">
+          <div><div class="big" id="cal-title">Open both hands flat — 3 s</div><div class="fil" id="cal-fil"></div></div>
+          <div class="su-count" id="cal-count"></div>
         </div>
-      </div>
-
-      <div class="su-panel" id="su-cam">
-        <div class="su-main" style="flex-direction:row;gap:20px">
-          <div class="cam-box"><video id="su-video" autoplay muted playsinline></video></div>
-          <div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start;text-align:left;max-width:360px">
-            <div class="big">Raise your RIGHT hand</div>
-            <div class="cnt">Only the right hand, open, in front of the camera, for a few seconds. This tells the kiosk how its camera sees left and right, so Let's Talk knows which glove belongs to which hand on screen.</div>
-            <div class="su-msg" id="su-c-msg" role="status"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="su-panel" id="su-imu">
-        <div class="su-main">
-          <div class="big">Which hand has the sensor box (IMU)?</div>
-          <div class="cnt">The small board with the MPU6050 / GY-521.</div>
-          <div class="pick"><button type="button" class="btn sec" id="su-imu-L">Left hand</button><button type="button" class="btn sec" id="su-imu-R">Right hand</button></div>
-        </div>
+        <div class="g10" id="cal-grid"></div>
+        <div class="su-msg" id="cal-msg" role="status"></div>
       </div>
 
       <div class="su-panel" id="su-save">
-        <div class="su-main">
-          <div class="big">Save the setup on the glove</div>
-          <table class="sum"><tbody id="su-sum"></tbody></table>
-          <div class="su-msg" id="su-s-msg" role="status"></div>
+        <div class="su-head">
+          <div><div class="big">Test: open hand = 0, fist = 100</div><div class="fil">Subukan: bukas na kamay = 0, nakakuyom = 100</div></div>
         </div>
+        <div class="g10" id="ts-grid"></div>
+        <div class="su-msg" id="su-s-msg" role="status"></div>
       </div>
 
       <div class="su-foot">
+        <button type="button" class="linkbtn" id="ck-skip">Skip check · Laktawan</button>
         <div style="flex:1"></div>
-        <button type="button" class="btn sec" id="su-retry" hidden>Retry</button>
-        <button type="button" class="btn sec" id="su-skip" hidden>Skip</button>
-        <button type="button" class="btn pri" id="su-next" style="width:200px" disabled>Next</button>
-        <button type="button" class="btn pri" id="su-savebtn" style="width:220px" hidden>Save on glove</button>
+        <button type="button" class="btn sec" id="su-retry" hidden>Redo calibration · Ulitin</button>
+        <button type="button" class="btn pri" id="su-next" style="width:200px" disabled>Next · Susunod</button>
+        <button type="button" class="btn pri" id="su-savebtn" style="width:220px" hidden>Save · I-save</button>
       </div>
     </div>
   </div>
 
-  <script src="js/lib/mediapipe/hands.js"></script>
-  <script src="js/gesture-data.js"></script>
   <script src="js/glove.js"></script>
   <script src="js/virtual-keyboard.js" defer></script>
   <script>
@@ -522,7 +499,7 @@
     var pendingData = null;
     G.on('data', function (d) {
       if (su.collect) su.collect(d);
-      if (pendingData === null) requestAnimationFrame(function () { renderData(pendingData); pendingData = null; });
+      if (pendingData === null) requestAnimationFrame(function () { renderData(pendingData); renderSetup(pendingData); pendingData = null; });
       pendingData = d;
     });
     G.on('status', function () {
@@ -535,365 +512,241 @@
     $('g-connect').addEventListener('click', function () { G.connect().then(renderStatus); });
     $('g-disconnect').addEventListener('click', function () { G.disconnect().then(renderStatus); });
 
-    // ════════ Set up glove ════════
-    var ORDER = [];   // the 10 finger steps: right thumb..pinky, then left thumb..pinky
-    ['R', 'L'].forEach(function (h) { NAMES.forEach(function (_, i) { ORDER.push({ h: h, i: i }); }); });
-    var REST_MS = 1000, BEND_MS = 2000, MOVE_MIN = 150, CLEAR = 2, CAL_READY_MS = 1000, CAL_REC_MS = 3000;
-    var CAM_SCORE = 0.8, CAM_FRAMES = 5, CAM_WAIT_MS = 5000;
-    var su = { collect: null };   // collect(d): the running step's sample sink
+    // ════════ Set up glove (glove-static phase): 1 Check wiring · 2 Calibrate · 3 Save + Test ════════
+    // The wiring is fixed (SKGlove.MAP): no finger search, no camera step (DEFAULT_MIRROR in js/glove.js), no IMU
+    // step (a stored imuHand is kept). su.mode: 'setup' (all three steps) or 'check' (step 1 alone, from Check fingers).
+    var MAP = G.MAP;
+    var CELLS = [];   // the 10 fingers: right thumb..pinky, then left thumb..pinky
+    ['R', 'L'].forEach(function (h) { NAMES.forEach(function (_, i) { CELLS.push({ h: h, i: i, c: MAP[h][i] }); }); });
+    var CHECK_RANGE = 400;        // step 1: ✓ once a finger's raw value has spanned this much (chosen: ~10 % of 0-4095)
+    var MOVING_MS = 400, MOVING_RANGE = 150;   // outline "moving now": span within the last 0.4 s (150 = the old Fingers step's MOVE_MIN)
+    var WEAK = 150;               // step 2: open and fist closer than this -> ⚠ weak sensor (closer than G.MINSPAN: ignored)
+    var CAL_READY_MS = 1000, CAL_REC_MS = 3000;
+    var CAL_TEXT = {
+      open: { en: 'Open both hands flat — 3 s', fil: 'Ibuka nang patag ang dalawang kamay — 3 s' },
+      fist: { en: 'Make two fists — 3 s', fil: 'Ikuyom ang dalawang kamay — 3 s' }
+    };
+    var su = { collect: null, step: null };   // collect(d): the running step's sample sink
     var suTimer = null;
-
+    var grids = {};
     function median(list) { var s = list.slice().sort(function (a, b) { return a - b; }); return s.length ? s[Math.floor(s.length / 2)] : null; }
-    function fingerLabel(h, i) { return h + ' ' + NAMES[i].toLowerCase(); }
     function stopTimers() { clearInterval(suTimer); suTimer = null; su.collect = null; }
+    // "Right thumb C0": every finger name on this page carries its channel (glove-static phase)
+    function fingerLabel(h, i) { return (h === 'R' ? 'Right ' : 'Left ') + NAMES[i].toLowerCase() + ' C' + MAP[h][i]; }
 
-    function openSetup() {
+    function buildGrid(id) {
+      $(id).innerHTML = ['R', 'L'].map(function (h) {
+        return '<div class="g10-row"><div class="g10-hand">' + (h === 'R' ? 'RIGHT<small>KANAN</small>' : 'LEFT<small>KALIWA</small>') + '</div>' +
+          NAMES.map(function (n, i) {
+            return '<div class="g10-cell" id="' + id + '-' + h + i + '"><div class="g10-name">' + n + ' <small>C' + MAP[h][i] + '</small></div>' +
+              '<div class="g10-trk"><i></i></div><div class="g10-val">–</div></div>';
+          }).join('') + '</div>';
+      }).join('');
+      grids[id] = CELLS.map(function (f) {
+        var el = $(id + '-' + f.h + f.i);
+        return { f: f, el: el, bar: el.querySelector('i'), val: el.querySelector('.g10-val') };
+      });
+    }
+    ['ck-grid', 'cal-grid', 'ts-grid'].forEach(buildGrid);
+    function clearMarks(id) { grids[id].forEach(function (g) { g.el.className = 'g10-cell'; g.val.textContent = '–'; g.bar.style.height = '0'; }); }
+    function msg(id, text, ok) { $(id).className = ok ? 'su-msg ok' : 'su-msg'; $(id).textContent = text; }
+    // 0..1 for raw v with this calibration (the same formula as js/glove.js handsFrom), null when ignored
+    function normWith(cal, h, i, v) {
+      var span = cal[h].fist[i] - cal[h].open[i];
+      if (Math.abs(span) < G.MINSPAN) return null;
+      var x = (v - cal[h].open[i]) / span;
+      return x < 0 ? 0 : x > 1 ? 1 : x;
+    }
+
+    function openSetup(mode) {
       stopTimers();
-      su.map = { L: [null, null, null, null, null], R: [null, null, null, null, null] };
-      su.skipped = {};
+      su.mode = mode;
       su.cal = null;
-      su.cam = null;
-      su.camSkipped = false;
-      su.imuHand = null;
-      su.k = 0;
+      su.saved = false;
       show('setup');
-      gotoStep('fingers');
+      $('bar-title').textContent = mode === 'check' ? 'CHECK FINGERS' : 'SET UP GLOVE';
+      $('su-steps').hidden = mode === 'check';
+      gotoStep('check');
     }
     function leaveSetup() {
       stopTimers();
-      stopCamera();
       show('settings');
       renderStatus();
     }
-    function failSetup(msg) {
+    function failSetup(text) {
       stopTimers();
-      stopCamera();
-      ['su-f-msg', 'su-c-msg', 'su-s-msg'].forEach(function (id) { $(id).className = 'su-msg'; $(id).textContent = msg; });
+      ['ck-msg', 'cal-msg', 'su-s-msg'].forEach(function (id) { msg(id, text, false); });
       $('su-next').disabled = true;
-      $('su-retry').hidden = true;
-      $('su-skip').hidden = true;
+      $('su-savebtn').disabled = true;
     }
-    function hasImu() { var h = G.info(); return !!(h && h.imu); }
     function gotoStep(name) {
       stopTimers();
-      if (name !== 'cam') stopCamera();
       su.step = name;
-      var order = ['fingers', 'cal', 'cam', 'imu', 'save'];
+      var order = ['check', 'cal', 'save'];
       var at = order.indexOf(name);
       document.querySelectorAll('#su-steps span').forEach(function (s) {
         var k = order.indexOf(s.dataset.step);
         s.className = k === at ? 'on' : k < at ? 'done' : '';
-        if (s.dataset.step === 'imu') s.hidden = !hasImu();
       });
       document.querySelectorAll('.su-panel').forEach(function (p) { p.classList.toggle('on', p.id === 'su-' + name); });
-      $('su-retry').hidden = true;
-      $('su-skip').hidden = true;
+      $('ck-skip').hidden = !(name === 'check' && su.mode === 'setup');
+      $('su-retry').hidden = name !== 'save';
       $('su-next').hidden = name === 'save';
-      $('su-next').disabled = true;
+      $('su-next').disabled = !(name === 'check' && su.mode === 'check');
+      $('su-next').textContent = name === 'check' && su.mode === 'check' ? 'Done · Tapos' : 'Next · Susunod';
       $('su-savebtn').hidden = name !== 'save';
-      if (name === 'fingers') { renderChips(); runFinger(); }
+      $('su-savebtn').disabled = false;
+      $('su-savebtn').textContent = 'Save · I-save';
+      if (name === 'check') startCheck();
       else if (name === 'cal') startCal();
-      else if (name === 'cam') startCamStep();
-      else if (name === 'imu') renderImuPick();
-      else if (name === 'save') renderSummary();
+      else if (name === 'save') startSave();
     }
-    function nextStep() {
-      if (su.step === 'fingers') gotoStep('cal');
-      else if (su.step === 'cal') gotoStep('cam');
-      else if (su.step === 'cam') gotoStep(hasImu() ? 'imu' : 'save');
-      else if (su.step === 'imu') gotoStep('save');
-    }
-    $('g-setup').addEventListener('click', openSetup);
-    $('su-next').addEventListener('click', nextStep);
-    $('su-retry').addEventListener('click', function () {
-      if (su.step === 'fingers') runFinger();
-      else if (su.step === 'cal') startCal();
-      else if (su.step === 'cam') startCamStep();
+    $('g-setup').addEventListener('click', function () { openSetup('setup'); });
+    $('su-next').addEventListener('click', function () {
+      if (su.step === 'check') { if (su.mode === 'check') leaveSetup(); else gotoStep('cal'); }
+      else if (su.step === 'cal') gotoStep('save');
     });
-    $('su-skip').addEventListener('click', function () {
-      if (su.step === 'fingers') {
-        var f = ORDER[su.k];
-        su.skipped[f.h + f.i] = true;
-        su.k++;
-        renderChips();
-        runFinger();
-      } else if (su.step === 'cam') {
-        su.cam = null;
-        su.camSkipped = true;
-        stopCamera();
-        $('su-c-msg').className = 'su-msg';
-        $('su-c-msg').textContent = 'Skipped: without this step Let\'s Talk will not use the glove.';
-        $('su-skip').hidden = true;
-        $('su-retry').hidden = false;
-        $('su-next').disabled = false;
-      }
-    });
+    $('ck-skip').addEventListener('click', function () { gotoStep('cal'); });
+    $('su-retry').addEventListener('click', function () { gotoStep('cal'); });
 
-    // ── 1. Fingers: 1 s rest (baseline = median per channel), 2 s bending (largest change wins) ──
-    function renderChips() {
-      $('su-f-chips').innerHTML = ORDER.map(function (f, k) {
-        var c = su.map[f.h][f.i];
-        var cls = c !== null ? 'found' : su.skipped[f.h + f.i] ? 'skip' : '';
-        if (su.step === 'fingers' && k === su.k) cls += ' now';
-        return '<div class="chip ' + cls + '"><span>' + fingerLabel(f.h, f.i) + '</span><span>' +
-          (c !== null ? 'C' + c : su.skipped[f.h + f.i] ? 'skipped' : '–') + '</span></div>';
-      }).join('');
+    // ── 1. Check wiring: live bars; a finger is ✓ once its raw value spanned CHECK_RANGE ──
+    function startCheck() {
+      clearMarks('ck-grid');
+      su.ck = { min: {}, max: {}, recent: [], ok: {} };
+      msg('ck-msg', '', true);
+      $('ck-count').textContent = '0 / 10';
+      su.collect = function (d) {
+        var now = Date.now(), ck = su.ck;
+        ck.recent.push({ at: now, ch: d.ch });
+        while (ck.recent.length && now - ck.recent[0].at > MOVING_MS) ck.recent.shift();
+        CELLS.forEach(function (f) {
+          var v = d.ch[f.c];
+          if (ck.min[f.c] === undefined || v < ck.min[f.c]) ck.min[f.c] = v;
+          if (ck.max[f.c] === undefined || v > ck.max[f.c]) ck.max[f.c] = v;
+          if (ck.max[f.c] - ck.min[f.c] >= CHECK_RANGE) ck.ok[f.c] = true;
+        });
+      };
     }
-    function runFinger() {
-      stopTimers();
-      $('su-retry').hidden = true;
-      $('su-skip').hidden = true;
-      if (su.k >= ORDER.length) {
-        $('su-f-phase').textContent = 'ALL FINGERS DONE';
-        $('su-f-title').textContent = 'All 10 fingers checked';
-        $('su-f-prog').style.width = '100%';
-        $('su-f-prog').className = 'done';
-        var found = ORDER.filter(function (f) { return su.map[f.h][f.i] !== null; }).length;
-        $('su-f-msg').className = found ? 'su-msg ok' : 'su-msg';
-        $('su-f-msg').textContent = found ? found + ' of 10 fingers found. Tap Next to calibrate.' : 'No finger was found: check the wiring (Debug shows all 16 channels), then start again.';
-        $('su-next').disabled = !found;
-        renderChips();
-        return;
-      }
-      var f = ORDER[su.k];
-      $('su-f-title').textContent = 'Bend your ' + HAND_NAME[f.h] + ' ' + NAMES[f.i].toLowerCase();
-      $('su-f-msg').textContent = '';
-      $('su-f-prog').style.width = '0';
-      $('su-f-prog').className = '';
-      $('su-f-phase').textContent = 'REST · KEEP STILL';
-      renderChips();
-      var rest = [], bend = [];
-      var t0 = Date.now();
-      su.collect = function (d) { (Date.now() - t0 < REST_MS ? rest : bend).push(d.ch); };
-      suTimer = setInterval(function () {
-        var t = Date.now() - t0;
-        if (t >= REST_MS) $('su-f-phase').textContent = 'BEND NOW · BEND AND STRAIGHTEN IT';
-        $('su-f-prog').style.width = Math.min(100, t / (REST_MS + BEND_MS) * 100) + '%';
-        if (t < REST_MS + BEND_MS) return;
-        stopTimers();
-        judgeFinger(f, rest, bend);
-      }, 50);
-    }
-    function judgeFinger(f, rest, bend) {
-      $('su-f-phase').textContent = '';
-      if (rest.length < 5 || bend.length < 10) return fingerProblem('No glove data (' + (rest.length + bend.length) + ' readings). Check the glove is connected, then Retry.');
-      // move = the largest distance from the resting median while bending, minus how much the channel
-      // already wandered at rest, so an unconnected (floating) mux channel's noise never wins.
-      // The winner must also move at least CLEAR x as much as any other channel (one finger only), except
-      // the channel right after it: an unconnected mux channel read next copies part of the previous channel's
-      // voltage (measured on the owner's glove 2026-10-22: C9 bent to 3171 -> unconnected C10 up to 2169).
-      var moves = [];
-      for (var c = 0; c < G.CHANNELS; c++) {
-        var restVals = rest.map(function (r) { return r[c]; });
-        var base = median(restVals);
-        var noise = Math.max.apply(null, restVals) - Math.min.apply(null, restVals);
-        var move = 0;
-        bend.forEach(function (r) { move = Math.max(move, Math.abs(r[c] - base)); });
-        moves.push(move - noise);
-      }
-      var best = -1, bestMove = 0, second = -1, secondMove = 0;
-      moves.forEach(function (m, c) { if (m > bestMove) { bestMove = m; best = c; } });
-      moves.forEach(function (m, c) { if (c !== best && c !== best + 1 && m > secondMove) { secondMove = m; second = c; } });
-      if (bestMove <= MOVE_MIN) {
-        return fingerProblem('No sensor moved (largest change ' + Math.round(bestMove) + ', needs more than ' + MOVE_MIN + '). Check this finger\'s wire, then Retry, or Skip it.');
-      }
-      if (bestMove < CLEAR * secondMove) {
-        return fingerProblem('C' + best + ' and C' + second + ' moved about the same (' + Math.round(bestMove) + ' / ' + Math.round(secondMove) + '). Keep the other fingers still, then Retry.');
-      }
-      var owner = null;
-      ORDER.forEach(function (o) { if (su.map[o.h][o.i] === best) owner = o; });
-      if (owner) {
-        return fingerProblem('C' + best + ' is already ' + fingerLabel(owner.h, owner.i) + '. Bend only the ' + HAND_NAME[f.h] + ' ' + NAMES[f.i].toLowerCase() + ', then Retry.');
-      }
-      su.map[f.h][f.i] = best;
-      delete su.skipped[f.h + f.i];
-      $('su-f-prog').className = 'done';
-      $('su-f-msg').className = 'su-msg ok';
-      $('su-f-msg').textContent = 'Found: C' + best + ' (change ' + Math.round(bestMove) + ').';
-      renderChips();
-      su.k++;
-      suTimer = setTimeout(function () { suTimer = null; runFinger(); }, 700);
-    }
-    function fingerProblem(msg) {
-      $('su-f-msg').className = 'su-msg';
-      $('su-f-msg').textContent = msg;
-      $('su-retry').hidden = false;
-      $('su-skip').hidden = false;
+    function renderCheck(d) {
+      var ck = su.ck, n = 0;
+      grids['ck-grid'].forEach(function (g) {
+        var c = g.f.c, v = d.ch[c];
+        var lo = Infinity, hi = -Infinity;
+        ck.recent.forEach(function (r) { if (r.ch[c] < lo) lo = r.ch[c]; if (r.ch[c] > hi) hi = r.ch[c]; });
+        g.bar.style.height = Math.round(v / 4095 * 100) + '%';
+        g.val.textContent = v;
+        g.el.classList.toggle('moving', hi - lo >= MOVING_RANGE);
+        g.el.classList.toggle('ok', !!ck.ok[c]);
+        if (ck.ok[c]) n++;
+      });
+      $('ck-count').textContent = n + ' / 10';
+      if (su.mode === 'setup') $('su-next').disabled = n < 10;
+      if (n === 10 && !$('ck-msg').textContent) msg('ck-msg', 'All 10 fingers moved ✓ · Gumalaw lahat ng 10 daliri ✓', true);
     }
 
-    // ── 2. Calibrate both hands: 1 s ready, 3 s open, 1 s ready, 3 s fists; median per channel ──
+    // ── 2. Calibrate: 1 s ready, 3 s open, 1 s ready, 3 s fists; median per channel ──
     function startCal() {
-      stopTimers();
+      clearMarks('cal-grid');
       su.cal = null;
       su.calVals = { open: null, fist: null };
-      $('su-retry').hidden = true;
-      ['1', '2'].forEach(function (k) { $('s' + k + '-prog').style.width = '0'; $('s' + k + '-prog').className = ''; $('s' + k + '-vals').textContent = ''; });
-      runCal(1);
+      su.weak = {};
+      msg('cal-msg', '', true);
+      runCal('open');
     }
-    function calLine(vals) {
-      return ['L', 'R'].map(function (h) {
-        return h + ': ' + su.map[h].map(function (c) { return c === null ? '–' : vals[c]; }).join(' · ');
-      }).join('<br>');
-    }
-    function runCal(n) {
-      var lbl = $('s' + n + '-lbl'), prog = $('s' + n + '-prog');
-      $('cal-open').classList.toggle('on', n === 1);
-      $('cal-fist').classList.toggle('on', n === 2);
-      lbl.textContent = 'STEP ' + n + ' · GET READY…';
+    function runCal(which) {
+      $('cal-title').textContent = CAL_TEXT[which].en;
+      $('cal-fil').textContent = CAL_TEXT[which].fil;
+      $('cal-count').textContent = 'Ready…';
       var t0 = Date.now(), samples = null;
       suTimer = setInterval(function () {
         var t = Date.now() - t0;
         if (t < CAL_READY_MS) return;
-        if (!samples) { samples = []; su.collect = function (d) { samples.push(d.ch); }; lbl.textContent = 'STEP ' + n + ' · RECORDING…'; }
-        prog.style.width = Math.min(100, (t - CAL_READY_MS) / CAL_REC_MS * 100) + '%';
-        if (t < CAL_READY_MS + CAL_REC_MS) return;
+        if (!samples) { samples = []; su.collect = function (d) { samples.push(d.ch); }; }
+        var left = CAL_READY_MS + CAL_REC_MS - t;
+        if (left > 0) { $('cal-count').textContent = Math.ceil(left / 1000) + ' s'; return; }
         stopTimers();
+        $('cal-count').textContent = '';
         if (samples.length < 10) {
-          lbl.textContent = 'STEP ' + n;
+          msg('cal-msg', 'No glove data (' + samples.length + ' readings). Check the glove is connected, then Redo calibration.', false);
           $('su-retry').hidden = false;
-          $('s' + n + '-vals').textContent = 'No glove data (' + samples.length + ' readings). Check the glove is connected, then Retry.';
           return;
         }
         var med = [];
-        for (var c = 0; c < G.CHANNELS; c++) med.push(median(samples.map(function (s) { return s[c]; })));
-        su.calVals[n === 1 ? 'open' : 'fist'] = med;
-        prog.className = 'done';
-        lbl.textContent = 'STEP ' + n + ' · DONE ✓';
-        $('s' + n + '-vals').innerHTML = calLine(med) + '<br>(' + samples.length + ' readings)';
-        if (n === 1) { runCal(2); return; }
-        $('cal-fist').classList.remove('on');
-        var cal = { at: new Date().toISOString() }, flat = [];
-        ['L', 'R'].forEach(function (h) {
-          cal[h] = { open: [], fist: [] };
-          su.map[h].forEach(function (c, i) {
-            var o = c === null ? 0 : su.calVals.open[c], fi = c === null ? 0 : su.calVals.fist[c];
-            cal[h].open.push(o);
-            cal[h].fist.push(fi);
-            if (c !== null && Math.abs(fi - o) < 50) flat.push(fingerLabel(h, i));
-          });
-        });
-        su.cal = cal;
-        $('su-retry').hidden = false;
-        $('s2-vals').innerHTML += flat.length ? '<br><b style="color:var(--red)">Open and fist almost the same for ' + flat.join(', ') + ': that finger will be ignored. Retry, or check its sensor.</b>' : '';
-        $('su-next').disabled = false;
-      }, 50);
+        for (var c = 0; c < G.CHANNELS; c++) med.push(median(samples.map(function (r) { return r[c]; })));
+        su.calVals[which] = med;
+        if (which === 'open') runCal('fist');
+        else finishCal();
+      }, 100);
     }
-
-    // ── 3. Camera: MediaPipe's handedness label for the RIGHT hand on this kiosk's camera ──
-    // Same pipeline as Let's Talk (js/gesture-data.js), so the label means the same thing there.
-    var camStream = null, camOff = null;
-    function stopCamera() {
-      if (camOff) { camOff(); camOff = null; }
-      try { if (window.GestureDataRecorder) window.GestureDataRecorder.pauseHandLoop(); } catch (e) { /* not started */ }
-      if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; }
-      $('su-video').srcObject = null;
-    }
-    function camMsg(text, ok) { $('su-c-msg').className = ok ? 'su-msg ok' : 'su-msg'; $('su-c-msg').textContent = text; }
-    function camFeed(results) {
-      if (su.step !== 'cam' || su.cam) return;
-      var hs = (results && results.multiHandedness) || [];
-      if (hs.length !== 1) return;
-      var lab = hs[0].label, score = hs[0].score;
-      if ((lab !== 'Left' && lab !== 'Right') || !(score >= CAM_SCORE)) return;
-      if (!su.camFirstAt) su.camFirstAt = Date.now();
-      su.camVotes[lab]++;
-      if (su.camVotes.Left + su.camVotes.Right < CAM_FRAMES) return;
-      var label = su.camVotes.Left > su.camVotes.Right ? 'Left' : 'Right';
-      su.cam = { mirror: label === 'Left' };
-      stopTimers();
-      stopCamera();
-      camMsg('Your right hand is seen as "' + label + '" on this camera: ' + (su.cam.mirror ? 'mirror on' : 'mirror off') + '. Tap Next.', true);
+    // open / fist per finger as recorded: a sensor that reads lower when bent just has fist < open (js/glove.js
+    // handsFrom divides by the signed span), so nothing needs inverting here.
+    function finishCal() {
+      var o = su.calVals.open, fi = su.calVals.fist, weak = [];
+      var cal = { L: { open: [], fist: [] }, R: { open: [], fist: [] }, at: new Date().toISOString() };
+      grids['cal-grid'].forEach(function (g) {
+        var f = g.f, span = Math.abs(fi[f.c] - o[f.c]);
+        cal[f.h].open[f.i] = o[f.c];
+        cal[f.h].fist[f.i] = fi[f.c];
+        g.val.textContent = o[f.c] + '→' + fi[f.c];
+        if (span < WEAK) {
+          su.weak[f.h + f.i] = true;
+          g.el.classList.add('weak');
+          weak.push(fingerLabel(f.h, f.i) + (span < G.MINSPAN ? ' (ignored)' : ''));
+        } else g.el.classList.add('ok');
+      });
+      su.cal = cal;
+      $('cal-title').textContent = 'Calibration done ✓';
+      $('cal-fil').textContent = 'Tapos na ang calibration ✓';
+      msg('cal-msg', weak.length
+        ? '⚠ Weak sensor: ' + weak.join(', ') + '. Bend it fully or check its wire, then Redo calibration — or go on: it is less accurate. · Mahinang sensor.'
+        : 'All 10 fingers moved well. Tap Next. · Maayos ang lahat ng 10 daliri.', !weak.length);
       $('su-retry').hidden = false;
-      $('su-skip').hidden = true;
       $('su-next').disabled = false;
     }
-    window.__skGloveSetup = { camFeed: camFeed };   // tests: hand results without a real hand
-    function startCamStep() {
-      stopTimers();
-      stopCamera();
-      su.cam = null;
-      su.camSkipped = false;
-      su.camVotes = { Left: 0, Right: 0 };
-      su.camFirstAt = 0;
-      $('su-retry').hidden = true;
-      $('su-skip').hidden = false;
-      $('su-next').disabled = true;
-      camMsg('Starting the camera…', true);
-      var started = Date.now();
-      suTimer = setInterval(function () {
-        if (su.cam) { stopTimers(); return; }
-        var since = su.camFirstAt || started;
-        if (Date.now() - since < CAM_WAIT_MS + (su.camFirstAt ? 0 : 10000)) return;   // 10 s to start + 5 s to decide
-        stopTimers();
-        stopCamera();
-        camMsg('No clear right hand seen. Raise only the right hand, open, then Retry. Or Skip.', false);
-        $('su-retry').hidden = false;
-      }, 200);
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.GestureDataRecorder) {
-        camMsg('The camera cannot be used on this page. Skip this step, or open Settings on http://localhost.', false);
-        return;
-      }
-      navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false })
-        .then(function (stream) {
-          if (su.step !== 'cam') { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
-          camStream = stream;
-          var v = $('su-video');
-          v.srcObject = stream;
-          return v.play().catch(function () { /* autoplay muted */ }).then(function () {
-            return window.GestureDataRecorder.setupMediaPipe(v);
-          }).then(function (ok) {
-            if (!ok || su.step !== 'cam' || !camStream) return;
-            window.GestureDataRecorder.resumeHandLoop();
-            camOff = window.GestureDataRecorder.onHandResults(camFeed);
-            camMsg('Camera on. Raise your RIGHT hand.', true);
-          });
-        })
-        .catch(function (e) {
-          camMsg('Camera not available (' + (e && e.name ? e.name : e) + '). Check the camera, then Retry, or Skip.', false);
-          $('su-retry').hidden = false;
-        });
-    }
 
-    // ── 4. IMU hand ──
-    function renderImuPick() {
-      ['L', 'R'].forEach(function (h) { $('su-imu-' + h).classList.toggle('on', su.imuHand === h); });
-      $('su-next').disabled = !su.imuHand;
+    // ── 3. Save + Test: live 0-100 % with the new calibration; Save on the glove (the simulator: its flash) ──
+    function startSave() {
+      clearMarks('ts-grid');
+      grids['ts-grid'].forEach(function (g) { if (su.weak[g.f.h + g.f.i]) g.el.classList.add('weak'); });
+      msg('su-s-msg', '', true);
     }
-    ['L', 'R'].forEach(function (h) {
-      $('su-imu-' + h).addEventListener('click', function () { su.imuHand = h; renderImuPick(); });
-    });
-
-    // ── 5. Save on the glove ──
+    function renderTest(d) {
+      grids['ts-grid'].forEach(function (g) {
+        var n = normWith(su.cal, g.f.h, g.f.i, d.ch[g.f.c]);
+        g.bar.style.height = n === null ? '0' : Math.round(n * 100) + '%';
+        g.val.textContent = n === null ? 'ignored' : Math.round(n * 100) + '%';
+      });
+    }
     function buildConfig() {
       var old = G.config();
-      return { v: 1, map: su.map, cal: su.cal, cam: su.cam, imuHand: hasImu() ? su.imuHand : null,
+      return { v: 1, map: MAP, cal: su.cal, cam: old ? old.cam : null, imuHand: old ? old.imuHand : null,
         w: old && typeof old.w === 'number' ? old.w : G.DEFAULT_W };
     }
-    function renderSummary() {
-      var c = buildConfig();
-      var rows = [];
-      ['R', 'L'].forEach(function (h) {
-        rows.push([HAND_NAME[h] + ' hand', c.map[h].map(function (ch, i) { return NAMES[i] + ' ' + (ch === null ? '–' : 'C' + ch); }).join(' · ')]);
-      });
-      rows.push(['Calibration', c.cal ? 'open + fist recorded ' + fmtTime(c.cal.at) : 'missing']);
-      rows.push(['Camera', c.cam ? (c.cam.mirror ? 'mirror on' : 'mirror off') : 'skipped (Let\'s Talk will not use the glove)']);
-      if (hasImu()) rows.push(['IMU', c.imuHand === 'L' ? 'left hand' : c.imuHand === 'R' ? 'right hand' : 'not set']);
-      $('su-sum').innerHTML = rows.map(function (r) { return '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>'; }).join('');
-      $('su-s-msg').textContent = '';
-      $('su-savebtn').disabled = !c.cal;
-    }
     $('su-savebtn').addEventListener('click', function () {
+      if (su.saved) { leaveSetup(); return; }
       $('su-savebtn').disabled = true;
-      $('su-s-msg').className = 'su-msg ok';
-      $('su-s-msg').textContent = 'Saving on the glove…';
-      G.saveConfig(buildConfig()).then(function () {
-        leaveSetup();
+      msg('su-s-msg', 'Saving on the glove…', true);
+      G.saveConfig(buildConfig()).then(function (v) {
+        su.saved = true;
+        msg('su-s-msg', 'Saved on the glove ' + fmtTime(v.cal.at) + ' ✓ · Na-save na', true);
+        $('su-savebtn').textContent = 'Done · Tapos';
+        $('su-savebtn').disabled = false;
       }).catch(function (e) {
-        $('su-s-msg').className = 'su-msg';
-        $('su-s-msg').textContent = (e && e.message ? e.message : String(e)) + ' — tap Save on glove to try again.';
+        msg('su-s-msg', (e && e.message ? e.message : String(e)) + ' — tap Save to try again.', false);
         $('su-savebtn').disabled = false;
       });
     });
+    function renderSetup(d) {
+      if (!d || screen !== 'setup') return;
+      if (su.step === 'check' && su.ck) renderCheck(d);
+      else if (su.step === 'cal') {
+        grids['cal-grid'].forEach(function (g) {
+          var v = d.ch[g.f.c];
+          g.bar.style.height = Math.round(v / 4095 * 100) + '%';
+          if (!su.cal) g.val.textContent = v;
+        });
+      } else if (su.step === 'save' && su.cal) renderTest(d);
+    }
 
     // ── debug panel ──
     $('dbg-toggle').addEventListener('click', function () {
