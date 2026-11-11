@@ -1,0 +1,17 @@
+/* css/kiosk-touch.css (touch-ux, 2026-11-12) — linked by every page used on the 7" kiosk touchscreen.
+   On the touchscreen a finger acts as a mouse: holding it down is a held left click, which selected
+   (highlighted) text and opened a long-press menu. Nothing on these pages is meant to be selected except
+   what the user types, so selection is off for the page and on again inside fields. Images and links
+   cannot be dragged. js/kiosk-touch.js stops the long-press / right-click menu. */
+html, body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, select, [contenteditable=""], [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+img, a, svg, video, canvas {
+  -webkit-user-drag: none;
+}

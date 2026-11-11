@@ -1848,6 +1848,14 @@ Report `docs/reports/2026-10-21-pi-fixes-final.md`. Changes 3a/3g as follows:
 - talk.html Speak or Type: Translate adds the message and starts the avatar (no Edit / Send any more);
   no buttons while it signs; then Replay / Done (Done = "Whose turn is it?").
 
+### 3j. Conversation scrolling on the touchscreen (touch-ux, 2026-11-12)
+
+`#thread-list`'s scrollbar is 18 px (was 6), and the list scrolls with a vertical finger drag. The thread follows
+the newest message (`scrollThreadToLatest()` in `appendBubble()`, plus a `ResizeObserver` on the list and its
+bubbles) on every screen; scrolling up to read stops that and shows "↓ Latest" (44 px), which goes back to the end,
+as does sending a message. Every kiosk page links `css/kiosk-touch.css` + `js/kiosk-touch.js`: no text selection,
+long-press menu or image drag outside text fields. Report: `docs/reports/2026-11-12-touch-ux-final.md`.
+
 ### 3i. 🧤 Gloves on the Sign screen (glove-hw Phase 2, 2026-10-21; glove-chip phase, 2026-10-22)
 
 With a set-up glove connected (`SKGlove.ready()`), a small **🧤 Gloves chip** sits over the camera's top-right corner,

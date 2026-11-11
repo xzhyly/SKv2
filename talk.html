@@ -7,6 +7,8 @@
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/kiosk-touch.css">
+<script src="js/kiosk-touch.js" defer></script>
 <link rel="stylesheet" href="css/virtual-keyboard.css">
 <link rel="stylesheet" href="css/sk-pages.css">
 <!-- Accounts (accounts-quiz phase): who is logged in, for the header chip; conversations save with
@@ -212,6 +214,8 @@
        width at that instant. Chromium has supported scrollbar-gutter since
        v94. */
     scrollbar-gutter:stable;
+    /* touch-ux (2026-11-12): a vertical finger drag anywhere on the list scrolls it. */
+    touch-action:pan-y;overscroll-behavior:contain;
   }
   /* Visible scrollbar (README "05": "a visible scrollbar on the right edge
      ... on a touchscreen the bar is the only thing that proves more exists
@@ -219,11 +223,25 @@
      hovered, which a touchscreen kiosk with no cursor never triggers, so it
      is styled explicitly rather than left to the platform default. Colours
      from tokens.css only. */
-  #thread-list::-webkit-scrollbar{width:6px}
-  #thread-list::-webkit-scrollbar-track{background:var(--border)}
+  /* touch-ux (2026-11-12, owner: "too thin, hard to scroll"): 18 px wide, so a finger can grab it (was 6 px);
+     the thumb is drawn 12 px wide inside a 3 px transparent border, darker, and at least 48 px tall. */
+  #thread-list::-webkit-scrollbar{width:18px}
+  #thread-list::-webkit-scrollbar-track{background:var(--border);border-radius:99px}
   #thread-list::-webkit-scrollbar-thumb{
-    background:var(--muted-light);border-radius:99px;
+    background:var(--muted);border-radius:99px;
+    border:3px solid transparent;background-clip:padding-box;min-height:48px;
   }
+  /* "↓ Latest" (touch-ux): shown only when the user has scrolled up to read older messages; one tap goes back
+     to the newest. Inside #thread (position:fixed), clear of the scrollbar. */
+  .thread-latest{
+    position:absolute;right:30px;bottom:10px;z-index:2;
+    height:44px;padding:0 16px;border:none;border-radius:22px;
+    background:var(--navy);color:var(--surface);
+    font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  }
+  .thread-latest[hidden]{display:none}
+  .thread-latest:active{transform:scale(0.97)}
   /* Top-fade mask (README "03"/"05": "a white-to-transparent fade across the
      top 26px says more exists above"). A fixed (non-scrolling) sibling of
      #thread-list rather than a ::before on it, so the fade stays pinned to
@@ -1172,6 +1190,7 @@
   <div id="thread">
     <div id="thread-list"></div>
     <div class="thread-fade" aria-hidden="true"></div>
+    <button type="button" class="thread-latest" id="thread-latest" hidden>&#8595; Latest</button>
   </div>
 
   <!-- Screen 02 — docs/ui-target/README.md "02 — Who speaks first". Shown
@@ -1984,8 +2003,32 @@ Please stand by</span></div>
         list.removeChild(list.firstElementChild);
       }
 
-      list.scrollTop = list.scrollHeight;
+      scrollThreadToLatest();           // touch-ux: also kept there after layout changes (below)
       return row;
+    }
+
+    // ── Thread: always at the newest message (touch-ux, 2026-11-12) ──
+    // Owner: the conversation was often not at the latest message. appendBubble() set scrollTop once, which did
+    // nothing while #thread was hidden or collapsed (another screen) and was undone when a bubble or the list
+    // changed size afterwards. Now the thread FOLLOWS the end: every new message scrolls to it, and while
+    // following, any size change of the list or a bubble (screen change, keyboard, a bubble growing) scrolls
+    // to it again. A user who scrolls up to read stops following; "↓ Latest" brings them back.
+    var threadFollow = true;
+    function threadList() { return document.getElementById('thread-list'); }
+    function threadAtEnd(list) { return list.scrollTop + list.clientHeight >= list.scrollHeight - 24; }
+    function updateThreadLatest() {
+      var list = threadList();
+      var overflow = list.scrollHeight > list.clientHeight + 1 && list.clientHeight > 0;
+      document.getElementById('thread-latest').hidden = threadFollow || !overflow;
+    }
+    function scrollThreadToLatest() {
+      var list = threadList();
+      threadFollow = true;
+      list.scrollTop = list.scrollHeight;
+      requestAnimationFrame(function () {   // after layout: the new bubble's real height
+        if (threadFollow) list.scrollTop = list.scrollHeight;
+        updateThreadLatest();
+      });
     }
 
     // ── Talk-turns-audio: adding a message and speaking a signed one ──
@@ -2386,6 +2429,26 @@ Please stand by</span></div>
         draft.style.setProperty('--draft-max', Math.max(1, Math.floor(inner / lineH)) * lineH + 'px');
       }
       new ResizeObserver(syncDraftLines).observe(draft);
+    })();
+
+    // Thread follows the newest message (touch-ux): see scrollThreadToLatest() above.
+    (function () {
+      var list = threadList();
+      list.addEventListener('scroll', function () {
+        if (list.clientHeight === 0) return;          // hidden: no user scroll can happen
+        threadFollow = threadAtEnd(list);
+        updateThreadLatest();
+      }, { passive: true });
+      var ro = new ResizeObserver(function () {
+        if (threadFollow && list.clientHeight > 0) list.scrollTop = list.scrollHeight;
+        updateThreadLatest();
+      });
+      ro.observe(list);
+      new MutationObserver(function (records) {
+        records.forEach(function (r) { r.addedNodes.forEach(function (n) { if (n.nodeType === 1) ro.observe(n); }); });
+      }).observe(list, { childList: true });
+      document.getElementById('thread-latest').addEventListener('click', scrollThreadToLatest);
+      updateThreadLatest();
     })();
 
     // Guide scroll cue (ported from sign-to-text.html): mark the step list while part of it
