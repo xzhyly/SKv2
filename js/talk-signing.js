@@ -14,6 +14,10 @@
 // pi-fixes 2026-10-21: enter() keeps an overlay ("Inihahanda ang camera… / Please stand by") over the camera
 // and Send / Undo / Clear / Speak or Type disabled until the first video frame is on screen and MediaPipe
 // has answered once; then the countdown starts and onLive() is called. ?devperf shows fps / detection time.
+// seq-recognition 2026-11-15: when models/seq_<LANG>.bin is loaded (js/seq-live.js) a sign is recognized as a
+// whole, from its start to its end (hands lowered, or held still about 0.6 s), with one answer per sign
+// (onSeqEvent); tick() then only keeps the "Show your sign" caption. Without that file, or with ?seq=off,
+// tick()'s frame k-NN runs as before.
 (function () {
   'use strict';
 
@@ -54,6 +58,8 @@
   var holdStart = null;
   var currentGesture = null;
   var lastHandAt = 0;
+  var CAPTION_HOLD_MS = 1500;     // whole-sign mode: how long the answer (or "Not sure") stays in the caption
+  var captionUntil = 0;
 
   function $(id) { return document.getElementById(id); }
 
@@ -115,6 +121,46 @@
     g.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
+  function seqOn() { return !!(window.SeqLive && window.SeqLive.active()); }
+
+  // One whole sign from js/seq-recognizer.js (begin / sign / unsure / ignored).
+  function onSeqEvent(e) {
+    if (!stream || loading || switching) return;
+    if (document.body.classList.contains('modal-open')) return;
+    try {
+      // (an answer just given stays in the caption while the hand goes down or holds on)
+      if (e.type === 'begin') { if (Date.now() >= captionUntil) setCaption('Signing…'); return; }
+      if (e.type === 'ignored') { if (Date.now() >= captionUntil) setCaption('Show your sign'); return; }
+      if (e.type === 'unsure') { setCaption('Not sure. Sign again'); captionUntil = Date.now() + CAPTION_HOLD_MS; return; }
+      if (e.type !== 'sign') return;
+      var label = e.label;
+      // Optional gloves: only for a sign that ended in a hold (the fingers still show the sign), over the
+      // best 5 signs, with the same conditions as before (js/glove-assist.js).
+      if (e.reason === 'still' && window.GloveAssist && knnModel && e.top && e.top.length > 1) {
+        var scores = {};
+        e.top.forEach(function (t) { scores[t.label] = (e.top[0].dist + 1e-6) / (t.dist + 1e-6); });   // best = 1
+        var re = window.GloveAssist.apply(scores, knnModel);
+        var best = re[label];
+        for (var l in re) if (re[l] > best) { best = re[l]; label = l; }   // another sign only when the glove put it ahead
+      }
+      setCaption(translateGestureLabel(label, signLang));
+      captionUntil = Date.now() + CAPTION_HOLD_MS;
+      if (uiState === 'idle') {
+        if (label === 'start') beginCountdown();
+      } else if (uiState === 'recording') {
+        if (label === 'stop') finish();
+        else if (label !== 'start') {
+          words.push(translateGestureLabel(label, signLang));
+          keys.push(label);
+          showDraft();
+          renderButton();
+        }
+      }
+    } catch (err) {
+      console.error('[talk-signing] sign event failed:', err);
+    }
+  }
+
   function clearHistory() {
     history = [];
     lastConfirmed = null;
@@ -130,6 +176,7 @@
     lastDetected = null;
     holdStart = null;
     clearHistory();
+    if (window.SeqLive) window.SeqLive.reset();
     $('camera-box').classList.remove('recording');
     showDraft();
     setCaption('Show your sign');
@@ -151,6 +198,7 @@
       lastDetected = null;
       holdStart = null;
       clearHistory();
+      if (window.SeqLive) window.SeqLive.reset();   // a sign counts only from the moment recording starts
       $('camera-box').classList.add('recording');
       showDraft();
       renderButton();
@@ -226,7 +274,8 @@
       var now = Date.now();
       if (!window.GestureDataRecorder.getLatestLandmarks()) {
         if (now - lastHandAt > NO_HAND_MS) {
-          setCaption('Show your sign');
+          // whole-sign mode: the answer stays readable for a moment after the hands went down
+          if (!(seqOn() && now < captionUntil)) setCaption('Show your sign');
           clearHistory();
           lastDetected = null;
           holdStart = null;
@@ -235,6 +284,7 @@
         return;
       }
       lastHandAt = now;
+      if (seqOn()) return;   // whole-sign recognition answers through onSeqEvent
       var f = extractFeatures($('signing-video'));
       if (!Array.isArray(f) || f.length !== activeFeatureSize) return;
       var pred = knnPredict(f);
@@ -319,6 +369,10 @@
     return autoTrainForTranslate().catch(function (e) {
       console.error('[talk-signing] model load failed:', e);
       return false;
+    }).then(function (ok) {
+      if (!ok || !window.SeqLive) return ok;
+      // The whole-sign model of the same language; without it the frame k-NN stays in use.
+      return window.SeqLive.use(signLang === 'fil' ? 'FSL' : 'ESL').then(function () { return ok; }, function () { return ok; });
     });
   }
 
@@ -480,6 +534,10 @@
         window.GestureDataRecorder.resumeHandLoop();
         lastHandAt = Date.now();
         tickId = setInterval(tick, TICK_MS);
+        if (window.SeqLive) {
+          window.SeqLive.start(onSeqEvent);
+          if (!window.SeqLive.model()) window.SeqLive.use(signLang === 'fil' ? 'FSL' : 'ESL');
+        }
         startPerf();
       } catch (e) {
         // must not throw: camera-helper would treat it as a getUserMedia failure and re-request
@@ -510,6 +568,7 @@
     timeEnd(T_FRAME);
     timeEnd(T_READY);
     if (tickId) { clearInterval(tickId); tickId = null; }
+    if (window.SeqLive) window.SeqLive.stop();
     if (countdownId) { clearInterval(countdownId); countdownId = null; }
     if (window.GestureDataRecorder && window.GestureDataRecorder.pauseHandLoop) {
       window.GestureDataRecorder.pauseHandLoop();

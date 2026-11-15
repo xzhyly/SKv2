@@ -657,6 +657,8 @@ function applyLoadedModel(lang, res) {
   if (typeof GestureDataRecorder.setModelSigns === 'function') GestureDataRecorder.setModelSigns(res.header.labels);
   console.log(`[KNN] ${lang} model: ${res.header.rowCount} rows, ${activeLabels.length} labels (${res.source})`);
   if (!modelTrained) console.warn(`[KNN] ${lang} model has ${activeLabels.length} label(s); at least 2 are needed for Steps 3 and 4`);
+  // The whole-sign model of the same language (js/seq-live.js); without it Steps 3 / 4 use the frame k-NN.
+  if (window.SeqLive) window.SeqLive.use(lang);
   refreshStep2Buttons();
 }
 
@@ -833,6 +835,8 @@ async function compileModel() {
 
     await stage(3, `Reading samples 0/${todo.length} signs`);
     const builder = KnnCompile.createBuilder({ signs, categories, lang, toRows: GestureDataRecorder.recordingToFeatureRows });
+    // The whole-sign model (seq-recognition phase) is built from the same samples and saved after the k-NN file.
+    const seqBuilder = (window.SeqFeatures && window.SeqRecognizer) ? SeqFeatures.createBuilder({ segments: SeqRecognizer.segmentsOf }) : null;
     const batchLog = [];
     let doneSigns = 0, missing = 0;
     for (let b = 0; b < batches.length; b++) {
@@ -859,6 +863,7 @@ async function compileModel() {
         missing += want.size - samples.length;
         nSamples += samples.length;
         builder.addSign(label, samples);
+        if (seqBuilder) samples.forEach(s => { try { seqBuilder.addSample(label, s); } catch (e) { /* a sample the whole-sign model cannot use */ } });
       });
       batchLog.push({ signs: keys.length, samples: nSamples, bytes: text.length });
       json = null; text = null;   // drop this batch's frames before the next request
@@ -910,6 +915,23 @@ async function compileModel() {
     }
     if (loaded.source === 'cache-fallback' || loaded.header.buildDate !== header.buildDate) {
       throw compileFail(`Compile wrote ${file}, but the page could not load that file back`);
+    }
+    // The whole-sign model: a failure here never fails Compile (Let's Talk then keeps the frame k-NN).
+    if (seqBuilder) {
+      try {
+        const sm = seqBuilder.finish();
+        if (sm.labels.length < 2) throw new Error('fewer than 2 signs with usable samples');
+        const sbuf = SeqFeatures.encode(sm, { lang, buildDate: header.buildDate, fingerprint: header.fingerprint, sampleCount: sm.sampleCount, builtOn: 'Train Gestures Compile' });
+        const sres = await fetch(`php/api/compile_seq_model.php?lang=${lang}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: sbuf });
+        const sj = await sres.json().catch(() => null);
+        if (!sj || sj.success !== true) throw new Error((sj && sj.error) || `HTTP ${sres.status}`);
+        addLog(`// Wrote models/seq_${lang}.bin (whole-sign model): ${sm.labels.length} signs, ${fmtInt(sm.sampleCount)} samples, ${fmtInt(sm.rowLabel.length)} rows, ${fmtInt(sj.bytes)} bytes`);
+        if (window.SeqLive) SeqLive.forget(lang);
+        window.lastSeqCompile = { lang, ok: true, bytes: sj.bytes, rows: sm.rowLabel.length, labels: sm.labels.length, samples: sm.sampleCount };
+      } catch (e) {
+        addLog(`// Whole-sign model not saved (${e && e.message ? e.message : e}): recognition keeps the previous one.`, 'log-warn');
+        window.lastSeqCompile = { lang, ok: false, error: String(e && e.message ? e.message : e) };
+      }
     }
     modelLoadSeq++;                 // drop any older load still running
     applyLoadedModel(lang, loaded);
@@ -975,6 +997,10 @@ function startLivePrediction(forTranslation=false) {
   document.getElementById('predictOverlay').classList.add('show');
   if (forTranslation) cameraFrame.classList.add('predicting');
 
+  // seq-recognition 2026-11-15: with a whole-sign model loaded, one answer per sign (start to end) comes from
+  // SeqLive (showSeqResult); the loop below then only shows "Show your sign" when no hand is in view.
+  const seqMode = !!(window.SeqLive && window.SeqLive.model());
+  if (seqMode) window.SeqLive.start((e) => showSeqResult(e, forTranslation));
   let trLastHandTime = Date.now();
   predictLoop=setInterval(async()=>{
     if(!stream||!modelTrained){
@@ -1016,6 +1042,7 @@ function startLivePrediction(forTranslation=false) {
         return;
       }
       trLastHandTime = Date.now();
+      if (seqMode) return;
       const f=extractFeatures();
       if (dbg) {
         dbg.innerHTML += `\n• extracted features: ${f ? f.length : 0}`;
@@ -1136,8 +1163,66 @@ function startLivePrediction(forTranslation=false) {
   },150);
 }
 
+// One whole sign (js/seq-recognizer.js event) on the Step 3 / Step 4 displays. The bar shows how clear the answer
+// was: 100% = nothing else close, 0% = the next sign was as close (ratio 1). "Not sure" is shown below RATIO.
+function showSeqResult(e, forTranslation) {
+  const set = (id, fn) => { const el = document.getElementById(id); if (el) fn(el); };
+  const dots = document.querySelectorAll('.status-dot');
+  const indTexts = document.querySelectorAll('.indicator-text');
+  if (e.type === 'begin') {
+    set('predLabel', el => { el.textContent = 'Signing…'; });
+    dots.forEach(d => { d.className = 'status-dot searching'; });
+    indTexts.forEach(t => { t.textContent = 'Signing...'; });
+    return;
+  }
+  if (e.type === 'ignored') return;
+  if (e.type !== 'sign' && e.type !== 'unsure') return;
+  const sure = e.type === 'sign';
+  const detected = e.label;
+  const name = detected === 'start' ? 'Start' : detected === 'stop' ? 'Stop' : predictDisplayText(detected);
+  const pct = Math.max(0, Math.min(100, Math.round((1 - e.ratio) * 100)));
+  const text = sure ? name : `Not sure (${name}?)`;
+  set('predEmoji', el => { el.textContent = detected === 'start' ? '▶' : detected === 'stop' ? '⏹' : '?'; });
+  set('predLabel', el => { el.textContent = text; });
+  set('predConf', el => { el.textContent = `Clearness: ${pct}%` + (e.second ? ` (next: ${predictDisplayText(e.second)})` : ''); });
+  set('predFillMini', el => { el.style.width = pct + '%'; });
+  if (currentStep === 3) {
+    ['livePredResult', 'livePredResultAlt'].forEach(id => set(id, el => { el.textContent = text; el.className = 'tr-pred-result' + (sure ? ' detected' : ''); }));
+    ['confBar', 'confBarAlt'].forEach(id => set(id, el => { el.style.width = pct + '%'; }));
+  }
+  dots.forEach(d => { d.className = sure ? 'status-dot active-gets' : 'status-dot searching'; });
+  indTexts.forEach(t => { t.textContent = sure ? `Gets: ${name}` : 'Not sure. Sign again'; });
+  console.log(`[SEQ] ${e.type} ${detected} ratio ${e.ratio.toFixed(2)} (${e.frames} frames, ${Math.round(e.ms)} ms, ended: ${e.reason}${e.fromHold ? ', from a hold' : ''}; next: ${e.second})`);
+  if (!sure || !forTranslation) return;
+  // Step 4: the same start / stop / word flow as the frame k-NN below, one step per sign.
+  if (detected === 'start') {
+    currentSentence = [];
+    isSentenceActive = true;
+    document.getElementById('tlHistory').innerHTML = '<span class="tl-empty">Sentence cleared. Show your signs...</span>';
+    document.getElementById('tlBigOutput').innerHTML = '<span class="tl-big-empty">Listening...</span>';
+    showToast(signLang === 'fil' ? '▶ Na-clear. I-senyas ang mga salita.' : '▶ Cleared. Show your signs.');
+  } else if (detected === 'stop') {
+    isSentenceActive = false;
+    if (currentSentence.length > 0) {
+      const finalSentence = formulateSmartSentence(currentSentence, signLang);
+      document.getElementById('tlHistory').innerHTML = `<span class="tl-word">${escapeHtml(finalSentence)}</span>`;
+      document.getElementById('tlBigOutput').innerHTML = `<span class="word">${escapeHtml(finalSentence)}</span>`;
+      speakWord(finalSentence, signLang);
+      showToast(signLang === 'fil' ? '⏹ Tapos! Binabasa...' : '⏹ Done! Speaking...');
+    }
+  } else {
+    const word = translateGestureLabel(detected, signLang);
+    currentSentence.push(word);
+    isSentenceActive = true;
+    document.getElementById('tlHistory').innerHTML = currentSentence.map(w => `<span class="tl-word">${escapeHtml(w)}</span>`).join(' ');
+    document.getElementById('tlBigOutput').innerHTML = currentSentence.map(w => `<span class="word">${escapeHtml(w)}</span>`).join(' ') + '...';
+    showToast(`+ "${word}"`);
+  }
+}
+
 function stopLivePrediction(){
   clearInterval(predictLoop);
+  if (window.SeqLive) window.SeqLive.stop();
   document.getElementById('predictOverlay').classList.remove('webcam-active');
   document.getElementById('predictOverlay').classList.remove('show');
   cameraFrame.classList.remove('predicting','glowing');

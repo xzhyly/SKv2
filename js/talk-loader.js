@@ -18,7 +18,10 @@
     'js/gesture-data.js',
     'js/knn-compile.js',
     'js/knn-model-store.js',
-    'js/sign-to-text-ui.js'
+    'js/sign-to-text-ui.js',
+    'js/seq-features.js',
+    'js/seq-recognizer.js',
+    'js/seq-live.js'
   ];
   // Same file index.html's voice screen loads (archive/script.js:201-203), resolved against this page.
   var VOSK_MODEL_URL = new URL('models/vosk-model-small-en-us-0.15.tar.gz.zip', location.href).href;
@@ -74,7 +77,9 @@
         }, function (e) {
           console.warn('[TalkLoader] sign texts failed to load:', e);
         });
-        return Promise.all([autoTrainForTranslate(), signs]).then(function (r) {
+        // The whole-sign model (js/seq-live.js); missing or unreadable only means the frame k-NN is used.
+        var seq = window.SeqLive ? window.SeqLive.use('ESL').catch(function () { return false; }) : Promise.resolve(false);
+        return Promise.all([autoTrainForTranslate(), signs, seq]).then(function (r) {
           if (!r[0]) throw new Error('gesture set unavailable (no usable model file and no stored copy)');
         });
       } },
