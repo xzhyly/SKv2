@@ -329,3 +329,47 @@ Measured (node 22, cloud container; the Pi is not measured): first re-rank over 
 the ESL model's own rows: median finger bends of "s" 0.75 / 0.69 / 0.67 / 0.68 and of "a" 0.76 / 0.69 / 0.68 / 0.70
 (index..pinky) but thumbs 0.73 vs 0.14, which is the kind of difference the camera alone finds hard.
 
+
+## Whole-sign recognition (seq-recognition phase, 2026-11-15)
+
+A second recognizer that answers once per sign, from the sign's start to its end, instead of once per camera
+frame. It runs in Let's Talk and in Train Gestures Steps 3 / 4 whenever `models/seq_<LANG>.bin` loads; when the
+file is missing or unreadable, or the page address has `?seq=off`, the frame k-NN above runs exactly as before
+(`js/seq-live.js:12`, `:27-31`; `js/talk-signing.js` `seqOn()`, `tick()`). Report with every measured number:
+`docs/reports/2026-11-15-seq-recognition-final.md`.
+
+| Part | File |
+|---|---|
+| The sign's numbers (258) and the nearest-sample search, the model file format | `js/seq-features.js` |
+| Cutting the camera's frames into signs, one answer per sign | `js/seq-recognizer.js` |
+| Loading `models/seq_<LANG>.bin`, feeding MediaPipe results | `js/seq-live.js` |
+| Building the file: Train Gestures Step 2 Compile (after the k-NN file), laptop only | `js/gesture-training-ui.js` `compileModel()`, `php/api/compile_seq_model.php` |
+| Building it with node from a samples folder; measuring accuracy | `tools/seq_eval/build.mjs`, `eval.mjs`, `stream.mjs` |
+
+- **Where a sign starts and ends** (`js/seq-recognizer.js:23-32`): it starts when a hand comes into view, or
+  moves again after a hold (`RESUME_TOL` 0.45 palm lengths). It ends when no hand has been seen for `NO_HAND_MS`
+  400 ms, or the hands have been still for `STILL_MS` 600 ms (`STILL_TOL` 0.30 palm lengths) — the owner's choice
+  of 2026-11-15, "ibaba o ihinto ang kamay". Shorter than `MIN_FRAMES` 4 or `MIN_MS` 350 ms is ignored; longer
+  than `MAX_MS` 6000 ms is cut there.
+- **What is compared** (`js/seq-features.js`): the sign is cut into `K` = 3 equal parts in time (start, middle,
+  end). For each part and each hand: 14 joint angles, 15 fingertip distances, the palm's direction (9), averaged
+  over the part; plus how much of the part each hand was in view and where the wrists were; plus each hand's
+  start-to-end movement and path length. `DIMS` = 258. Every stored sample is kept as recorded and mirrored, and
+  also as the pieces the live cutter makes of it (`SeqRecognizer.segmentsOf`), so a live piece is compared with
+  like pieces.
+- **The answer**: the nearest stored sample (Euclidean, after standardizing) names the sign; `ratio` = distance
+  to that sign / distance to the nearest other sign. Below `RATIO` 0.90 the sign is given; otherwise the event
+  is `unsure` and nothing is added ("Not sure. Sign again"). A piece that starts from a hold and ends with the
+  hands going down needs `RATIO_TAIL` 0.80, is ignored when shorter than `DROP_MS` 900 ms, and the same sign
+  straight out of a hold is "the same sign continuing" (`js/seq-recognizer.js:80-92`).
+- **Gloves**: only for a sign that ended in a hold, over the best 5 signs, through the unchanged
+  `GloveAssist.apply` (`js/talk-signing.js` `onSeqEvent`); another sign is taken only when the glove put it ahead.
+- **File** (`js/seq-features.js:216-217`): `'SKSQ'`, u32 header length, header JSON, row labels u16, mean and
+  spread f32 x 258, rows f32 x 258. Tracked files built 2026-11-15 from the owner's 1,357 samples:
+  `models/seq_ESL.bin` 5,696,776 bytes (164 signs, 5,506 rows), `models/seq_FSL.bin` 4,048,452 bytes (137 signs,
+  3,912 rows). Not stored in IndexedDB: fetched with `cache: 'no-cache'` on each page load.
+- **Cost**: one classification of one sign against the ESL file, 1.75 ms in node on the build machine (mean of
+  200); once per sign, not per frame. Not measured on the Pi.
+- **Not done**: no `start` sign exists in the samples (0 files), so in whole-sign mode recording starts only by
+  the countdown; `stop` works (6 samples). `model_status.php` does not look at the seq file: it is rebuilt by
+  every Compile.

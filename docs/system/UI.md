@@ -2127,6 +2127,21 @@ bubble) across the resize, confirmed by directly measuring `scrollTop`/
 
 ---
 
+### 3j. Whole-sign recognition on the Sign screen (seq-recognition phase, 2026-11-15)
+
+With `models/seq_<LANG>.bin` loaded (`js/seq-live.js`; details in `docs/system/ML.md` "Whole-sign recognition"):
+
+- The signer does the whole sign, then lowers the hand or holds it still (about 0.6 s). One word is added per
+  sign. The caption shows "Signing…" while a sign runs, then the word, or "Not sure. Sign again" (nothing added),
+  for `CAPTION_HOLD_MS` 1500 ms (`js/talk-signing.js`), then "Show your sign".
+- A sign counts only from the moment recording starts (the recognizer is reset at the end of the countdown, on
+  Send, on a language switch and on leaving the turn). Undo / Clear / Send / EN | FIL / the 🧤 chip are unchanged.
+- The Guide's step 2 text says so ("ibaba ang kamay o ihinto ito sandali", `talk.html`).
+- Train Gestures Step 3 shows each sign's answer once it ends, with "Clearness" (100 % = no other sign close)
+  in place of the confidence bar, and "Not sure (word?)" for an unclear one; Step 4 adds one word per sign
+  (`js/gesture-training-ui.js` `showSeqResult`). Step 2 Compile also writes the seq file (one more log line).
+- Without the file, or with `?seq=off`, both pages behave as before this phase.
+
 ## Part 4: Accounts, conversation history, quiz (accounts-quiz phase, 2026-10-18)
 
 Report: `docs/reports/2026-10-18-accounts-quiz.md` (screenshots of every screen at 1024x600). Design source:

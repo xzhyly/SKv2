@@ -141,6 +141,14 @@ Pi) unless the git-ignored `config/device.txt` says `pi` or `laptop`. See
 `docs/system/ML.md` ("Compact model"), `docs/system/UI.md` and
 `docs/system/HARDWARE_BOOT.md`.
 
+**Whole-sign recognition (seq-recognition phase, 2026-11-15).** When `models/seq_<LANG>.bin` loads
+(`js/seq-live.js`), Let's Talk and Train Gestures Steps 3 / 4 give one answer per sign, from its start to its end
+(hands lowered, or held still about 0.6 s), and add nothing when the answer is not clear ("Not sure. Sign again");
+`js/seq-features.js`, `js/seq-recognizer.js`. Compile also writes that file (`php/api/compile_seq_model.php`, laptop
+only); `node tools/seq_eval/build.mjs <saved_gestures>` builds it without the browser. Without the file, or with
+`?seq=off`, the frame k-NN runs as before. See `docs/system/ML.md` ("Whole-sign recognition") and
+`docs/reports/2026-11-15-seq-recognition-final.md`.
+
 `talk.html` is the "Let's Talk" two-way conversation screen (see
 `docs/system/UI.md` Part 3 / 3a and `docs/system/DECISIONS.md`). Its **signing
 screen is real**: live camera + MediaPipe + the k-NN, output added to the
