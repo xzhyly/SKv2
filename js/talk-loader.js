@@ -16,6 +16,7 @@
     'js/lib/mediapipe/hands.js',
     'js/camera-helper.js',
     'js/gesture-data.js',
+    'js/hand-overlay.js',
     'js/knn-compile.js',
     'js/knn-model-store.js',
     'js/sign-to-text-ui.js',
@@ -35,6 +36,9 @@
   var LITE_MODEL_VENDORED = false;
   var params = new URLSearchParams(location.search);
   var DETECT_EVERY = Math.max(1, parseInt(params.get('detectEvery'), 10) || 2);
+  // IDLE_RATIO (seq-recognition 2026-11-15, js/gesture-data.js): after a detection of D ms, at least
+  // D x IDLE_RATIO ms free for touch and the hand lines. ?idle=N overrides (0 = off, as before).
+  var IDLE_RATIO = params.has('idle') ? Math.max(0, Number(params.get('idle')) || 0) : 0.6;
   var MODEL_COMPLEXITY = params.has('complexity') ? (params.get('complexity') === '0' ? 0 : 1)
     : (LITE_MODEL_VENDORED ? 0 : 1);
 
@@ -62,8 +66,8 @@
       run: function () {
         var video = document.getElementById('signing-video');
         if (!video) return Promise.reject(new Error('#signing-video not found'));
-        var opts = window.GestureDataRecorder.setLoopOptions({ detectEvery: DETECT_EVERY, modelComplexity: MODEL_COMPLEXITY });
-        console.log('[TalkLoader] hand detection: every ' + opts.detectEvery + ' camera frame(s), modelComplexity ' + opts.modelComplexity);
+        var opts = window.GestureDataRecorder.setLoopOptions({ detectEvery: DETECT_EVERY, modelComplexity: MODEL_COMPLEXITY, idleRatio: IDLE_RATIO });
+        console.log('[TalkLoader] hand detection: every ' + opts.detectEvery + ' camera frame(s), modelComplexity ' + opts.modelComplexity + ', idle ' + opts.idleRatio);
         return window.GestureDataRecorder.preloadMediaPipe(video, { warmUp: true }).then(function (ok) {
           if (!ok) throw new Error('MediaPipe Hands did not initialise');
         });

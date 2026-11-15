@@ -246,9 +246,15 @@
     var off1 = 8 + hl; off1 += (4 - off1 % 4) % 4;
     var off2 = off1 + n * 2; off2 += (4 - off2 % 4) % 4;
     if (off2 + DIMS * 8 + n * DIMS * 4 !== u8.length) throw new Error('seq model file: wrong size');
-    var rowLabel = new Uint16Array(n);
-    for (var i = 0; i < n; i++) rowLabel[i] = dv.getUint16(off1 + i * 2, true);
-    function f32(at, len) { var a = new Float32Array(len); for (var j = 0; j < len; j++) a[j] = dv.getFloat32(at + j * 4, true); return a; }
+    // Little-endian machine (every kiosk): views straight onto the file, no copy; otherwise read value by value.
+    var le = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+    var rowLabel;   // (buffer: an ArrayBuffer; off1 and every f32 offset are multiples of 4 by the format)
+    if (le) rowLabel = new Uint16Array(buffer, off1, n);
+    else { rowLabel = new Uint16Array(n); for (var i = 0; i < n; i++) rowLabel[i] = dv.getUint16(off1 + i * 2, true); }
+    function f32(at, len) {
+      if (le) return new Float32Array(buffer, at, len);
+      var a = new Float32Array(len); for (var j = 0; j < len; j++) a[j] = dv.getFloat32(at + j * 4, true); return a;
+    }
     return { header: header, labels: header.labels, rowLabel: rowLabel, mu: f32(off2, DIMS), sd: f32(off2 + DIMS * 4, DIMS),
       rows: f32(off2 + DIMS * 8, n * DIMS), sampleCount: header.sampleCount };
   }

@@ -50,7 +50,7 @@
     // Live-loop options (pi-fixes 2026-10-21, setLoopOptions()). Defaults = the behaviour before:
     // every animation frame is sent, full landmark model. talk.html sets detectEvery 2 and the lite
     // model so the Pi's main thread is not busy with MediaPipe all the time.
-    loopOpts: { detectEvery: 1, modelComplexity: 1 },
+    loopOpts: { detectEvery: 1, modelComplexity: 1, idleRatio: 0 },
     frameCounter: 0, // video frames seen by the requestVideoFrameCallback loop (detectEvery > 1)
     stats: { since: 0, videoFrames: 0, detections: 0, detectMs: 0, lastQualityFrames: null },
   };
@@ -286,7 +286,10 @@
 
       // Draw skeleton on tlCanvas1 if it exists (active in translation screen)
       const canvas = document.getElementById('tlCanvas1');
-      if (canvas) {
+      // seq-recognition 2026-11-15: js/hand-overlay.js (when loaded) draws the lines smoothly between answers.
+      if (canvas && window.HandOverlay) {
+        window.HandOverlay.feed(results, state.captureAt, canvas, state.video);
+      } else if (canvas) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           // Adjust canvas bounding box to match the letterboxed/pillarboxed video content box exactly
@@ -417,6 +420,15 @@
     state.frameCounter++;
     if (state.loopPaused) return;
     if (state.frameCounter % state.loopOpts.detectEvery !== 0) { scheduleNext(); return; }
+    // idleRatio (seq-recognition 2026-11-15): after a detection that took D ms, leave the page at least
+    // D x idleRatio ms for touch, the screen and the hand lines before the next one (MediaPipe holds the
+    // page's only thread while it runs; on the Pi D is long). 0 = off.
+    if (state.loopOpts.idleRatio > 0 && state.lastDetectEnd &&
+        performance.now() - state.lastDetectEnd < state.lastDetectMs * state.loopOpts.idleRatio) {
+      state.frameCounter--;   // try again on the next camera frame
+      scheduleNext();
+      return;
+    }
     runHandLoop();
   }
 
@@ -444,6 +456,7 @@
 
         const contentRect = letterboxRect(vWidth, vHeight, targetWidth, targetHeight);
 
+        state.captureAt = performance.now();   // when this camera frame was taken (js/hand-overlay.js)
         offscreenCtx.fillStyle = '#000';
         offscreenCtx.fillRect(0, 0, targetWidth, targetHeight);
         offscreenCtx.drawImage(state.video, contentRect.x, contentRect.y, contentRect.w, contentRect.h);
@@ -453,7 +466,9 @@
         const t0 = performance.now();
         await state.hands.send({ image: offscreenCanvas });
         state.stats.detections++;
-        state.stats.detectMs += performance.now() - t0;
+        state.lastDetectMs = performance.now() - t0;
+        state.lastDetectEnd = performance.now();
+        state.stats.detectMs += state.lastDetectMs;
       } catch (err) {
         console.warn("[gesture-data] MediaPipe frame skipped:", err);
       } finally {
@@ -496,6 +511,7 @@
   function setLoopOptions(opts) {
     opts = opts || {};
     if (opts.detectEvery != null) state.loopOpts.detectEvery = Math.max(1, Math.round(Number(opts.detectEvery)) || 1);
+    if (opts.idleRatio != null) state.loopOpts.idleRatio = Math.max(0, Math.min(3, Number(opts.idleRatio) || 0));
     if (opts.modelComplexity != null && Number(opts.modelComplexity) !== state.loopOpts.modelComplexity) {
       state.loopOpts.modelComplexity = Number(opts.modelComplexity) === 0 ? 0 : 1;
       if (state.hands) state.hands.setOptions({ modelComplexity: state.loopOpts.modelComplexity });
@@ -522,6 +538,8 @@
       detectMs: st.detections ? st.detectMs / st.detections : 0,
       detectEvery: state.loopOpts.detectEvery,
       modelComplexity: state.loopOpts.modelComplexity,
+      idleRatio: state.loopOpts.idleRatio,
+      busy: secs > 0 ? st.detectMs / (secs * 1000) : 0,   // share of the time MediaPipe held the page
     };
     st.since = now;
     st.videoFrames = 0;

@@ -30,6 +30,9 @@
   var DROP_MS = 900;        // from a hold to hands gone in less than this: the hand going down, not a sign
   var RATIO = 0.90;
   var RATIO_TAIL = 0.80;
+  // A slow camera / MediaPipe (the Pi) misses the hand now and then for a frame or two. "Hands gone" must last
+  // at least GONE_FRAMES of the measured time between frames, so one or two missed frames do not cut a sign in two.
+  var GONE_FRAMES = 3.5;   // measured: tools/seq_eval/stream.mjs --fps 5 --drop 0.25 (report)
 
   function palm(h) {
     var a = h.landmarks[0], b = h.landmarks[9];
@@ -63,6 +66,8 @@
     var lastHandAt = 0;
     var heldPose = null;
     var lastLabel = null;         // the last sign given since the hands were last down
+    var lastT = null, dtAvg = 0;  // time between frames (running average)
+    function goneMs() { return Math.max(NO_HAND_MS, GONE_FRAMES * dtAvg); }
 
     function begin(frame, afterHold, first) {
       st = 'signing';
@@ -106,6 +111,8 @@
     function push(frame) {
       var has = frame && frame.hands && frame.hands.length > 0;
       var t = frame.t;
+      if (lastT !== null && t > lastT && t - lastT < 1000) dtAvg = dtAvg ? dtAvg * 0.9 + (t - lastT) * 0.1 : t - lastT;
+      lastT = t;
       if (has) lastHandAt = t;
       if (st === 'idle') {
         if (has) begin(frame, false);
@@ -114,17 +121,17 @@
           seg.push(frame);
           if (isStill()) end('still');
           else if (t - seg[0].t >= MAX_MS) end('still');
-        } else if (t - lastHandAt >= NO_HAND_MS) { end('gone'); lastLabel = null; }
+        } else if (t - lastHandAt >= goneMs()) { end('gone'); lastLabel = null; }
       } else {   // held
         if (has) {
           if (moved(heldPose, frame) > RESUME_TOL) begin(frame, true, heldPose);
-        } else if (t - lastHandAt >= NO_HAND_MS) { st = 'idle'; heldPose = null; lastLabel = null; }
+        } else if (t - lastHandAt >= goneMs()) { st = 'idle'; heldPose = null; lastLabel = null; }
       }
     }
-    function reset() { st = 'idle'; seg = []; heldPose = null; fromHold = false; lastLabel = null; }
+    function reset() { st = 'idle'; seg = []; heldPose = null; fromHold = false; lastLabel = null; }   // keeps the frame-time average
 
     return { push: push, reset: reset, setModel: function (m) { model = m; }, state: function () { return st; },
-      frames: function () { return seg.length; } };
+      frames: function () { return seg.length; }, goneMs: goneMs };
   }
 
   // The pieces the recognizer cuts one recorded sample into (frames: a v3 sample's frames, with t in ms).

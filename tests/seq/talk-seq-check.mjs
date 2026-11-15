@@ -104,6 +104,8 @@ try {
   await p.waitForFunction(() => { const v = document.getElementById('signing-video'); return v.classList.contains('active') && v.videoWidth > 0; }, null, { timeout: 60000 });
   await recording();
   check('Sign screen: whole-sign recognition is on, no scroll', await p.evaluate(() => SeqLive.active()) && await noScroll());
+  const lines = await p.evaluate(() => ({ loaded: !!window.HandOverlay, running: window.HandOverlay && HandOverlay.running(), idle: GestureDataRecorder.setLoopOptions({}).idleRatio }));
+  check('Sign screen: smooth hand lines loaded, not drawing with no hand in view; idle 0.6', lines.loaded && !lines.running && lines.idle === 0.6, J(lines));
 
   if (!SAMPLES) {
     console.log('SKIP the recorded-sign steps: set SK_SAMPLES=<saved_gestures folder with samples>');
@@ -113,6 +115,8 @@ try {
     let d = await draft();
     check('one recorded "thank you" -> exactly one word', J(d.keys) === J(['thank_you']) && d.words[0] === ty, J(d));
     check('the caption shows the sign', await p.evaluate(() => document.getElementById('signing-caption').textContent) === ty);
+    await sleep(2500);
+    check('the caption still shows the sign 2.5 s later (it stays until the next answer)', await p.evaluate(() => document.getElementById('signing-caption').textContent) === ty);
     await play(sample('thank_you', 1));
     d = await draft();
     check('the same sign again after the hands went down -> a second word', J(d.keys) === J(['thank_you', 'thank_you']), J(d));

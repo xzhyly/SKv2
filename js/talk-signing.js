@@ -60,6 +60,7 @@
   var lastHandAt = 0;
   var CAPTION_HOLD_MS = 1500;     // whole-sign mode: how long the answer (or "Not sure") stays in the caption
   var captionUntil = 0;
+  var lastAnswer = '';            // whole-sign mode: the last word given, kept in the caption
 
   function $(id) { return document.getElementById(id); }
 
@@ -128,10 +129,13 @@
     if (!stream || loading || switching) return;
     if (document.body.classList.contains('modal-open')) return;
     try {
-      // (an answer just given stays in the caption while the hand goes down or holds on)
-      if (e.type === 'begin') { if (Date.now() >= captionUntil) setCaption('Signing…'); return; }
-      if (e.type === 'ignored') { if (Date.now() >= captionUntil) setCaption('Show your sign'); return; }
-      if (e.type === 'unsure') { setCaption('Not sure. Sign again'); captionUntil = Date.now() + CAPTION_HOLD_MS; return; }
+      // Nothing counts before recording starts (the countdown).
+      if (uiState === 'countdown') return;
+      // The last answer stays in the caption until the next one (owner 2026-11-15: "lumalabas yung sign bigla
+      // lang nawawala"); a new sign shows "Signing…" only once the last answer has been readable CAPTION_HOLD_MS.
+      if (e.type === 'begin') { if (Date.now() >= captionUntil) setCaption(lastAnswer ? lastAnswer + '  ·  Signing…' : 'Signing…'); return; }
+      if (e.type === 'ignored') { if (Date.now() >= captionUntil) setCaption(lastAnswer || 'Show your sign'); return; }
+      if (e.type === 'unsure') { setCaption('Not sure. Sign again'); lastAnswer = ''; captionUntil = Date.now() + CAPTION_HOLD_MS; return; }
       if (e.type !== 'sign') return;
       var label = e.label;
       // Optional gloves: only for a sign that ended in a hold (the fingers still show the sign), over the
@@ -143,7 +147,8 @@
         var best = re[label];
         for (var l in re) if (re[l] > best) { best = re[l]; label = l; }   // another sign only when the glove put it ahead
       }
-      setCaption(translateGestureLabel(label, signLang));
+      lastAnswer = translateGestureLabel(label, signLang);
+      setCaption(lastAnswer);
       captionUntil = Date.now() + CAPTION_HOLD_MS;
       if (uiState === 'idle') {
         if (label === 'start') beginCountdown();
@@ -177,6 +182,8 @@
     holdStart = null;
     clearHistory();
     if (window.SeqLive) window.SeqLive.reset();
+    lastAnswer = '';
+    captionUntil = 0;
     $('camera-box').classList.remove('recording');
     showDraft();
     setCaption('Show your sign');
@@ -275,7 +282,8 @@
       if (!window.GestureDataRecorder.getLatestLandmarks()) {
         if (now - lastHandAt > NO_HAND_MS) {
           // whole-sign mode: the answer stays readable for a moment after the hands went down
-          if (!(seqOn() && now < captionUntil)) setCaption('Show your sign');
+          if (!seqOn()) setCaption('Show your sign');
+          else if (now >= captionUntil) setCaption(lastAnswer || 'Show your sign');
           clearHistory();
           lastDetected = null;
           holdStart = null;
@@ -420,6 +428,7 @@
     window.showSkeleton = window.showSkeleton === false;
     try { localStorage.setItem(SKELETON_KEY, window.showSkeleton); } catch (e) { /* storage blocked */ }
     if (!window.showSkeleton) {
+      if (window.HandOverlay) window.HandOverlay.clear();
       var c = $('tlCanvas1');
       var ctx = c.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, c.width, c.height);
@@ -496,7 +505,9 @@
       var st = window.GestureDataRecorder.getLoopStats();
       var text = 'video  ' + st.videoFps.toFixed(1) + ' fps\n' +
         'detect ' + st.detectMs.toFixed(0) + ' ms/frame\n' +
-        'detect ' + st.detectFps.toFixed(1) + ' fps (1 of ' + st.detectEvery + ', model ' + st.modelComplexity + ')';
+        'detect ' + st.detectFps.toFixed(1) + ' fps (1 of ' + st.detectEvery + ', model ' + st.modelComplexity + ')\n' +
+        'busy   ' + Math.round(st.busy * 100) + ' % (idle ' + st.idleRatio + ')' +
+        (window.HandOverlay ? (function (o) { return '\nlines  ' + o.draws + ' fps, ' + o.drawMs.toFixed(1) + ' ms'; })(window.HandOverlay.getStats()) : '');
       el.textContent = text;
       if (++n % 5 === 0) console.log('[perf] ' + text.replace(/\n/g, ' | '));
     }, 1000);
@@ -581,6 +592,7 @@
     var v = $('signing-video');
     v.srcObject = null;
     v.classList.remove('active');
+    if (window.HandOverlay) window.HandOverlay.clear();
     var c = $('tlCanvas1');
     var ctx = c.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, c.width, c.height);
