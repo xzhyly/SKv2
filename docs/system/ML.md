@@ -362,6 +362,12 @@ file is missing or unreadable, or the page address has `?seq=off`, the frame k-N
   is `unsure` and nothing is added ("Not sure. Sign again"). A piece that starts from a hold and ends with the
   hands going down needs `RATIO_TAIL` 0.80, is ignored when shorter than `DROP_MS` 900 ms, and the same sign
   straight out of a hold is "the same sign continuing" (`js/seq-recognizer.js:80-92`).
+- **Slow camera (Pi round, 2026-11-15)**: "hands gone" lasts at least `GONE_FRAMES` 3.5 x the measured time between
+  frames (`js/seq-recognizer.js`), so one or two frames where MediaPipe missed the hand do not cut a sign in two.
+  Same signers, `stream.mjs --fps 5 --drop 0.25`: 64.6 % exactly right before, 77.2 % after; at full rate
+  unchanged (84.4 %). Details: `docs/reports/2026-11-15-seq-pi-final.md`.
+- **Loading**: `decode()` makes views straight onto the file on a little-endian machine (ESL file 0.34 ms in
+  node, was 8.8 ms value by value).
 - **Gloves**: only for a sign that ended in a hold, over the best 5 signs, through the unchanged
   `GloveAssist.apply` (`js/talk-signing.js` `onSeqEvent`); another sign is taken only when the glove put it ahead.
 - **File** (`js/seq-features.js:216-217`): `'SKSQ'`, u32 header length, header JSON, row labels u16, mean and

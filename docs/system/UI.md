@@ -2137,6 +2137,12 @@ With `models/seq_<LANG>.bin` loaded (`js/seq-live.js`; details in `docs/system/M
 - A sign counts only from the moment recording starts (the recognizer is reset at the end of the countdown, on
   Send, on a language switch and on leaving the turn). Undo / Clear / Send / EN | FIL / the 🧤 chip are unchanged.
 - The Guide's step 2 text says so ("ibaba ang kamay o ihinto ito sandali", `talk.html`).
+- Pi round (2026-11-15): the last answer stays in the caption until the next one ("word · Signing…" while the
+  next sign runs); events during the countdown are ignored. The hand lines ("Guide" button) are drawn by
+  `js/hand-overlay.js`: up to 30 frames a second between MediaPipe's answers, moved on by the hand's speed, kept
+  300 ms when one answer misses the hand, then faded. `js/gesture-data.js` `idleRatio` (talk.html 0.6, `?idle=`)
+  leaves the page free after each detection for touch and the lines. `?devperf` also shows "busy" and the lines'
+  frame rate. See `docs/reports/2026-11-15-seq-pi-final.md`.
 - Train Gestures Step 3 shows each sign's answer once it ends, with "Clearness" (100 % = no other sign close)
   in place of the confidence bar, and "Not sure (word?)" for an unclear one; Step 4 adds one word per sign
   (`js/gesture-training-ui.js` `showSeqResult`). Step 2 Compile also writes the seq file (one more log line).
