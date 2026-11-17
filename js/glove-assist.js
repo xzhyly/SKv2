@@ -294,7 +294,7 @@
       if (!h || !h.norm) return;
       var valid = h.norm.filter(function (v) { return typeof v === 'number' && !isNaN(v); });
       var hasReading = valid.some(function (v) { return v > 0.04; });
-      if (valid.length >= 3 && hasReading) {
+      if (valid.length >= 1 && hasReading) {
         gloves.push(h.norm);
       }
     });
