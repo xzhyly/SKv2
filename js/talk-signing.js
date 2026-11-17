@@ -249,27 +249,30 @@
 
   function applyLocationBoost(scores, wrist) {
     if (!wrist || typeof wrist.y !== 'number' || !scores) return scores;
-    var boosted = {};
     var liveY = wrist.y;
-    for (var label in scores) {
-      var score = scores[label];
-      var expectedY = SIGN_HEIGHT_MAP[label];
-      if (typeof expectedY === 'number') {
-        var diff = Math.abs(liveY - expectedY);
-        if (diff < 0.18) {
-          var boost = 1 + (0.25 * (1 - (diff / 0.18)));
-          boosted[label] = score * boost;
-        } else if (diff > 0.32) {
-          var penalty = Math.max(0.2, 1 - (diff - 0.32) * 1.5);
-          boosted[label] = score * penalty;
-        } else {
-          boosted[label] = score;
+    var entries = Object.keys(scores).map(function (k) { return [k, scores[k]]; });
+    entries.sort(function (a, b) { return b[1] - a[1]; });
+    if (entries.length < 2) return scores;
+
+    var top1 = entries[0][0], s1 = entries[0][1];
+    var top2 = entries[1][0], s2 = entries[1][1];
+    var out = {};
+    for (var k in scores) out[k] = scores[k];
+
+    // Tie-breaker: if the top 2 candidate scores are very close (< 0.05),
+    // let physical body location (wrist height) resolve the ambiguity
+    if (s1 - s2 < 0.05) {
+      var y1 = SIGN_HEIGHT_MAP[top1];
+      var y2 = SIGN_HEIGHT_MAP[top2];
+      if (typeof y1 === 'number' && typeof y2 === 'number') {
+        var diff1 = Math.abs(liveY - y1);
+        var diff2 = Math.abs(liveY - y2);
+        if (diff2 + 0.12 < diff1) {
+          out[top2] = s1 + 0.02; // promote candidate 2 as tie-breaker
         }
-      } else {
-        boosted[label] = score;
       }
     }
-    return boosted;
+    return out;
   }
 
   function tick() {
