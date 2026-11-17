@@ -281,7 +281,34 @@
     if (document.body.classList.contains('modal-open')) return;
     try {
       var now = Date.now();
-      if (!window.GestureDataRecorder.getLatestLandmarks()) {
+      var hasCameraHand = !!window.GestureDataRecorder.getLatestLandmarks();
+      var scores = null;
+
+      if (hasCameraHand) {
+        lastHandAt = now;
+        var f = extractFeatures($('signing-video'));
+        if (!Array.isArray(f) || f.length !== activeFeatureSize) return;
+        var pred = knnPredict(f);
+        if (!pred) return;
+        // Zero-re-recording location boost: adjust candidate scores by matching expected wrist height
+        var rawWrist = window.GestureDataRecorder.getRawWristPosition ? window.GestureDataRecorder.getRawWristPosition() : null;
+        var candidateScores = pred.scores;
+        if (rawWrist) {
+          candidateScores = applyLocationBoost(candidateScores, rawWrist);
+        }
+        // Optional gloves (glove-hw Phase 2, js/glove-assist.js): re-ranks the top 5 only while 🧤 is ON
+        // and every condition holds; otherwise the same scores come back.
+        scores = window.GloveAssist ? window.GloveAssist.apply(candidateScores, knnModel) : candidateScores;
+      } else if (window.GloveAssist && window.GloveAssist.isOn()) {
+        // Autonomous Glove Fallback: Camera sees 0 hands (e.g. black fabric), predict from Glove Flex Sensors directly!
+        var autoScores = window.GloveAssist.getAutonomousScores ? window.GloveAssist.getAutonomousScores(knnModel) : null;
+        if (autoScores) {
+          lastHandAt = now;
+          scores = autoScores;
+        }
+      }
+
+      if (!scores) {
         if (now - lastHandAt > NO_HAND_MS) {
           setCaption('Show your sign');
           clearHistory();
@@ -291,20 +318,6 @@
         }
         return;
       }
-      lastHandAt = now;
-      var f = extractFeatures($('signing-video'));
-      if (!Array.isArray(f) || f.length !== activeFeatureSize) return;
-      var pred = knnPredict(f);
-      if (!pred) return;
-      // Zero-re-recording location boost: adjust candidate scores by matching expected wrist height
-      var rawWrist = window.GestureDataRecorder.getRawWristPosition ? window.GestureDataRecorder.getRawWristPosition() : null;
-      var candidateScores = pred.scores;
-      if (rawWrist) {
-        candidateScores = applyLocationBoost(candidateScores, rawWrist);
-      }
-      // Optional gloves (glove-hw Phase 2, js/glove-assist.js): re-ranks the top 5 only while 🧤 is ON
-      // and every condition holds; otherwise the same scores come back.
-      var scores = window.GloveAssist ? window.GloveAssist.apply(candidateScores, knnModel) : candidateScores;
 
       // 1. rolling temporal filter (newer predictions weigh more)
       history.push(scores);

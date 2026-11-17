@@ -273,10 +273,50 @@
     render();
   }
 
+  // ── Autonomous Glove Recognition (Camera Blind / Black Glove Fallback) ──
+  // When MediaPipe detects 0 hands (e.g. black glove cloth absorbs light),
+  // predict the sign candidate directly from the 5-10 flex sensor bends.
+  function getAutonomousScores(model) {
+    if (!on || !available() || !window.GloveBend || !model) return null;
+    var g = G();
+    var d = g.latest();
+    if (!d || !d.hands || Date.now() - d.at > FRESH_MS) return null;
+    if (!worn()) return null;
+
+    var gloves = [];
+    ['L', 'R'].forEach(function (side) {
+      var h = d.hands[side];
+      if (!h || !h.norm) return;
+      var valid = h.norm.filter(function (v) { return typeof v === 'number' && !isNaN(v); });
+      var hasReading = valid.some(function (v) { return v > 0.04; });
+      if (valid.length >= 3 && hasReading) {
+        gloves.push(h.norm);
+      }
+    });
+    if (!gloves.length) return null;
+
+    var scores = {};
+    for (var l in model) {
+      var rows = model[l];
+      if (!rows || !rows.length) continue;
+      var dist = window.GloveBend.labelDistance(rows, gloves);
+      if (dist !== null) {
+        var score = Math.max(0, 1 - dist * 1.8);
+        if (score > 0.25) scores[l] = score;
+      }
+    }
+    if (Object.keys(scores).length > 0) {
+      lastInfo = { used: true, autonomous: true, count: Object.keys(scores).length };
+      return scores;
+    }
+    return null;
+  }
+
   window.GloveAssist = {
     init: init,
     initChip: initChip,
     apply: apply,
+    getAutonomousScores: getAutonomousScores,
     isOn: function () { return on; },
     setOn: setOn,
     reset: reset,
