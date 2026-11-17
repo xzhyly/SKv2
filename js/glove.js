@@ -437,8 +437,13 @@
     navigator.serial.addEventListener('disconnect', function (e) {
       if (port && e.target === port && !userClosed) lost();
     });
-    navigator.serial.addEventListener('connect', function () {
-      if (state === 'reconnecting' && !userClosed) retry();
+    navigator.serial.addEventListener('connect', function (e) {
+      if (userClosed) return;
+      if (state === 'reconnecting') {
+        retry();
+      } else if (state === 'disconnected') {
+        autoReconnect();
+      }
     });
   }
 

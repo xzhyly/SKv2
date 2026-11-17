@@ -17,7 +17,8 @@
   // Glove data older than this is not used. 1 s, not less: MediaPipe holds the page's only thread while it
   // detects (about 1.1 s per frame in the cloud test container), and the glove's lines wait behind it.
   var FRESH_MS = 1000;
-  var HAND_SCORE = 0.8;
+  var HAND_SCORE_DEFAULT = 0.8;
+  var HAND_SCORE_GLOVE = 0.55;
   var IDLE_MS = 3000;
   var IDLE_MOVE = 0.05;
   var BARS_MS = 100;            // finger bars (Train Gestures Step 3 button only): at most 10 updates per second
@@ -84,8 +85,9 @@
     var hs = lastHands;
     if (!hs || !hs.length || hs.length > 2) return { why: 'no hand in the frame' };
     var gloves = [];
+    var minScore = on ? HAND_SCORE_GLOVE : HAND_SCORE_DEFAULT;
     for (var i = 0; i < hs.length; i++) {
-      if (!(hs[i].score >= HAND_SCORE) || (hs[i].label !== 'Left' && hs[i].label !== 'Right')) return { why: 'unsure which hand' };
+      if (!(hs[i].score >= minScore) || (hs[i].label !== 'Left' && hs[i].label !== 'Right')) return { why: 'unsure which hand' };
       var side = hs[i].label === 'Left' ? 'L' : 'R';
       if (cfg.cam.mirror) side = side === 'L' ? 'R' : 'L';
       gloves.push(d.hands[side].norm);
@@ -169,7 +171,12 @@
   var CHIP_MS = 250;
   var chip = null, chipTxt = null, chipState = '', chipTimer = null;
   function chipStateNow() {
-    if (!available()) return 'hidden';
+    var g = G();
+    if (!g || !g.isSupported()) return 'hidden';
+    var st = g.status();
+    if (st === 'connecting') return 'connecting';
+    if (st !== 'connected') return 'disconnected';
+    if (!g.ready()) return 'nocal';
     if (!on) return 'off';
     watchHands();
     var why = glovesForFrame().why;
@@ -184,8 +191,16 @@
     chip.hidden = s === 'hidden';
     chip.classList.toggle('on', s === 'on');
     chip.classList.toggle('idle', s === 'idle');
+    chip.classList.toggle('disconnected', s === 'disconnected');
+    chip.classList.toggle('connecting', s === 'connecting');
+    chip.classList.toggle('nocal', s === 'nocal');
     chip.setAttribute('aria-pressed', s === 'on' || s === 'idle' ? 'true' : 'false');
-    chipTxt.textContent = s === 'idle' ? 'Camera only' : s === 'on' ? '🧤 ON' : '🧤 Gloves';
+    if (s === 'disconnected') chipTxt.textContent = '🔌 Connect Glove';
+    else if (s === 'connecting') chipTxt.textContent = '⏳ Connecting…';
+    else if (s === 'nocal') chipTxt.textContent = '⚠ Setup in Admin';
+    else if (s === 'idle') chipTxt.textContent = 'Camera only';
+    else if (s === 'on') chipTxt.textContent = '🧤 ON';
+    else chipTxt.textContent = '🧤 Gloves';
   }
 
   // First-ON hint: a banner under the chips, on the first ON of a conversation only (reset() re-arms it, a page
@@ -220,6 +235,32 @@
     hintLang = opts.lang || null;
     if (hintEl) hintEl.addEventListener('click', hideHint);
     chip.addEventListener('click', function () {
+      var s = chipStateNow();
+      if (s === 'disconnected') {
+        var g = G();
+        if (g && g.connect) {
+          g.connect().then(function (ok) {
+            render();
+            if (ok && G().ready()) {
+              setOn(true);
+              if (hintArmed) { hintArmed = false; showHint(); }
+            }
+          });
+        }
+        return;
+      }
+      if (s === 'connecting') return;
+      if (s === 'nocal') {
+        if (hintEl) {
+          hintEl.innerHTML = hintLang && hintLang() === 'en'
+            ? 'Glove connected but needs calibration. Please visit Admin Settings.'
+            : 'Naka-connect ang glove pero kailangan i-calibrate sa Admin Settings.';
+          hintEl.hidden = false;
+          clearTimeout(hintTimer);
+          hintTimer = setTimeout(hideHint, HINT_MS);
+        }
+        return;
+      }
       setOn(!on);
       if (on && hintArmed) { hintArmed = false; showHint(); }
     });

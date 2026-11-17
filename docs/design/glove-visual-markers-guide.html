@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="fil">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Glove Visual Markers: Front (Palm) & Back Guide — Sining Kamay</title>
+<style>
+:root {
+  --navy: #1c3560;
+  --navy-dark: #122240;
+  --orange: #f47b20;
+  --bg: #0f172a;
+  --card-bg: #1e293b;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --green: #10b981;
+  --red: #ef4444;
+  --cyan: #06b6d4;
+  --border: #334155;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.5;
+}
+.header {
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 20px;
+}
+h1 {
+  font-size: 26px;
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.badge {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: rgba(244,123,32,0.2);
+  color: var(--orange);
+  border: 1px solid rgba(244,123,32,0.4);
+}
+.subtitle {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0;
+}
+.alert-box {
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  background: rgba(244,123,32,0.1);
+  border: 1px solid rgba(244,123,32,0.4);
+  border-left: 4px solid var(--orange);
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.controls-bar {
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--card-bg);
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  align-items: center;
+}
+.controls-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-right: 8px;
+}
+.toggle-btn {
+  background: #334155;
+  border: 1px solid #475569;
+  color: #e2e8f0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.toggle-btn:hover { background: #475569; }
+.toggle-btn.active {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(244,123,32,0.4);
+}
+
+.hands-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 860px) {
+  .hands-grid { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.card-header {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pill {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-weight: 700;
+}
+.pill.back { background: rgba(6,182,212,0.2); color: var(--cyan); border: 1px solid rgba(6,182,212,0.4); }
+.pill.front { background: rgba(16,185,129,0.2); color: var(--green); border: 1px solid rgba(16,185,129,0.4); }
+
+.svg-container {
+  background: #090d16;
+  border-radius: 12px;
+  border: 1px solid #1e293b;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  min-height: 460px;
+}
+
+.annotations {
+  margin-top: 16px;
+  font-size: 13px;
+  color: #cbd5e1;
+  background: rgba(255,255,255,0.03);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+.annotations b { color: #f8fafc; }
+
+.section {
+  max-width: 1200px;
+  margin: 32px auto 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+}
+.section h2 {
+  font-size: 20px;
+  margin: 0 0 16px;
+  color: var(--orange);
+}
+.three-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+}
+.info-box {
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 14px;
+}
+.info-box h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #fff;
+}
+.tag-magic {
+  background: var(--green);
+  color: #000;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>
+    <span>🧤 Front (Palad) at Back (Likod) Visual Reference Guide</span>
+    <span class="badge">Dual-Side FSL Solution</span>
+  </h1>
+  <p class="subtitle">
+    Dahil sa Filipino Sign Language (FSL) ay pabago-bago ang direksyon ng kamay (minsan palad ang nakaharap, minsan likod), kailangang parehong may visual contrast ang dalawang panig ng itim na glove.
+  </p>
+</div>
+
+<div class="alert-box">
+  <b>💡 Ang Critical Insight Mo:</b> Kapag nag-sign ng mga salitang tulad ng <i>"Hello"</i>, <i>"Stop"</i>, o <i>"Open"</i>, <b>PALAD (Front)</b> ang nakaharap sa camera. Kapag nag-sign naman ng <i>"Good"</i>, <i>"Secret"</i>, o finger-spelling (<i>A, S, D</i>), <b>LIKOD (Back)</b> ang nakaharap. Dahil solid black ang buong glove, kailangan natin ng markers na makikita sa **PAREHONG PANIG**!
+</div>
+
+<div class="controls-bar">
+  <span class="controls-label">Interactive Layers:</span>
+  <button type="button" class="toggle-btn active" id="btn-caps" onclick="toggleLayer('caps')">
+    ⚪ Wraparound Fingertip Caps (Front & Back)
+  </button>
+  <button type="button" class="toggle-btn active" id="btn-palm" onclick="toggleLayer('palm')">
+    🟡 Palm Center Anchor (Harap Lang)
+  </button>
+  <button type="button" class="toggle-btn active" id="btn-sensors" onclick="toggleLayer('sensors')">
+    🟧 Flex Sensors C0–C4 (Likod Lang)
+  </button>
+  <button type="button" class="toggle-btn active" id="btn-skeleton" onclick="toggleLayer('skeleton')">
+    🟢 MediaPipe Skeleton (21 Points)
+  </button>
+</div>
+
+<div class="hands-grid">
+
+  <!-- ==================== SIDE 1: BACK OF HAND (LIKOD) ==================== -->
+  <div class="card">
+    <div class="card-header">
+      <span>1. LIKOD NG KAMAY (Back / Dorsal View)</span>
+      <span class="pill back">Nandito ang Flex Sensors</span>
+    </div>
+
+    <div class="svg-container">
+      <svg viewBox="0 0 340 440" width="300" height="390" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="glowDot" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="70%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="rgba(255,255,255,0.4)"/>
+          </radialGradient>
+        </defs>
+
+        <!-- BACK GLOVE FABRIC (Charcoal Black) -->
+        <g id="back-glove">
+          <path d="M 115 390 
+                   C 95 360, 65 310, 55 240
+                   C 45 170, 45 130, 65 110
+                   C 80 95, 100 115, 110 150
+                   C 110 110, 110 60, 125 40
+                   C 140 20, 160 30, 160 65
+                   C 160 110, 163 50, 180 30
+                   C 195 10, 215 20, 215 60
+                   C 215 110, 220 65, 235 55
+                   C 250 45, 270 60, 265 95
+                   C 265 140, 275 110, 290 115
+                   C 305 120, 310 150, 300 185
+                   C 285 240, 290 310, 255 390
+                   Z" 
+                fill="#18181b" stroke="#3f3f46" stroke-width="3" />
+          
+          <!-- Knuckle creases on back -->
+          <path d="M 125 150 Q 142 145 160 150" fill="none" stroke="#27272a" stroke-width="2"/>
+          <path d="M 165 145 Q 190 140 215 145" fill="none" stroke="#27272a" stroke-width="2"/>
+          <path d="M 220 155 Q 242 150 265 155" fill="none" stroke="#27272a" stroke-width="2"/>
+          
+          <!-- Cuff -->
+          <rect x="105" y="380" width="160" height="40" rx="6" fill="#09090b" stroke="#52525b" stroke-width="2"/>
+          <text x="185" y="405" fill="#71717a" font-size="11" font-weight="700" text-anchor="middle">ESP32 / WIRES</text>
+        </g>
+
+        <!-- FLEX SENSORS (ON BACK ONLY) -->
+        <g id="layer-sensors">
+          <rect x="70" y="130" width="13" height="75" rx="6.5" transform="rotate(-18 76 167)" fill="rgba(244,123,32,0.85)" stroke="#fb923c"/>
+          <text x="50" y="185" fill="#fdba74" font-size="11" font-weight="800">C0</text>
+
+          <rect x="133" y="65" width="13" height="95" rx="6.5" fill="rgba(244,123,32,0.85)" stroke="#fb923c"/>
+          <text x="139" y="185" fill="#fdba74" font-size="11" font-weight="800">C1</text>
+
+          <rect x="188" y="55" width="13" height="105" rx="6.5" fill="rgba(244,123,32,0.85)" stroke="#fb923c"/>
+          <text x="194" y="185" fill="#fdba74" font-size="11" font-weight="800">C2</text>
+
+          <rect x="240" y="80" width="13" height="95" rx="6.5" fill="rgba(244,123,32,0.85)" stroke="#fb923c"/>
+          <text x="246" y="195" fill="#fdba74" font-size="11" font-weight="800">C3</text>
+
+          <rect x="283" y="135" width="12" height="75" rx="6" transform="rotate(8 289 172)" fill="rgba(244,123,32,0.85)" stroke="#fb923c"/>
+          <text x="306" y="190" fill="#fdba74" font-size="11" font-weight="800">C4</text>
+        </g>
+
+        <!-- SKELETON BACK -->
+        <g id="layer-skeleton-back" class="layer-skeleton">
+          <path d="M 180 370 L 110 280 L 93 220 L 80 160 L 70 120" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 180 370 L 140 210 L 140 145 L 140 95 L 140 50" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 180 370 L 190 210 L 193 140 L 195 90 L 195 38" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 180 370 L 240 220 L 245 155 L 247 108 L 249 65" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 180 370 L 275 240 L 285 185 L 290 150 L 295 125" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <circle cx="180" cy="370" r="4" fill="#10b981"/>
+          <circle cx="70" cy="120" r="4" fill="#10b981"/>
+          <circle cx="140" cy="50" r="4" fill="#10b981"/>
+          <circle cx="195" cy="38" r="4" fill="#10b981"/>
+          <circle cx="249" cy="65" r="4" fill="#10b981"/>
+          <circle cx="295" cy="125" r="4" fill="#10b981"/>
+        </g>
+
+        <!-- WRAPAROUND FINGERTIP CAPS (SEEN FROM BACK) -->
+        <g id="layer-caps-back" class="layer-caps">
+          <!-- White caps wrapped around the tips -->
+          <ellipse cx="70" cy="120" rx="10" ry="12" transform="rotate(-25 70 120)" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="140" cy="50" rx="9" ry="14" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="195" cy="38" rx="9" ry="14" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="249" cy="65" rx="9" ry="13" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="295" cy="125" rx="8" ry="12" transform="rotate(15 295 125)" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          
+          <text x="70" y="124" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 4</text>
+          <text x="140" y="54" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 8</text>
+          <text x="195" y="42" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 12</text>
+          <text x="249" y="69" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 16</text>
+          <text x="295" y="129" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 20</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="annotations">
+      <b>Likod Features:</b>
+      Nandito ang 5 flex sensors (C0–C4). Kapag nakatalikod ang kamay sa camera (gaya sa signs na <i>"A"</i>, <i>"S"</i>, <i>"Good"</i>), ang <b>5 White Fingertip Caps</b> ang nagbibigay ng matinding contrast laban sa itim na tela.
+    </div>
+  </div>
+
+
+  <!-- ==================== SIDE 2: FRONT OF HAND (PALAD / HARAP) ==================== -->
+  <div class="card">
+    <div class="card-header">
+      <span>2. HARAP NG KAMAY (Front / Palm View)</span>
+      <span class="pill front">Nakaharap ang Palad sa Camera</span>
+    </div>
+
+    <div class="svg-container">
+      <svg viewBox="0 0 340 440" width="300" height="390" xmlns="http://www.w3.org/2000/svg">
+        <!-- FRONT GLOVE FABRIC (Flipped Horizontal / Mirrored) -->
+        <g id="front-glove">
+          <path d="M 225 390 
+                   C 245 360, 275 310, 285 240
+                   C 295 170, 295 130, 275 110
+                   C 260 95, 240 115, 230 150
+                   C 230 110, 230 60, 215 40
+                   C 200 20, 180 30, 180 65
+                   C 180 110, 177 50, 160 30
+                   C 145 10, 125 20, 125 60
+                   C 125 110, 120 65, 105 55
+                   C 90 45, 70 60, 75 95
+                   C 75 140, 65 110, 50 115
+                   C 35 120, 30 150, 40 185
+                   C 55 240, 50 310, 85 390
+                   Z" 
+                fill="#18181b" stroke="#3f3f46" stroke-width="3" />
+          
+          <!-- Palm Creases / Folds on front -->
+          <path d="M 120 220 Q 170 240 230 190" fill="none" stroke="#27272a" stroke-width="2"/>
+          <path d="M 140 260 Q 185 285 240 230" fill="none" stroke="#27272a" stroke-width="2"/>
+          
+          <!-- Cuff Front -->
+          <rect x="75" y="380" width="160" height="40" rx="6" fill="#09090b" stroke="#52525b" stroke-width="2"/>
+          <text x="155" y="405" fill="#71717a" font-size="11" font-weight="700" text-anchor="middle">INNER PALM CUFF</text>
+        </g>
+
+        <!-- PALM CENTER VISUAL ANCHOR (THE SECRET WEAPON!) -->
+        <g id="layer-palm">
+          <!-- A distinct white or high-contrast circle in the center of the palm -->
+          <circle cx="165" cy="245" r="14" fill="#ffffff" stroke="#f47b20" stroke-width="3"/>
+          <circle cx="165" cy="245" r="4" fill="#f47b20"/>
+          <text x="165" y="278" fill="#fb923c" font-size="10" font-weight="800" text-anchor="middle">PALM ANCHOR</text>
+        </g>
+
+        <!-- SKELETON FRONT -->
+        <g id="layer-skeleton-front" class="layer-skeleton">
+          <path d="M 160 370 L 230 280 L 247 220 L 260 160 L 270 120" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 160 370 L 200 210 L 200 145 L 200 95 L 200 50" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 160 370 L 150 210 L 147 140 L 145 90 L 145 38" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 160 370 L 100 220 L 95 155 L 93 108 L 91 65" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <path d="M 160 370 L 65 240 L 55 185 L 50 150 L 45 125" stroke="rgba(16,185,129,0.7)" stroke-width="2" fill="none"/>
+          <circle cx="160" cy="370" r="4" fill="#10b981"/>
+          <circle cx="270" cy="120" r="4" fill="#10b981"/>
+          <circle cx="200" cy="50" r="4" fill="#10b981"/>
+          <circle cx="145" cy="38" r="4" fill="#10b981"/>
+          <circle cx="91" cy="65" r="4" fill="#10b981"/>
+          <circle cx="45" cy="125" r="4" fill="#10b981"/>
+        </g>
+
+        <!-- WRAPAROUND FINGERTIP CAPS (ALSO SEEN FROM FRONT!) -->
+        <g id="layer-caps-front" class="layer-caps">
+          <!-- Because they wrap around the tip, they are fully visible here on the pads! -->
+          <ellipse cx="270" cy="120" rx="10" ry="12" transform="rotate(25 270 120)" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="200" cy="50" rx="9" ry="14" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="145" cy="38" rx="9" ry="14" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="91" cy="65" rx="9" ry="13" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          <ellipse cx="45" cy="125" rx="8" ry="12" transform="rotate(-15 45 125)" fill="url(#glowDot)" stroke="#0284c7" stroke-width="2"/>
+          
+          <text x="270" y="124" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 4</text>
+          <text x="200" y="54" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 8</text>
+          <text x="145" y="42" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 12</text>
+          <text x="91" y="69" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 16</text>
+          <text x="45" y="129" fill="#0369a1" font-size="9" font-weight="900" text-anchor="middle">Pt 20</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="annotations">
+      <b>Harap (Palad) Features:</b>
+      Walang flex sensors dito para malayang makakuyom ang kamay. Kapag iniharap ang palad sa camera (signs na <i>"Hello"</i>, <i>"Stop"</i>, <i>"5"</i>), ang <b>Fingertip Wraparound Caps</b> at ang <b>Palm Center Circle</b> ang nagpapatatag sa tracking!
+    </div>
+  </div>
+
+</div>
+
+
+<!-- STRATEGY EXPLANATION -->
+<div class="section">
+  <h2>🎯 Ang Solusyon sa Front & Back Problem sa FSL</h2>
+
+  <div class="three-cols">
+    
+    <div class="info-box">
+      <h3>1. Wraparound Fingertip Caps <span class="tag-magic">SOLUSYON #1</span></h3>
+      <p style="color:#cbd5e1;">
+        Huwag ilagay ang puting marker sa <i>likod lang</i> ng daliri. Sa halip, <b>ibalot ito sa mismong dulo ng daliri</b> (parang sumbrero ng daliri / finger cap na 10mm ang taas mula dulo).
+      </p>
+      <div style="color:#38bdf8; font-size:13px; font-weight:600;">
+        ✓ Kita mula sa Likod (Back)<br>
+        ✓ Kita mula sa Harap (Palm)<br>
+        ✓ Kita kahit patagilid (Side profile)
+      </div>
+    </div>
+
+    <div class="info-box">
+      <h3>2. Palm Center Circle Anchor <span class="tag-magic">SOLUSYON #2</span></h3>
+      <p style="color:#cbd5e1;">
+        Maglagay ng isang **puting bilog (diameter 15mm–20mm)** sa gitna ng palad (inner palm).
+      </p>
+      <div style="color:#34d399; font-size:13px; font-weight:600;">
+        ✓ Instant na alam ng MediaPipe na <b>PALAD</b> ang nakaharap.<br>
+        ✓ Nawawala ang pagkalito kung kaliwa o kanang kamay ang nakaharap sa camera.
+      </div>
+    </div>
+
+    <div class="info-box">
+      <h3>3. Bakit Hindi Malilito ang Flex Sensor?</h3>
+      <p style="color:#cbd5e1;">
+        Ang 5 flex sensors ay nananatili sa <b>LIKOD</b> lamang ng glove upang madaling masukat ang pagbaluktot habang bukas at malinis ang palad sa paggalaw.
+      </p>
+      <div style="color:#fb923c; font-size:13px; font-weight:600;">
+        ✓ Walang wires na naiipit sa loob ng palad.<br>
+        ✓ Kumportable para sa deaf signer kapag humahawak o pumapalakpak.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function toggleLayer(layerKey) {
+  var isBack = true;
+  var btn = document.getElementById('btn-' + layerKey);
+  
+  if (layerKey === 'caps') {
+    var b = document.getElementById('layer-caps-back');
+    var f = document.getElementById('layer-caps-front');
+    var hide = b.style.display !== 'none';
+    b.style.display = hide ? 'none' : 'inline';
+    f.style.display = hide ? 'none' : 'inline';
+    btn.classList.toggle('active', !hide);
+  } else if (layerKey === 'skeleton') {
+    var b = document.getElementById('layer-skeleton-back');
+    var f = document.getElementById('layer-skeleton-front');
+    var hide = b.style.display !== 'none';
+    b.style.display = hide ? 'none' : 'inline';
+    f.style.display = hide ? 'none' : 'inline';
+    btn.classList.toggle('active', !hide);
+  } else if (layerKey === 'palm') {
+    var p = document.getElementById('layer-palm');
+    var hide = p.style.display !== 'none';
+    p.style.display = hide ? 'none' : 'inline';
+    btn.classList.toggle('active', !hide);
+  } else if (layerKey === 'sensors') {
+    var s = document.getElementById('layer-sensors');
+    var hide = s.style.display !== 'none';
+    s.style.display = hide ? 'none' : 'inline';
+    btn.classList.toggle('active', !hide);
+  }
+}
+</script>
+
+</body>
+</html>

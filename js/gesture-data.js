@@ -183,6 +183,21 @@
       : null;
   }
 
+  function getRawWristPosition() {
+    if (!state.latestLandmarks || !state.latestLandmarks.length) return null;
+    var w0 = state.latestLandmarks[0] && state.latestLandmarks[0][0];
+    if (!w0) return null;
+    if (state.latestLandmarks.length === 1) {
+      return { x: Number(w0.x) || 0, y: Number(w0.y) || 0 };
+    }
+    var w1 = state.latestLandmarks[1] && state.latestLandmarks[1][0];
+    if (!w1) return { x: Number(w0.x) || 0, y: Number(w0.y) || 0 };
+    return {
+      x: ((Number(w0.x) || 0) + (Number(w1.x) || 0)) / 2,
+      y: Math.min(Number(w0.y) || 0, Number(w1.y) || 0)
+    };
+  }
+
   function extractLandmarkFeatures() {
     return flattenLandmarks(getLatestLandmarks());
   }
@@ -916,6 +931,7 @@
     onHandResults,
     letterboxRect,
     getLatestLandmarks,
+    getRawWristPosition,
     extractLandmarkFeatures,
     saveGestureSample,
     loadSavedGestureDataset,
