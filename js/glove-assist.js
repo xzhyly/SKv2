@@ -19,8 +19,8 @@
   var FRESH_MS = 1000;
   var HAND_SCORE_DEFAULT = 0.8;
   var HAND_SCORE_GLOVE = 0.55;
-  var IDLE_MS = 3000;
-  var IDLE_MOVE = 0.05;
+  var IDLE_MS = 8000;
+  var IDLE_MOVE = 0.04;
   var BARS_MS = 100;            // finger bars (Train Gestures Step 3 button only): at most 10 updates per second
   var BARS_KEY = 'sk_glove_bars';
 
@@ -58,7 +58,12 @@
     while (moves.length && now - moves[0].at > IDLE_MS) moves.shift();
   }
   function worn() {
-    if (moves.length < 2 || moves[moves.length - 1].at - moves[0].at < IDLE_MS * 0.8) return true;   // not enough history yet
+    if (moves.length < 2 || moves[moves.length - 1].at - moves[0].at < IDLE_MS * 0.5) return true;   // not enough history yet
+    var lastV = moves[moves.length - 1].v;
+    // If any calibrated finger is actively bent (> 0.12), the hand is definitely actively posing!
+    for (var j = 0; j < 10; j++) {
+      if (lastV[j] !== null && lastV[j] > 0.12) return true;
+    }
     for (var i = 0; i < 10; i++) {
       var lo = Infinity, hi = -Infinity;
       for (var k = 0; k < moves.length; k++) {
