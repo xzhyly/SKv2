@@ -324,6 +324,14 @@
     writer = p.writable ? p.writable.getWriter() : null;
     readLoop(p);
     send('hello');
+    var helloTries = 0;
+    var helloTimer = setInterval(function () {
+      if (hello || state !== 'connected' || ++helloTries >= 6) {
+        clearInterval(helloTimer);
+        return;
+      }
+      send('hello');
+    }, 600);
   }
 
   async function readLoop(p) {
