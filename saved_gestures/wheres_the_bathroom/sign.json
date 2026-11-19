@@ -1,7 +1,7 @@
 {
     "key": "wheres_the_bathroom",
-    "set": "BOTH",
-    "textEn": "Wheres the bathroom",
-    "textFil": "Nasaan ang banyo",
-    "updatedAt": "2026-10-17T10:16:13+00:00"
+    "set": "ESL",
+    "textEn": "where's the bathroom",
+    "textFil": null,
+    "updatedAt": "2026-11-11T07:08:57+00:00"
 }
